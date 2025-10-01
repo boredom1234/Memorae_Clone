@@ -58,8 +58,27 @@ export async function buildApp(): Promise<FastifyInstance> {
     };
   });
 
+  // WhatsApp routes
+  app.post('/api/v1/whatsapp/send', async (request, reply) => {
+    const { to, message } = request.body as { to: string; message: string };
+    
+    if (!to || !message) {
+      return reply.status(400).send({ error: 'Missing required fields: to, message' });
+    }
+
+    // This will be implemented when WhatsApp manager is integrated
+    return reply.send({ success: true, message: 'Message queued for sending' });
+  });
+
+  app.get('/api/v1/whatsapp/status', async () => {
+    return {
+      connected: false, // Will be updated with actual status
+      timestamp: new Date().toISOString(),
+    };
+  });
+
   // Error handler
-  app.setErrorHandler((error, request, reply) => {
+  app.setErrorHandler((error, _request, reply) => {
     app.log.error(error);
     reply.status(error.statusCode || 500).send({
       error: error.message || 'Internal Server Error',
