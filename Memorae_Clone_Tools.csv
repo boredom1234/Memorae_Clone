@@ -1,0 +1,44 @@
+Category,Tool,Parameters,Returns
+Reminder Management,createReminder,{ title: string; reminderTime: string; timezone: string; isRecurring: boolean; recurrenceRule?: string; notes?: string; priority?: 'low' | 'medium' | 'high'; },{ success: boolean; reminderId: string; message: string; scheduledFor: string; }
+Reminder Management,updateReminder,{ reminderId: string; title?: string; reminderTime?: string; isRecurring?: boolean; recurrenceRule?: string; notes?: string; priority?: 'low' | 'medium' | 'high'; },{ success: boolean; message: string; updatedReminder: ReminderObject; }
+Reminder Management,deleteReminder,{ reminderId?: string; searchQuery?: string; },{ success: boolean; deletedCount: number; message: string; }
+Reminder Management,listReminders,{ status?: 'pending' | 'completed' | 'all'; startDate?: string; endDate?: string; limit?: number; offset?: number; sortBy?: 'time' | 'priority' | 'created'; },{ reminders: Array<{ id: string; title: string; reminderTime: string; isRecurring: boolean; priority: string; createdAt: string; }>; total: number; hasMore: boolean; }
+Reminder Management,snoozeReminder,{ reminderId: string; snoozeUntil: string; snoozeDuration?: number; },{ success: boolean; newReminderTime: string; message: string; }
+Reminder Management,completeReminder,{ reminderId: string; },{ success: boolean; message: string; }
+,,,
+List Management,createList,{ name: string; description?: string; items?: string[]; },{ success: boolean; listId: string; message: string; }
+List Management,addItemToList,{ listId?: string; listName?: string; items: string[]; },{ success: boolean; addedCount: number; message: string; }
+List Management,removeItemFromList,{ listId?: string; listName?: string; itemIds?: string[]; itemText?: string; },{ success: boolean; removedCount: number; message: string; }
+List Management,updateListItem,{ itemId: string; newContent?: string; isCompleted?: boolean; position?: number; },{ success: boolean; message: string; }
+List Management,getLists,{ includeItems?: boolean; limit?: number; },{ lists: Array<{ id: string; name: string; itemCount: number; items?: Array<{ id: string; content: string; isCompleted: boolean; }> }>; total: number; }
+List Management,getListItems,{ listId?: string; listName?: string; includeCompleted?: boolean; },{ listName: string; items: Array<{ id: string; content: string; isCompleted: boolean; position: number; }>; total: number; }
+List Management,deleteList,{ listId?: string; listName?: string; },{ success: boolean; message: string; }
+,,,
+Calendar Integration,syncGoogleCalendar,{ reminderId: string; calendarId?: string; },{ success: boolean; eventId: string; eventLink: string; message: string; }
+Calendar Integration,syncOutlookCalendar,{ reminderId: string; calendarId?: string; },{ success: boolean; eventId: string; eventLink: string; message: string; }
+Calendar Integration,getCalendarEvents,{ provider: 'google' | 'outlook' | 'apple'; startDate: string; endDate: string; limit?: number; },{ events: Array<{ id: string; title: string; startTime: string; endTime: string; location?: string; description?: string; }>; total: number; }
+Calendar Integration,connectCalendar,{ provider: 'google' | 'outlook' | 'apple'; },{ success: boolean; authUrl: string; message: string; }
+Calendar Integration,disconnectCalendar,{ provider: 'google' | 'outlook' | 'apple'; },{ success: boolean; message: string; }
+Calendar Integration,importCalendarEvents,{ provider: 'google' | 'outlook' | 'apple'; startDate: string; endDate: string; filterKeywords?: string[]; },{ success: boolean; importedCount: number; message: string; }
+,,,
+Search & Query,searchReminders,{ query: string; filters?: { dateRange?: { start: string; end: string; }; priority?: 'low' | 'medium' | 'high'; status?: 'pending' | 'completed'; }; limit?: number; },{ results: Array<{ id: string; title: string; reminderTime: string; relevanceScore: number; }>; total: number; }
+Search & Query,searchLists,{ query: string; searchIn?: 'list-names' | 'items' | 'both'; limit?: number; },{ results: Array<{ type: 'list' | 'item'; listId: string; listName: string; itemId?: string; itemContent?: string; relevanceScore: number; }>; total: number; }
+Search & Query,getUpcomingReminders,{ timeframe: 'today' | 'tomorrow' | 'week' | 'month'; limit?: number; },{ reminders: Array<{ id: string; title: string; reminderTime: string; timeUntil: string; }>; total: number; }
+,,,
+User Settings,updateUserSettings,{ timezone?: string; language?: string; defaultReminderTime?: string; notificationPreferences?: { enabled: boolean; advanceNotice?: number; }; },{ success: boolean; message: string; }
+User Settings,getUserSettings,{},{ timezone: string; language: string; defaultReminderTime: string; notificationPreferences: object; calendarConnections: string[]; }
+User Settings,setQuietHours,{ enabled: boolean; startTime: string; endTime: string; days?: string[]; },{ success: boolean; message: string; }
+,,,
+Voice & Media Processing,transcribeVoiceNote,{ audioUrl: string; language?: string; },{ success: boolean; transcription: string; confidence: number; detectedLanguage: string; }
+Voice & Media Processing,processImage,{ imageUrl: string; extractionType: 'text' | 'tasks' | 'dates'; },{ success: boolean; extractedText: string; structuredData?: { tasks?: string[]; dates?: string[]; contacts?: string[]; }; }
+Voice & Media Processing,analyzeImageForReminder,{ imageUrl: string; additionalContext?: string; },{ success: boolean; suggestedReminders: Array<{ title: string; time?: string; confidence: number; }>; extractedText: string; }
+,,,
+Notification & Communication,sendReminderToContact,{ recipientNumber: string; reminderText: string; reminderTime: string; fromUserName?: string; },{ success: boolean; messageId: string; message: string; }
+Notification & Communication,getNotificationHistory,{ limit?: number; offset?: number; type?: 'reminder' | 'shared' | 'all'; },{ notifications: Array<{ id: string; type: string; sentAt: string; recipient?: string; content: string; status: 'sent' | 'failed' | 'pending'; }>; total: number; }
+Notification & Communication,sendCustomMessage,{ message: string; formatting?: 'plain' | 'markdown'; buttons?: Array<{ id: string; label: string; }>; },{ success: boolean; messageId: string; }
+,,,
+Utility & Helper,parseNaturalLanguageDate,{ text: string; timezone: string; referenceDate?: string; },{ success: boolean; extractedDates: Array<{ originalText: string; parsedDate: string; confidence: number; type: 'absolute' | 'relative'; }>; }
+Utility & Helper,detectIntent,{ message: string; conversationContext?: string[]; },{ intent: string; confidence: number; entities: { dates?: string[]; times?: string[]; priorities?: string[]; names?: string[]; }; }
+Utility & Helper,getContextSummary,{ includeUpcoming?: boolean; includeLists?: boolean; includeStats?: boolean; },{ stats: { totalReminders: number; upcomingToday: number; totalLists: number; completedThisWeek: number; }; upcomingReminders?: Array<object>; activeLists?: Array<object>; }
+Utility & Helper,suggestReminderTime,{ taskDescription: string; userSchedule?: Array<{ startTime: string; endTime: string; }>; },{ suggestedTimes: Array<{ time: string; reason: string; confidence: number; }>; }
+Utility & Helper,batchCreateReminders,{ reminders: Array<{ title: string; reminderTime: string; isRecurring?: boolean; recurrenceRule?: string; }>; },{ success: boolean; created: number; failed: number; results: Array<{ title: string; success: boolean; reminderId?: string; error?: string; }>; }
