@@ -1,4 +1,4 @@
-import { proto } from '@whiskeysockets/baileys';
+import { proto } from "@whiskeysockets/baileys";
 
 export interface MessageContext {
   messageId: string;
@@ -8,7 +8,7 @@ export interface MessageContext {
   timestamp: number;
   isGroup: boolean;
   groupId?: string;
-  messageType: 'text' | 'image' | 'audio' | 'video' | 'document' | 'unknown';
+  messageType: "text" | "image" | "audio" | "video" | "document" | "unknown";
   mediaUrl?: string;
   quoted?: {
     messageId: string;
@@ -39,5 +39,5 @@ export interface SendMediaOptions {
   to: string;
   mediaUrl: string;
   caption?: string;
-  mediaType: 'image' | 'audio' | 'video' | 'document';
+  mediaType: "image" | "audio" | "video" | "document";
 }

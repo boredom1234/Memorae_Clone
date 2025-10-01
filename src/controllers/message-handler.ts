@@ -1,8 +1,8 @@
-import { MessageContext } from '../services/whatsapp';
-import pino from 'pino';
+import { MessageContext } from "../services/whatsapp";
+import pino from "pino";
 
 export class MessageController {
-  private logger = pino({ level: 'info' });
+  private logger = pino({ level: "info" });
 
   async handleMessage(context: MessageContext): Promise<void> {
     try {
@@ -12,33 +12,33 @@ export class MessageController {
 
       // Handle different message types
       switch (messageType) {
-        case 'text':
+        case "text":
           await this.handleTextMessage(context);
           break;
-        case 'image':
+        case "image":
           await this.handleImageMessage(context);
           break;
-        case 'audio':
+        case "audio":
           await this.handleAudioMessage(context);
           break;
         default:
           this.logger.info(`Unsupported message type: ${messageType}`);
       }
     } catch (error) {
-      this.logger.error({ error }, 'Error in message controller');
+      this.logger.error({ error }, "Error in message controller");
     }
   }
 
   private async handleTextMessage(context: MessageContext): Promise<void> {
     const { text } = context;
-    
+
     if (!text) return;
 
     this.logger.info(`Text message: "${text}"`);
 
     // TODO: Implement AI intent detection and tool calling
     // For now, just log the message
-    
+
     // Example patterns to detect:
     // - "Remind me to..." -> createReminder
     // - "Add ... to my list" -> addItemToList
@@ -47,8 +47,8 @@ export class MessageController {
   }
 
   private async handleImageMessage(_context: MessageContext): Promise<void> {
-    this.logger.info('Image message received');
-    
+    this.logger.info("Image message received");
+
     // TODO: Implement image OCR processing
     // - Download image
     // - Extract text using Mistral OCR
@@ -57,8 +57,8 @@ export class MessageController {
   }
 
   private async handleAudioMessage(_context: MessageContext): Promise<void> {
-    this.logger.info('Audio message received');
-    
+    this.logger.info("Audio message received");
+
     // TODO: Implement voice transcription
     // - Download audio
     // - Transcribe using Groq Whisper
