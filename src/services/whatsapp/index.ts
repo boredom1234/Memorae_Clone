@@ -8,6 +8,7 @@ import {
 } from "./types";
 import { proto } from "@whiskeysockets/baileys";
 import pino from "pino";
+import { config } from "../../config/env";
 
 export class WhatsAppService {
   private connection: WhatsAppConnection;
@@ -48,8 +49,28 @@ export class WhatsAppService {
     message: proto.IWebMessageInfo,
   ): Promise<void> {
     try {
-      // Ignore messages from self
-      if (message.key.fromMe) return;
+      this.logger.info(`📩 New message: ${message.key.id}`);
+
+      // Apply message filter based on config
+      const filterMode = config.whatsapp.messageFilterMode;
+      const isFromMe = message.key.fromMe;
+
+      // Mode 1: Only accept messages from others
+      if (filterMode === 1 && isFromMe) {
+        this.logger.debug("Ignoring message from self (mode 1)");
+        return;
+      }
+
+      // Mode 2: Only accept messages from self
+      if (filterMode === 2 && !isFromMe) {
+        this.logger.debug("Ignoring message from others (mode 2)");
+        return;
+      }
+
+      // Mode 3: Accept all messages (no filter)
+      if (filterMode === 3) {
+        this.logger.debug("Accepting all messages (mode 3)");
+      }
 
       const context = await this.messageHandler.parseMessage(message as any);
       if (!context) return;

@@ -47,12 +47,12 @@ export class WhatsAppManager {
       await this.messageController.handleMessage(context);
 
       // Auto-reply testing with "."
-      //   if (this.whatsappService) {
-      //     await this.whatsappService.sendMessage({
-      //       to: context.from,
-      //       text: '.',
-      //     });
-      //   }
+      if (this.whatsappService) {
+        await this.whatsappService.sendMessage({
+          to: context.from,
+          text: ".",
+        });
+      }
 
       // Stop typing indicator
       if (this.whatsappService) {
