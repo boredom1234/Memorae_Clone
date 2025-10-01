@@ -1,5 +1,8 @@
 import { getSupabaseClient } from '../lib/supabase';
 import { User } from '../models/types';
+import { validate, updateUserSettingsSchema, getUserSettingsSchema, setQuietHoursSchema } from '../utils/validators';
+import { handleServiceError, NotFoundError } from '../utils/errors';
+import { logInfo, logError, logAudit, logPerformance } from '../utils/logger';
 
 export class UserService {
   private supabase = getSupabaseClient();
@@ -61,52 +64,105 @@ export class UserService {
       };
     }
   ): Promise<{ success: boolean; message: string }> {
-    const updateData: any = {};
+    const startTime = Date.now();
+    
+    try {
+      // Validate input
+      const validatedParams = validate(updateUserSettingsSchema, { userId, ...settings });
+      
+      // Check if user exists
+      const { data: existing, error: checkError } = await this.supabase
+        .from('users')
+        .select('id')
+        .eq('id', validatedParams.userId)
+        .single();
 
-    if (settings.timezone) updateData.timezone = settings.timezone;
-    if (settings.language) updateData.language = settings.language;
-    if (settings.defaultReminderTime) updateData.default_reminder_time = settings.defaultReminderTime;
-    if (settings.notificationPreferences) {
-      updateData.notification_enabled = settings.notificationPreferences.enabled;
-      if (settings.notificationPreferences.advanceNotice !== undefined) {
-        updateData.advance_notice_minutes = settings.notificationPreferences.advanceNotice;
+      if (checkError || !existing) {
+        throw new NotFoundError('User', validatedParams.userId);
       }
+
+      const updateData: any = {};
+
+      if (settings.timezone) updateData.timezone = settings.timezone;
+      if (settings.language) updateData.language = settings.language;
+      if (settings.defaultReminderTime) updateData.default_reminder_time = settings.defaultReminderTime;
+      if (settings.notificationPreferences) {
+        updateData.notification_enabled = settings.notificationPreferences.enabled;
+        if (settings.notificationPreferences.advanceNotice !== undefined) {
+          updateData.advance_notice_minutes = settings.notificationPreferences.advanceNotice;
+        }
+      }
+      updateData.updated_at = new Date().toISOString();
+
+      const { error } = await this.supabase
+        .from('users')
+        .update(updateData)
+        .eq('id', validatedParams.userId);
+
+      if (error) {
+        throw error;
+      }
+
+      logAudit('UPDATE_USER_SETTINGS', validatedParams.userId, 'user', { settings: Object.keys(updateData) });
+      logPerformance('updateUserSettings', Date.now() - startTime);
+
+      return { success: true, message: 'Settings updated successfully' };
+    } catch (error) {
+      logError('Failed to update user settings', error, { userId });
+      throw handleServiceError(error, 'updateUserSettings');
     }
-
-    const { error } = await this.supabase
-      .from('users')
-      .update(updateData)
-      .eq('id', userId);
-
-    if (error) throw error;
-
-    return { success: true, message: 'Settings updated successfully' };
   }
 
   async getUserSettings(userId: string) {
-    const { data: user, error } = await this.supabase
-      .from('users')
-      .select('*')
-      .eq('id', userId)
-      .single();
+    const startTime = Date.now();
+    
+    try {
+      // Validate input
+      const validatedParams = validate(getUserSettingsSchema, { userId });
+      
+      const { data: user, error } = await this.supabase
+        .from('users')
+        .select('*')
+        .eq('id', validatedParams.userId)
+        .single();
 
-    if (error) throw error;
+      if (error || !user) {
+        throw new NotFoundError('User', validatedParams.userId);
+      }
 
-    const { data: calendars } = await this.supabase
-      .from('calendar_connections')
-      .select('provider')
-      .eq('user_id', userId);
+      // Get calendar connections with error handling
+      let calendarConnections: string[] = [];
+      try {
+        const { data: calendars, error: calError } = await this.supabase
+          .from('calendar_connections')
+          .select('provider')
+          .eq('user_id', validatedParams.userId);
 
-    return {
-      timezone: user.timezone,
-      language: user.language,
-      defaultReminderTime: user.default_reminder_time,
-      notificationPreferences: {
-        enabled: user.notification_enabled,
-        advanceNotice: user.advance_notice_minutes,
-      },
-      calendarConnections: calendars?.map((c) => c.provider) || [],
-    };
+        if (calError) {
+          logError('Failed to fetch calendar connections', calError, { userId: validatedParams.userId });
+        } else {
+          calendarConnections = calendars?.map((c) => c.provider) || [];
+        }
+      } catch (error) {
+        logError('Error fetching calendar connections', error, { userId: validatedParams.userId });
+      }
+
+      logPerformance('getUserSettings', Date.now() - startTime);
+
+      return {
+        timezone: user.timezone,
+        language: user.language,
+        defaultReminderTime: user.default_reminder_time,
+        notificationPreferences: {
+          enabled: user.notification_enabled,
+          advanceNotice: user.advance_notice_minutes,
+        },
+        calendarConnections,
+      };
+    } catch (error) {
+      logError('Failed to get user settings', error, { userId });
+      throw handleServiceError(error, 'getUserSettings');
+    }
   }
 
   async setQuietHours(
@@ -116,18 +172,45 @@ export class UserService {
     endTime: string,
     days?: string[]
   ): Promise<{ success: boolean; message: string }> {
-    const { error } = await this.supabase
-      .from('users')
-      .update({
-        quiet_hours_enabled: enabled,
-        quiet_hours_start: startTime,
-        quiet_hours_end: endTime,
-        quiet_hours_days: days,
-      })
-      .eq('id', userId);
+    const startTimeMs = Date.now();
+    
+    try {
+      // Validate input
+      const validatedParams = validate(setQuietHoursSchema, { userId, enabled, startTime, endTime, days });
+      
+      // Check if user exists
+      const { data: existing, error: checkError } = await this.supabase
+        .from('users')
+        .select('id')
+        .eq('id', validatedParams.userId)
+        .single();
 
-    if (error) throw error;
+      if (checkError || !existing) {
+        throw new NotFoundError('User', validatedParams.userId);
+      }
 
-    return { success: true, message: 'Quiet hours updated successfully' };
+      const { error } = await this.supabase
+        .from('users')
+        .update({
+          quiet_hours_enabled: validatedParams.enabled,
+          quiet_hours_start: validatedParams.startTime,
+          quiet_hours_end: validatedParams.endTime,
+          quiet_hours_days: validatedParams.days,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', validatedParams.userId);
+
+      if (error) {
+        throw error;
+      }
+
+      logAudit('SET_QUIET_HOURS', validatedParams.userId, 'user', { enabled: validatedParams.enabled });
+      logPerformance('setQuietHours', Date.now() - startTimeMs);
+
+      return { success: true, message: 'Quiet hours updated successfully' };
+    } catch (error) {
+      logError('Failed to set quiet hours', error, { userId });
+      throw handleServiceError(error, 'setQuietHours');
+    }
   }
 }

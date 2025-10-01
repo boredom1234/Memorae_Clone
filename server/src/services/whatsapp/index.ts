@@ -54,6 +54,13 @@ export class WhatsAppService {
       // Apply message filter based on config
       const filterMode = config.whatsapp.messageFilterMode;
       const isFromMe = message.key.fromMe;
+      const remoteJid = message.key.remoteJid || '';
+      
+      // Extract the phone number from remoteJid (format: "1234567890@s.whatsapp.net")
+      const chatPartner = remoteJid.split('@')[0];
+      
+      // Get own number from the connection
+      const ownNumber = this.connection.getSocket()?.user?.id?.split(':')[0] || '';
 
       // Mode 1: Only accept messages from others
       if (filterMode === 1 && isFromMe) {
@@ -61,10 +68,14 @@ export class WhatsAppService {
         return;
       }
 
-      // Mode 2: Only accept messages from self
-      if (filterMode === 2 && !isFromMe) {
-        this.logger.debug("Ignoring message from others (mode 2)");
-        return;
+      // Mode 2: Only accept messages when chatting with yourself (My number <-> My number)
+      if (filterMode === 2) {
+        const isSelfChat = chatPartner === ownNumber;
+        if (!isSelfChat) {
+          this.logger.debug(`Ignoring message - not self-chat (mode 2). Chat partner: ${chatPartner}, Own: ${ownNumber}`);
+          return;
+        }
+        this.logger.debug("Accepting self-chat message (mode 2)");
       }
 
       // Mode 3: Accept all messages (no filter)

@@ -1,5 +1,8 @@
 import { getSupabaseClient } from '../lib/supabase';
 import { List, ListItem } from '../models/types';
+import { validate, createListSchema, addItemToListSchema, removeItemFromListSchema, updateListItemSchema, getListsSchema, getListItemsSchema, deleteListSchema, searchListsSchema, sanitizeString } from '../utils/validators';
+import { handleServiceError, NotFoundError, ValidationError } from '../utils/errors';
+import { logInfo, logError, logAudit, logPerformance } from '../utils/logger';
 
 export class ListService {
   private supabase = getSupabaseClient();
@@ -10,34 +13,61 @@ export class ListService {
     description?: string;
     items?: string[];
   }): Promise<{ success: boolean; listId: string; message: string }> {
-    const { data: list, error } = await this.supabase
-      .from('lists')
-      .insert({
-        user_id: params.userId,
-        name: params.name,
-        description: params.description,
-      })
-      .select()
-      .single();
+    const startTime = Date.now();
+    
+    try {
+      // Validate input
+      const validatedParams = validate(createListSchema, params);
+      
+      logInfo('Creating list', { userId: params.userId, name: params.name });
 
-    if (error) throw error;
+      const { data: list, error } = await this.supabase
+        .from('lists')
+        .insert({
+          user_id: validatedParams.userId,
+          name: validatedParams.name,
+          description: validatedParams.description,
+        })
+        .select()
+        .single();
 
-    // Add items if provided
-    if (params.items && params.items.length > 0) {
-      const items = params.items.map((content, index) => ({
-        list_id: list.id,
-        content,
-        position: index,
-      }));
+      if (error) {
+        throw error;
+      }
 
-      await this.supabase.from('list_items').insert(items);
+      if (!list) {
+        throw new Error('No data returned from insert operation');
+      }
+
+      // Add items if provided (with transaction-like behavior)
+      if (validatedParams.items && validatedParams.items.length > 0) {
+        const items = validatedParams.items.map((content, index) => ({
+          list_id: list.id,
+          content,
+          position: index,
+        }));
+
+        const { error: itemsError } = await this.supabase.from('list_items').insert(items);
+        
+        if (itemsError) {
+          // Rollback: delete the list if items failed to insert
+          await this.supabase.from('lists').delete().eq('id', list.id);
+          throw new Error(`Failed to add items to list: ${itemsError.message}`);
+        }
+      }
+
+      logAudit('CREATE_LIST', validatedParams.userId, 'list', { listId: list.id, name: list.name });
+      logPerformance('createList', Date.now() - startTime);
+
+      return {
+        success: true,
+        listId: list.id,
+        message: `List "${params.name}" created successfully`,
+      };
+    } catch (error) {
+      logError('Failed to create list', error, { userId: params.userId, name: params.name });
+      throw handleServiceError(error, 'createList');
     }
-
-    return {
-      success: true,
-      listId: list.id,
-      message: `List "${params.name}" created successfully`,
-    };
   }
 
   async addItemToList(params: {
@@ -46,53 +76,83 @@ export class ListService {
     listName?: string;
     items: string[];
   }): Promise<{ success: boolean; addedCount: number; message: string }> {
-    let listId = params.listId;
+    const startTime = Date.now();
+    
+    try {
+      // Validate input
+      const validatedParams = validate(addItemToListSchema, params);
+      
+      let listId = validatedParams.listId;
 
-    // Find list by name if listId not provided
-    if (!listId && params.listName) {
-      const { data: list } = await this.supabase
+      // Find list by name if listId not provided
+      if (!listId && validatedParams.listName) {
+        const { data: list, error: findError } = await this.supabase
+          .from('lists')
+          .select('id')
+          .eq('user_id', validatedParams.userId)
+          .eq('name', validatedParams.listName)
+          .single();
+
+        if (findError || !list) {
+          throw new NotFoundError('List', validatedParams.listName);
+        }
+        listId = list.id;
+      }
+
+      if (!listId) {
+        throw new ValidationError('Either listId or listName must be provided');
+      }
+
+      // Verify list belongs to user
+      const { data: listCheck, error: checkError } = await this.supabase
         .from('lists')
-        .select('id')
-        .eq('user_id', params.userId)
-        .eq('name', params.listName)
+        .select('id, user_id')
+        .eq('id', listId)
         .single();
 
-      if (!list) {
-        throw new Error(`List "${params.listName}" not found`);
+      if (checkError || !listCheck) {
+        throw new NotFoundError('List', listId);
       }
-      listId = list.id;
+
+      if (listCheck.user_id !== validatedParams.userId) {
+        throw new ValidationError('List does not belong to user');
+      }
+
+      // Get current max position with error handling
+      const { data: maxPos } = await this.supabase
+        .from('list_items')
+        .select('position')
+        .eq('list_id', listId)
+        .order('position', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const startPosition = (maxPos?.position ?? -1) + 1;
+
+      const items = validatedParams.items.map((content, index) => ({
+        list_id: listId,
+        content,
+        position: startPosition + index,
+      }));
+
+      const { error } = await this.supabase.from('list_items').insert(items);
+
+      if (error) {
+        throw error;
+      }
+
+      logAudit('ADD_ITEMS_TO_LIST', validatedParams.userId, 'list', { listId, count: items.length });
+      logPerformance('addItemToList', Date.now() - startTime);
+
+      return {
+        success: true,
+        addedCount: items.length,
+        message: `${items.length} item(s) added to list`,
+      };
+    } catch (error) {
+      logError('Failed to add items to list', error, { userId: params.userId });
+      throw handleServiceError(error, 'addItemToList');
     }
-
-    if (!listId) {
-      throw new Error('Either listId or listName must be provided');
-    }
-
-    // Get current max position
-    const { data: maxPos } = await this.supabase
-      .from('list_items')
-      .select('position')
-      .eq('list_id', listId)
-      .order('position', { ascending: false })
-      .limit(1)
-      .single();
-
-    const startPosition = (maxPos?.position || -1) + 1;
-
-    const items = params.items.map((content, index) => ({
-      list_id: listId,
-      content,
-      position: startPosition + index,
-    }));
-
-    const { error } = await this.supabase.from('list_items').insert(items);
-
-    if (error) throw error;
-
-    return {
-      success: true,
-      addedCount: items.length,
-      message: `${items.length} item(s) added to list`,
-    };
   }
 
   async removeItemFromList(params: {
@@ -102,44 +162,66 @@ export class ListService {
     itemIds?: string[];
     itemText?: string;
   }): Promise<{ success: boolean; removedCount: number; message: string }> {
-    let listId = params.listId;
+    const startTime = Date.now();
+    
+    try {
+      // Validate input
+      const validatedParams = validate(removeItemFromListSchema, params);
+      
+      let listId = validatedParams.listId;
 
-    // Find list by name if listId not provided
-    if (!listId && params.listName) {
-      const { data: list } = await this.supabase
-        .from('lists')
-        .select('id')
-        .eq('user_id', params.userId)
-        .eq('name', params.listName)
-        .single();
+      // Find list by name if listId not provided
+      if (!listId && validatedParams.listName) {
+        const { data: list, error: findError } = await this.supabase
+          .from('lists')
+          .select('id')
+          .eq('user_id', validatedParams.userId)
+          .eq('name', validatedParams.listName)
+          .single();
 
-      if (!list) {
-        throw new Error(`List "${params.listName}" not found`);
+        if (findError || !list) {
+          throw new NotFoundError('List', validatedParams.listName);
+        }
+        listId = list.id;
       }
-      listId = list.id;
+
+      let query = this.supabase.from('list_items').delete();
+
+      if (listId) {
+        query = query.eq('list_id', listId);
+      }
+
+      if (validatedParams.itemIds) {
+        query = query.in('id', validatedParams.itemIds);
+      } else if (validatedParams.itemText) {
+        const sanitized = sanitizeString(validatedParams.itemText);
+        query = query.ilike('content', `%${sanitized}%`);
+      }
+
+      const { data, error } = await query.select();
+
+      if (error) {
+        throw error;
+      }
+
+      const removedCount = data?.length || 0;
+      
+      if (removedCount === 0) {
+        throw new NotFoundError('List items');
+      }
+
+      logAudit('REMOVE_ITEMS_FROM_LIST', validatedParams.userId, 'list', { listId, removedCount });
+      logPerformance('removeItemFromList', Date.now() - startTime);
+
+      return {
+        success: true,
+        removedCount,
+        message: `${removedCount} item(s) removed from list`,
+      };
+    } catch (error) {
+      logError('Failed to remove items from list', error, { userId: params.userId });
+      throw handleServiceError(error, 'removeItemFromList');
     }
-
-    let query = this.supabase.from('list_items').delete();
-
-    if (listId) {
-      query = query.eq('list_id', listId);
-    }
-
-    if (params.itemIds) {
-      query = query.in('id', params.itemIds);
-    } else if (params.itemText) {
-      query = query.ilike('content', `%${params.itemText}%`);
-    }
-
-    const { data, error } = await query.select();
-
-    if (error) throw error;
-
-    return {
-      success: true,
-      removedCount: data?.length || 0,
-      message: `${data?.length || 0} item(s) removed from list`,
-    };
   }
 
   async updateListItem(params: {
@@ -148,25 +230,57 @@ export class ListService {
     isCompleted?: boolean;
     position?: number;
   }): Promise<{ success: boolean; message: string }> {
-    const updateData: any = {};
+    const startTime = Date.now();
+    
+    try {
+      // Validate input
+      const validatedParams = validate(updateListItemSchema, params);
+      
+      // Check if item exists
+      const { data: existing, error: checkError } = await this.supabase
+        .from('list_items')
+        .select('id, list_id, lists(user_id)')
+        .eq('id', validatedParams.itemId)
+        .single();
 
-    if (params.newContent !== undefined) updateData.content = params.newContent;
-    if (params.isCompleted !== undefined) {
-      updateData.is_completed = params.isCompleted;
-      if (params.isCompleted) {
-        updateData.completed_at = new Date().toISOString();
+      if (checkError || !existing) {
+        throw new NotFoundError('List item', validatedParams.itemId);
       }
+
+      const updateData: any = {};
+
+      if (validatedParams.newContent !== undefined) updateData.content = validatedParams.newContent;
+      if (validatedParams.isCompleted !== undefined) {
+        updateData.is_completed = validatedParams.isCompleted;
+        if (validatedParams.isCompleted) {
+          updateData.completed_at = new Date().toISOString();
+        } else {
+          updateData.completed_at = null;
+        }
+      }
+      if (validatedParams.position !== undefined) updateData.position = validatedParams.position;
+      updateData.updated_at = new Date().toISOString();
+
+      const { error } = await this.supabase.from('list_items').update(updateData).eq('id', validatedParams.itemId);
+
+      if (error) {
+        throw error;
+      }
+
+      const userId = (existing.lists as any)?.user_id;
+      if (userId) {
+        logAudit('UPDATE_LIST_ITEM', userId, 'list_item', { itemId: validatedParams.itemId });
+      }
+      logPerformance('updateListItem', Date.now() - startTime);
+
+      return {
+        success: true,
+        message: 'List item updated successfully',
+      };
+    } catch (error) {
+      logError('Failed to update list item', error, { itemId: params.itemId });
+      throw handleServiceError(error, 'updateListItem');
     }
-    if (params.position !== undefined) updateData.position = params.position;
-
-    const { error } = await this.supabase.from('list_items').update(updateData).eq('id', params.itemId);
-
-    if (error) throw error;
-
-    return {
-      success: true,
-      message: 'List item updated successfully',
-    };
   }
 
   async getLists(params: {
@@ -182,52 +296,86 @@ export class ListService {
     }>;
     total: number;
   }> {
-    const { data: lists, error } = await this.supabase
-      .from('lists')
-      .select('*')
-      .eq('user_id', params.userId)
-      .eq('is_archived', false)
-      .order('sort_order', { ascending: true })
-      .limit(params.limit || 50);
+    const startTime = Date.now();
+    
+    try {
+      // Validate input
+      const validatedParams = validate(getListsSchema, params);
+      
+      const { data: lists, error } = await this.supabase
+        .from('lists')
+        .select('*')
+        .eq('user_id', validatedParams.userId)
+        .eq('is_archived', false)
+        .order('sort_order', { ascending: true })
+        .limit(validatedParams.limit || 50);
 
-    if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
-    const result = await Promise.all(
-      (lists || []).map(async (list) => {
-        const { count } = await this.supabase
-          .from('list_items')
-          .select('*', { count: 'exact', head: true })
-          .eq('list_id', list.id);
+      // Process lists with error isolation
+      const result = await Promise.allSettled(
+        (lists || []).map(async (list) => {
+          try {
+            const { count } = await this.supabase
+              .from('list_items')
+              .select('*', { count: 'exact', head: true })
+              .eq('list_id', list.id);
 
-        let items: any[] | undefined;
+            let items: any[] | undefined;
 
-        if (params.includeItems) {
-          const { data: itemsData } = await this.supabase
-            .from('list_items')
-            .select('id, content, is_completed')
-            .eq('list_id', list.id)
-            .order('position', { ascending: true });
+            if (validatedParams.includeItems) {
+              const { data: itemsData, error: itemsError } = await this.supabase
+                .from('list_items')
+                .select('id, content, is_completed')
+                .eq('list_id', list.id)
+                .order('position', { ascending: true });
 
-          items = (itemsData || []).map((item) => ({
-            id: item.id,
-            content: item.content,
-            isCompleted: item.is_completed,
-          }));
-        }
+              if (itemsError) {
+                logError('Failed to fetch list items', itemsError, { listId: list.id });
+                items = [];
+              } else {
+                items = (itemsData || []).map((item) => ({
+                  id: item.id,
+                  content: item.content,
+                  isCompleted: item.is_completed,
+                }));
+              }
+            }
 
-        return {
-          id: list.id,
-          name: list.name,
-          itemCount: count || 0,
-          items,
-        };
-      })
-    );
+            return {
+              id: list.id,
+              name: list.name,
+              itemCount: count || 0,
+              items,
+            };
+          } catch (error) {
+            logError('Failed to process list', error, { listId: list.id });
+            return {
+              id: list.id,
+              name: list.name,
+              itemCount: 0,
+              items: validatedParams.includeItems ? [] : undefined,
+            };
+          }
+        })
+      );
 
-    return {
-      lists: result,
-      total: result.length,
-    };
+      const successfulResults = result
+        .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
+        .map(r => r.value);
+
+      logPerformance('getLists', Date.now() - startTime, { count: successfulResults.length });
+
+      return {
+        lists: successfulResults,
+        total: successfulResults.length,
+      };
+    } catch (error) {
+      logError('Failed to get lists', error, { userId: params.userId });
+      throw handleServiceError(error, 'getLists');
+    }
   }
 
   async getListItems(params: {
@@ -245,52 +393,78 @@ export class ListService {
     }>;
     total: number;
   }> {
-    let listId = params.listId;
+    const startTime = Date.now();
+    
+    try {
+      // Validate input
+      const validatedParams = validate(getListItemsSchema, params);
+      
+      let listId = validatedParams.listId;
 
-    // Find list by name if listId not provided
-    if (!listId && params.listName) {
-      const { data: list } = await this.supabase
+      // Find list by name if listId not provided
+      if (!listId && validatedParams.listName) {
+        const { data: list, error: findError } = await this.supabase
+          .from('lists')
+          .select('id, name')
+          .eq('user_id', validatedParams.userId)
+          .eq('name', validatedParams.listName)
+          .single();
+
+        if (findError || !list) {
+          throw new NotFoundError('List', validatedParams.listName);
+        }
+        listId = list.id;
+      }
+
+      if (!listId) {
+        throw new ValidationError('Either listId or listName must be provided');
+      }
+
+      // Get list name and verify ownership
+      const { data: list, error: listError } = await this.supabase
         .from('lists')
-        .select('id, name')
-        .eq('user_id', params.userId)
-        .eq('name', params.listName)
+        .select('name, user_id')
+        .eq('id', listId)
         .single();
 
-      if (!list) {
-        throw new Error(`List "${params.listName}" not found`);
+      if (listError || !list) {
+        throw new NotFoundError('List', listId);
       }
-      listId = list.id;
+
+      if (list.user_id !== validatedParams.userId) {
+        throw new ValidationError('List does not belong to user');
+      }
+
+      let query = this.supabase.from('list_items').select('*').eq('list_id', listId);
+
+      if (!validatedParams.includeCompleted) {
+        query = query.eq('is_completed', false);
+      }
+
+      query = query.order('position', { ascending: true });
+
+      const { data: items, error } = await query;
+
+      if (error) {
+        throw error;
+      }
+
+      logPerformance('getListItems', Date.now() - startTime, { count: items?.length || 0 });
+
+      return {
+        listName: list.name,
+        items: (items || []).map((item) => ({
+          id: item.id,
+          content: item.content,
+          isCompleted: item.is_completed,
+          position: item.position,
+        })),
+        total: items?.length || 0,
+      };
+    } catch (error) {
+      logError('Failed to get list items', error, { userId: params.userId });
+      throw handleServiceError(error, 'getListItems');
     }
-
-    if (!listId) {
-      throw new Error('Either listId or listName must be provided');
-    }
-
-    // Get list name
-    const { data: list } = await this.supabase.from('lists').select('name').eq('id', listId).single();
-
-    let query = this.supabase.from('list_items').select('*').eq('list_id', listId);
-
-    if (!params.includeCompleted) {
-      query = query.eq('is_completed', false);
-    }
-
-    query = query.order('position', { ascending: true });
-
-    const { data: items, error } = await query;
-
-    if (error) throw error;
-
-    return {
-      listName: list?.name || '',
-      items: (items || []).map((item) => ({
-        id: item.id,
-        content: item.content,
-        isCompleted: item.is_completed,
-        position: item.position,
-      })),
-      total: items?.length || 0,
-    };
   }
 
   async deleteList(params: {
@@ -298,35 +472,62 @@ export class ListService {
     listId?: string;
     listName?: string;
   }): Promise<{ success: boolean; message: string }> {
-    let listId = params.listId;
+    const startTime = Date.now();
+    
+    try {
+      // Validate input
+      const validatedParams = validate(deleteListSchema, params);
+      
+      let listId = validatedParams.listId;
 
-    // Find list by name if listId not provided
-    if (!listId && params.listName) {
-      const { data: list } = await this.supabase
+      // Find list by name if listId not provided
+      if (!listId && validatedParams.listName) {
+        const { data: list, error: findError } = await this.supabase
+          .from('lists')
+          .select('id')
+          .eq('user_id', validatedParams.userId)
+          .eq('name', validatedParams.listName)
+          .single();
+
+        if (findError || !list) {
+          throw new NotFoundError('List', validatedParams.listName);
+        }
+        listId = list.id;
+      }
+
+      if (!listId) {
+        throw new ValidationError('Either listId or listName must be provided');
+      }
+
+      // Verify list exists and belongs to user
+      const { data: existing, error: checkError } = await this.supabase
         .from('lists')
-        .select('id')
-        .eq('user_id', params.userId)
-        .eq('name', params.listName)
+        .select('id, name')
+        .eq('id', listId)
+        .eq('user_id', validatedParams.userId)
         .single();
 
-      if (!list) {
-        throw new Error(`List "${params.listName}" not found`);
+      if (checkError || !existing) {
+        throw new NotFoundError('List', listId);
       }
-      listId = list.id;
+
+      const { error } = await this.supabase.from('lists').delete().eq('id', listId).eq('user_id', validatedParams.userId);
+
+      if (error) {
+        throw error;
+      }
+
+      logAudit('DELETE_LIST', validatedParams.userId, 'list', { listId, name: existing.name });
+      logPerformance('deleteList', Date.now() - startTime);
+
+      return {
+        success: true,
+        message: 'List deleted successfully',
+      };
+    } catch (error) {
+      logError('Failed to delete list', error, { userId: params.userId });
+      throw handleServiceError(error, 'deleteList');
     }
-
-    if (!listId) {
-      throw new Error('Either listId or listName must be provided');
-    }
-
-    const { error } = await this.supabase.from('lists').delete().eq('id', listId).eq('user_id', params.userId);
-
-    if (error) throw error;
-
-    return {
-      success: true,
-      message: 'List deleted successfully',
-    };
   }
 
   async searchLists(params: {
@@ -345,55 +546,83 @@ export class ListService {
     }>;
     total: number;
   }> {
-    const results: any[] = [];
-    const searchIn = params.searchIn || 'both';
+    const startTime = Date.now();
+    
+    try {
+      // Validate input
+      const validatedParams = validate(searchListsSchema, params);
+      
+      // Sanitize search query
+      const sanitizedQuery = sanitizeString(validatedParams.query);
+      
+      const results: any[] = [];
+      const searchIn = validatedParams.searchIn || 'both';
 
-    // Search in list names
-    if (searchIn === 'list-names' || searchIn === 'both') {
-      const { data: lists } = await this.supabase
-        .from('lists')
-        .select('id, name')
-        .eq('user_id', params.userId)
-        .ilike('name', `%${params.query}%`)
-        .limit(params.limit || 20);
+      // Search in list names
+      if (searchIn === 'list-names' || searchIn === 'both') {
+        try {
+          const { data: lists, error } = await this.supabase
+            .from('lists')
+            .select('id, name')
+            .eq('user_id', validatedParams.userId)
+            .ilike('name', `%${sanitizedQuery}%`)
+            .limit(validatedParams.limit || 20);
 
-      if (lists) {
-        results.push(
-          ...lists.map((list) => ({
-            type: 'list' as const,
-            listId: list.id,
-            listName: list.name,
-            relevanceScore: 1.0,
-          }))
-        );
+          if (error) {
+            logError('Failed to search list names', error, { userId: validatedParams.userId });
+          } else if (lists) {
+            results.push(
+              ...lists.map((list) => ({
+                type: 'list' as const,
+                listId: list.id,
+                listName: list.name,
+                relevanceScore: 1.0,
+              }))
+            );
+          }
+        } catch (error) {
+          logError('Error searching list names', error, { userId: validatedParams.userId });
+        }
       }
-    }
 
-    // Search in list items
-    if (searchIn === 'items' || searchIn === 'both') {
-      const { data: items } = await this.supabase
-        .from('list_items')
-        .select('id, content, list_id, lists(name)')
-        .ilike('content', `%${params.query}%`)
-        .limit(params.limit || 20);
+      // Search in list items
+      if (searchIn === 'items' || searchIn === 'both') {
+        try {
+          const { data: items, error } = await this.supabase
+            .from('list_items')
+            .select('id, content, list_id, lists!inner(name, user_id)')
+            .eq('lists.user_id', validatedParams.userId)
+            .ilike('content', `%${sanitizedQuery}%`)
+            .limit(validatedParams.limit || 20);
 
-      if (items) {
-        results.push(
-          ...items.map((item: any) => ({
-            type: 'item' as const,
-            listId: item.list_id,
-            listName: item.lists?.name || '',
-            itemId: item.id,
-            itemContent: item.content,
-            relevanceScore: 1.0,
-          }))
-        );
+          if (error) {
+            logError('Failed to search list items', error, { userId: validatedParams.userId });
+          } else if (items) {
+            results.push(
+              ...items.map((item: any) => ({
+                type: 'item' as const,
+                listId: item.list_id,
+                listName: item.lists?.name || '',
+                itemId: item.id,
+                itemContent: item.content,
+                relevanceScore: 1.0,
+              }))
+            );
+          }
+        } catch (error) {
+          logError('Error searching list items', error, { userId: validatedParams.userId });
+        }
       }
-    }
 
-    return {
-      results: results.slice(0, params.limit || 20),
-      total: results.length,
-    };
+      logPerformance('searchLists', Date.now() - startTime, { count: results.length });
+
+      return {
+        results: results.slice(0, validatedParams.limit || 20),
+        total: results.length,
+      };
+    } catch (error) {
+      logError('Failed to search lists', error, { userId: params.userId });
+      throw handleServiceError(error, 'searchLists');
+    }
   }
 }
