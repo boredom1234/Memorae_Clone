@@ -1,0 +1,34 @@
+{
+  "name": "memorae-clone",
+  "version": "1.0.0",
+  "description": "WhatsApp-based AI reminder and task management system",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "eslint src --ext .ts"
+  },
+  "keywords": [
+    "whatsapp",
+    "reminders",
+    "ai",
+    "task-management"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@fastify/cors": "^9.0.1",
+    "@fastify/env": "^4.4.0",
+    "@fastify/helmet": "^11.1.1",
+    "@fastify/rate-limit": "^9.1.0",
+    "fastify": "^4.28.1",
+    "pino": "^9.3.2",
+    "pino-pretty": "^11.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.0",
+    "tsx": "^4.17.0",
+    "typescript": "^5.5.4"
+  }
+}
