@@ -67,14 +67,4 @@ export const config = {
       ? process.env.WHATSAPP_ALLOWED_NUMBERS.split(",").map((num) => num.trim())
       : [],
   },
-  supermemory: {
-    apiKey: process.env.SUPERMEMORY_API_KEY || "",
-    conversationStorageMode: (process.env
-      .SUPERMEMORY_CONVERSATION_STORAGE_MODE || "contextual") as
-      | "off"
-      | "contextual"
-      | "all",
-    storeReminderContext:
-      (process.env.SUPERMEMORY_STORE_REMINDER_CONTEXT || "true") === "true",
-  },
 };

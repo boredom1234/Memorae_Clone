@@ -1,23 +1,19 @@
 import { MessageContext } from "../services/whatsapp";
 import { ToolsRegistry } from "../services/tools-registry";
 import { AIService } from "../services/ai-service";
-import { SupermemoryService } from "../services/supermemory-service";
 import { User } from "../models/types";
 import pino from "pino";
-import { config } from "../config/env";
 import { formatInZone } from "../utils/time-utils";
 
 export class MessageController {
   private logger = pino({ level: "info" });
   private tools: ToolsRegistry;
   private aiService: AIService;
-  private supermemory: SupermemoryService;
   private userCache: Map<string, User> = new Map();
 
   constructor() {
     this.tools = new ToolsRegistry();
     this.aiService = new AIService();
-    this.supermemory = new SupermemoryService();
   }
 
   async handleMessage(context: MessageContext): Promise<any> {
@@ -103,134 +99,6 @@ export class MessageController {
 
       this.logger.info(`AI response: ${result.text}`);
       this.logger.info(`Tool calls: ${result.toolCalls.length}`);
-
-      // Selective Supermemory storage
-      if (this.supermemory.isEnabled()) {
-        const mode = config.supermemory.conversationStorageMode;
-
-        // Store reminder context only when a reminder tool was used and enabled
-        const storeReminderContext = config.supermemory.storeReminderContext;
-
-        const toolCalls: any[] = Array.isArray(result.toolCalls)
-          ? result.toolCalls
-          : [];
-        const toolResults: any[] = Array.isArray(result.toolResults)
-          ? result.toolResults
-          : [];
-
-        // Helper to get tool name in a robust way
-        const getToolName = (call: any): string =>
-          call?.toolName || call?.name || call?.call?.toolName || "";
-
-        // Whitelist for contextual conversation storage
-        const contextualWhitelist = new Set([
-          // Reminder tools
-          "createReminder",
-          "updateReminder",
-          "deleteReminder",
-          "listReminders",
-          "snoozeReminder",
-          "completeReminder",
-          "getUpcomingReminders",
-          "searchReminders",
-          "batchCreateReminders",
-          // List tools
-          "createList",
-          "addItemToList",
-          "removeItemFromList",
-          "updateListItem",
-          "getLists",
-          "getListItems",
-          "deleteList",
-          "searchLists",
-          // Memory tools
-          "saveNote",
-          "searchMemories",
-          "getMyNotes",
-          "recallConversation",
-          "getReminderContext",
-          "findRelatedInfo",
-        ]);
-
-        // Store reminder context for createReminder and batchCreateReminders
-        if (storeReminderContext && toolCalls.length > 0) {
-          toolCalls.forEach((call, i) => {
-            const name = getToolName(call);
-            const args = call?.args || call?.input || {};
-            const resultObj = toolResults[i] || {};
-
-            if (name === "createReminder") {
-              const reminderId = resultObj?.reminderId;
-              const title = args?.title || "Reminder";
-              if (reminderId && title) {
-                this.supermemory
-                  .storeReminderContext(user.id, reminderId, title, text, {
-                    timestamp: new Date().toISOString(),
-                  })
-                  .catch((error) =>
-                    this.logger.warn(
-                      { error },
-                      "Failed to store reminder context in Supermemory",
-                    ),
-                  );
-              }
-            } else if (name === "batchCreateReminders") {
-              const results = resultObj?.results;
-              if (Array.isArray(results)) {
-                results
-                  .filter((r: any) => r?.success && r?.reminderId)
-                  .forEach((r: any) => {
-                    const title = r?.title || "Reminder";
-                    this.supermemory
-                      .storeReminderContext(
-                        user.id,
-                        r.reminderId,
-                        title,
-                        text,
-                        { timestamp: new Date().toISOString() },
-                      )
-                      .catch((error) =>
-                        this.logger.warn(
-                          { error },
-                          "Failed to store reminder context (batch) in Supermemory",
-                        ),
-                      );
-                  });
-              }
-            }
-          });
-        }
-
-        // Conversation storage policy
-        if (mode === "all") {
-          this.supermemory
-            .storeConversation(user.id, text, result.text, {
-              timestamp: new Date().toISOString(),
-            })
-            .catch((error) => {
-              this.logger.warn(
-                { error },
-                "Failed to store conversation in Supermemory",
-              );
-            });
-        } else if (mode === "contextual") {
-          const usedRelevantTool = toolCalls.some((c) =>
-            contextualWhitelist.has(getToolName(c)),
-          );
-          if (usedRelevantTool) {
-            this.supermemory
-              .storeConversation(user.id, text, result.text, {
-                timestamp: new Date().toISOString(),
-              })
-              .catch((error) => {
-                this.logger.warn(
-                  { error },
-                  "Failed to store contextual conversation in Supermemory",
-                );
-              });
-          }
-        }
-      }
 
       // Return the AI's response text and tool results
       return {

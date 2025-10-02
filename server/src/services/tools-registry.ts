@@ -2,7 +2,6 @@ import { UserService } from "./user-service";
 import { ReminderService } from "./reminder-service";
 import { ListService } from "./list-service";
 import { UtilityService } from "./utility-service";
-import { MemoryTools } from "./memory-tools";
 import { AppError } from "../utils/errors";
 import { logError, logInfo } from "../utils/logger";
 import { tool } from "ai";
@@ -326,8 +325,6 @@ export class ToolsRegistry {
 
   // Get AI SDK compatible tools for tool calling
   getAISDKTools(userId: string) {
-    // Initialize memory tools
-    const memoryTools = new MemoryTools(userId);
     // Define schemas separately to ensure they're properly initialized
     const createReminderSchema = z.object({
       title: z.string().describe("The reminder title/description"),
@@ -881,8 +878,6 @@ export class ToolsRegistry {
         },
       }),
 
-      // Memory Tools (Supermemory)
-      ...memoryTools.getTools(),
     };
   }
 }
