@@ -1,6 +1,7 @@
 import { WhatsAppService, MessageContext } from "./whatsapp";
 import { MessageController } from "../controllers/message-handler";
 import { ReminderScheduler } from "./reminder-scheduler";
+import { NotificationRetryService } from "./notification-retry";
 import { config } from "../config/env";
 import { getSupabaseClient } from "../lib/supabase";
 import pino from "pino";
@@ -9,6 +10,7 @@ export class WhatsAppManager {
   private whatsappService: WhatsAppService | null = null;
   private messageController: MessageController;
   private reminderScheduler: ReminderScheduler;
+  private notificationRetryService: NotificationRetryService;
   private logger = pino({ level: "info" });
   private isInitialized = false;
   private supabase = getSupabaseClient();
@@ -16,10 +18,16 @@ export class WhatsAppManager {
   constructor() {
     this.messageController = new MessageController();
     this.reminderScheduler = new ReminderScheduler(5000); // Check every 5 seconds
+    this.notificationRetryService = new NotificationRetryService(30000, 5); // Retry every 30s, max 5 retries
 
     // Set up reminder notification callback
     this.reminderScheduler.setNotificationCallback(async (reminder) => {
       await this.sendReminderNotification(reminder);
+    });
+
+    // Set up notification retry callback
+    this.notificationRetryService.setRetryCallback(async (notification) => {
+      return await this.retryFailedNotification(notification);
     });
   }
 
@@ -47,6 +55,10 @@ export class WhatsAppManager {
       // Start the reminder scheduler
       this.reminderScheduler.start();
       this.logger.info("✅ Reminder scheduler started");
+
+      // Start the notification retry service
+      this.notificationRetryService.start();
+      this.logger.info("✅ Notification retry service started");
 
       this.isInitialized = true;
       this.logger.info("✅ WhatsApp manager initialized successfully");
@@ -103,12 +115,6 @@ export class WhatsAppManager {
       }
 
       // Format the reminder notification message
-      const priorityEmoji = {
-        high: "🔴",
-        medium: "🟡",
-        low: "🟢",
-      }[reminder.priority];
-
       const priorityText = {
         high: "High Priority",
         medium: "Medium Priority",
@@ -342,10 +348,46 @@ export class WhatsAppManager {
     this.reminderScheduler.stop();
     this.logger.info("Reminder scheduler stopped");
 
+    // Stop the notification retry service
+    this.notificationRetryService.stop();
+    this.logger.info("Notification retry service stopped");
+
+    // Cleanup message controller
+    this.messageController.cleanup();
+    this.logger.info("Message controller cleaned up");
+
     if (this.whatsappService) {
       await this.whatsappService.disconnect();
       this.isInitialized = false;
       this.logger.info("WhatsApp manager shut down");
+    }
+  }
+
+  /**
+   * Retry a failed notification
+   */
+  private async retryFailedNotification(notification: any): Promise<boolean> {
+    try {
+      if (!this.whatsappService) {
+        this.logger.error("WhatsApp service not available for retry");
+        return false;
+      }
+
+      const success = await this.whatsappService.sendMessage({
+        to: notification.recipient_whatsapp_id || notification.user_id,
+        text: notification.content,
+      });
+
+      if (success) {
+        this.logger.info(`Successfully retried notification ${notification.id}`);
+        return true;
+      } else {
+        this.logger.warn(`Failed to retry notification ${notification.id}`);
+        return false;
+      }
+    } catch (error) {
+      this.logger.error({ error }, `Error retrying notification ${notification.id}`);
+      return false;
     }
   }
 

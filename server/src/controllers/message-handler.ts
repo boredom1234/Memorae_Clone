@@ -4,16 +4,23 @@ import { AIService } from "../services/ai-service";
 import { User } from "../models/types";
 import pino from "pino";
 import { formatInZone } from "../utils/time-utils";
+import { validateAIInput } from "../middleware/validation";
 
 export class MessageController {
   private logger = pino({ level: "info" });
   private tools: ToolsRegistry;
   private aiService: AIService;
   private userCache: Map<string, User> = new Map();
+  private cacheCleanupInterval: NodeJS.Timeout;
 
   constructor() {
     this.tools = new ToolsRegistry();
     this.aiService = new AIService();
+    
+    // Start cache cleanup - clean every 30 minutes
+    this.cacheCleanupInterval = setInterval(() => {
+      this.cleanupUserCache();
+    }, 30 * 60 * 1000);
   }
 
   async handleMessage(context: MessageContext): Promise<any> {
@@ -46,7 +53,10 @@ export class MessageController {
   private async ensureUser(context: MessageContext): Promise<User> {
     // Check cache first
     if (this.userCache.has(context.from)) {
-      return this.userCache.get(context.from)!;
+      const cachedUser = this.userCache.get(context.from)!;
+      // Update last accessed time for cache management
+      (cachedUser as any).lastAccessed = Date.now();
+      return cachedUser;
     }
 
     // Extract phone number from WhatsApp ID (e.g., "919876543210@s.whatsapp.net" -> "+919876543210")
@@ -60,11 +70,44 @@ export class MessageController {
       context.fromName,
     );
 
-    // Cache the user
+    // Cache the user with timestamp
+    (user as any).lastAccessed = Date.now();
     this.userCache.set(context.from, user);
 
     this.logger.info(`User ensured: ${user.name} (${user.id})`);
     return user;
+  }
+
+  /**
+   * Clean up old entries from user cache
+   * Remove users not accessed in the last 2 hours
+   */
+  private cleanupUserCache(): void {
+    const now = Date.now();
+    const maxAge = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
+    let cleanedCount = 0;
+
+    for (const [key, user] of this.userCache.entries()) {
+      const lastAccessed = (user as any).lastAccessed || 0;
+      if (now - lastAccessed > maxAge) {
+        this.userCache.delete(key);
+        cleanedCount++;
+      }
+    }
+
+    if (cleanedCount > 0) {
+      this.logger.info(`Cleaned ${cleanedCount} entries from user cache. Cache size: ${this.userCache.size}`);
+    }
+  }
+
+  /**
+   * Cleanup method for graceful shutdown
+   */
+  cleanup(): void {
+    if (this.cacheCleanupInterval) {
+      clearInterval(this.cacheCleanupInterval);
+    }
+    this.userCache.clear();
   }
 
   private async handleTextMessage(
@@ -75,7 +118,18 @@ export class MessageController {
 
     if (!text) return null;
 
-    this.logger.info(`Text message: \"${text}\"`);
+    // Validate and sanitize input
+    let validatedText: string;
+    try {
+      validatedText = validateAIInput(text);
+    } catch (error) {
+      this.logger.warn(`Invalid input from ${user.name}: ${error}`);
+      return {
+        text: "Sorry, I couldn't process your message. Please try rephrasing it.",
+      };
+    }
+
+    this.logger.info(`Text message: \"${validatedText}\"`);
 
     // Get AI SDK compatible tools
     const tools = this.tools.getAISDKTools(user.id);
@@ -91,7 +145,7 @@ export class MessageController {
     // Process message with AI tool calling
     try {
       const result = await this.aiService.processMessageWithTools(
-        text,
+        validatedText,
         user.id,
         user.timezone,
         tools,

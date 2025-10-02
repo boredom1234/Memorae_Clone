@@ -3,6 +3,8 @@ import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import { config } from "./config/env";
+import { globalErrorHandler } from "./utils/error-handler";
+import { validateBody, whatsappMessageSchema, rateLimitByUser } from "./middleware/validation";
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -58,17 +60,14 @@ export async function buildApp(): Promise<FastifyInstance> {
     };
   });
 
-  // WhatsApp routes
-  app.post("/api/v1/whatsapp/send", async (request, reply) => {
-    const { to, message } = request.body as { to: string; message: string };
-
-    if (!to || !message) {
-      return reply
-        .status(400)
-        .send({ error: "Missing required fields: to, message" });
-    }
-
-    // This will be implemented when WhatsApp manager is integrated
+  // WhatsApp routes with validation
+  app.post("/api/v1/whatsapp/send", {
+    preHandler: [
+      rateLimitByUser(30, 60000), // 30 requests per minute per user
+      validateBody(whatsappMessageSchema)
+    ]
+  }, async (request, reply) => {
+    // Body is validated by middleware, implementation will use WhatsApp manager
     return reply.send({ success: true, message: "Message queued for sending" });
   });
 
@@ -79,14 +78,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     };
   });
 
-  // Error handler
-  app.setErrorHandler((error, _request, reply) => {
-    app.log.error(error);
-    reply.status(error.statusCode || 500).send({
-      error: error.message || "Internal Server Error",
-      statusCode: error.statusCode || 500,
-    });
-  });
+  // Global error handler
+  app.setErrorHandler(globalErrorHandler);
 
   return app;
 }

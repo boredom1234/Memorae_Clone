@@ -42,6 +42,62 @@ export class WhatsAppService {
     );
   }
 
+  /**
+   * Simplified message filtering logic
+   * @param filterMode The filter mode (1, 2, or 3)
+   * @param isFromMe Whether the message is from the bot user
+   * @param isSelfChat Whether this is a self-chat (user messaging themselves)
+   * @param chatPartner The phone number of the chat partner
+   * @returns Object with accept boolean and reason string
+   */
+  private shouldProcessMessage(
+    filterMode: number,
+    isFromMe: boolean,
+    isSelfChat: boolean,
+    chatPartner: string
+  ): { accept: boolean; reason: string } {
+    switch (filterMode) {
+      case 1: // Only messages from others (not self)
+        if (isFromMe) {
+          return { accept: false, reason: "Ignoring message sent by me (mode 1)" };
+        }
+        if (isSelfChat) {
+          return { accept: false, reason: "Ignoring self-chat message (mode 1)" };
+        }
+        if (!this.isNumberAllowed(chatPartner)) {
+          return { 
+            accept: false, 
+            reason: `Ignoring message from non-allowed number: ${chatPartner} (mode 1)` 
+          };
+        }
+        return { accept: true, reason: `Accepting message from ${chatPartner} (mode 1)` };
+
+      case 2: // Only self-chat messages
+        if (!isSelfChat) {
+          return { 
+            accept: false, 
+            reason: `Ignoring message - not self-chat (mode 2). Chat partner: ${chatPartner}` 
+          };
+        }
+        return { accept: true, reason: "Accepting self-chat message (mode 2)" };
+
+      case 3: // All messages (with restrictions)
+        if (isFromMe && !isSelfChat) {
+          return { accept: false, reason: "Ignoring message sent by me to others (mode 3)" };
+        }
+        if (!isSelfChat && !this.isNumberAllowed(chatPartner)) {
+          return { 
+            accept: false, 
+            reason: `Ignoring message from non-allowed number: ${chatPartner} (mode 3)` 
+          };
+        }
+        return { accept: true, reason: "Accepting message (mode 3)" };
+
+      default:
+        return { accept: false, reason: `Unknown filter mode: ${filterMode}` };
+    }
+  }
+
   constructor(config: WhatsAppServiceConfig) {
     this.connection = new WhatsAppConnection(config);
     this.messageHandler = new MessageHandler();
@@ -78,72 +134,31 @@ export class WhatsAppService {
 
       // Apply message filter based on config
       const filterMode = config.whatsapp.messageFilterMode;
-      const isFromMe = message.key.fromMe;
+      const isFromMe = Boolean(message.key.fromMe);
       const remoteJid = message.key.remoteJid || "";
 
       // Extract the phone number from remoteJid (format: "1234567890@s.whatsapp.net")
       const chatPartner = remoteJid.split("@")[0];
 
-      // Get own number from the connection
       const ownNumber =
         this.connection.getSocket()?.user?.id?.split(":")[0] || "";
 
       const isSelfChat = chatPartner === ownNumber;
 
-      // Mode 1: Only accept messages FROM others TO you (not messages you send)
-      if (filterMode === 1) {
-        // Ignore messages sent by you (isFromMe = true)
-        if (isFromMe) {
-          this.logger.debug("Ignoring message sent by me (mode 1)");
-          return;
-        }
+      // Simplified message filtering logic
+      const shouldProcessMessage = this.shouldProcessMessage(
+        filterMode,
+        isFromMe,
+        isSelfChat,
+        chatPartner
+      );
 
-        // Ignore self-chat messages (when someone messages themselves)
-        if (isSelfChat) {
-          this.logger.debug("Ignoring self-chat message (mode 1)");
-          return;
-        }
-
-        // Check if number is allowed
-        if (!this.isNumberAllowed(chatPartner)) {
-          this.logger.debug(
-            `Ignoring message from non-allowed number: ${chatPartner} (mode 1)`,
-          );
-          return;
-        }
-
-        this.logger.debug(`Accepting message from ${chatPartner} (mode 1)`);
+      if (!shouldProcessMessage.accept) {
+        this.logger.debug(shouldProcessMessage.reason);
+        return;
       }
 
-      // Mode 2: Only accept messages when chatting with yourself (100 <-> 100)
-      if (filterMode === 2) {
-        if (!isSelfChat) {
-          this.logger.debug(
-            `Ignoring message - not self-chat (mode 2). Chat partner: ${chatPartner}, Own: ${ownNumber}`,
-          );
-          return;
-        }
-        this.logger.debug("Accepting self-chat message (mode 2)");
-      }
-
-      // Mode 3: Accept all messages (combination of mode 1 and mode 2)
-      if (filterMode === 3) {
-        // If it's a message you sent to someone else (not self-chat), ignore it
-        if (isFromMe && !isSelfChat) {
-          this.logger.debug("Ignoring message sent by me to others (mode 3)");
-          return;
-        }
-
-        // If it's not self-chat, check if number is allowed
-        if (!isSelfChat && !this.isNumberAllowed(chatPartner)) {
-          this.logger.debug(
-            `Ignoring message from non-allowed number: ${chatPartner} (mode 3)`,
-          );
-          return;
-        }
-
-        this.logger.debug("Accepting message (mode 3)");
-      }
+      this.logger.debug(`Accepting message: ${shouldProcessMessage.reason}`);
 
       const context = await this.messageHandler.parseMessage(message as any);
       if (!context) return;
@@ -151,7 +166,7 @@ export class WhatsAppService {
       this.logger.info(`📩 Message from ${context.fromName}: ${context.text}`);
 
       // Mark as read
-      if (this.sender) {
+      if (this.sender && context.messageId) {
         await this.sender.markAsRead(context.from, context.messageId);
       }
 

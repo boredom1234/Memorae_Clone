@@ -19,10 +19,21 @@ import pino from "pino";
 export class AIService {
   private logger = pino({ level: "info" });
   private defaultModel: any;
+  private fallbackModels: any[] = [];
 
   constructor() {
-    // Initialize default model based on available API keys
+    // Initialize default model and fallbacks based on available API keys
+    this.initializeModels();
+  }
+
+  private initializeModels() {
+    // Get primary model
     this.defaultModel = this.getDefaultModel();
+    
+    // Initialize fallback models
+    this.fallbackModels = this.getFallbackModels();
+    
+    this.logger.info(`AI Service initialized with ${this.fallbackModels.length} fallback models`);
   }
 
   private getDefaultModel() {
@@ -135,6 +146,70 @@ export class AIService {
     }
   }
 
+  private getFallbackModels(): any[] {
+    const fallbacks: any[] = [];
+    
+    // Define fallback providers in order of preference
+    const fallbackConfigs = [
+      { provider: 'groq', model: 'llama-3.1-8b-instant', apiKey: config.ai.groqApiKey },
+      { provider: 'openai', model: 'gpt-4o-mini', apiKey: config.ai.openaiApiKey },
+      { provider: 'xai', model: 'grok-beta', apiKey: config.ai.xaiApiKey },
+      { provider: 'anthropic', model: 'claude-3-haiku-20240307', apiKey: config.ai.anthropicApiKey },
+      { provider: 'google', model: 'gemini-1.5-flash', apiKey: config.ai.googleApiKey },
+      { provider: 'deepseek', model: 'deepseek-chat', apiKey: config.ai.deepseekApiKey },
+    ];
+
+    for (const fallbackConfig of fallbackConfigs) {
+      // Skip if this is already the primary provider
+      if (fallbackConfig.provider === config.ai.provider.toLowerCase()) {
+        continue;
+      }
+
+      // Skip if API key is not configured
+      if (!fallbackConfig.apiKey) {
+        continue;
+      }
+
+      try {
+        let model: any;
+        switch (fallbackConfig.provider) {
+          case 'openai':
+            model = openai(fallbackConfig.model);
+            break;
+          case 'groq':
+            model = groq(fallbackConfig.model);
+            break;
+          case 'xai':
+            model = xai(fallbackConfig.model);
+            break;
+          case 'anthropic':
+            model = anthropic(fallbackConfig.model);
+            break;
+          case 'google':
+            model = google(fallbackConfig.model);
+            break;
+          case 'deepseek':
+            model = deepseek(fallbackConfig.model);
+            break;
+          default:
+            continue;
+        }
+
+        fallbacks.push({
+          provider: fallbackConfig.provider,
+          model: fallbackConfig.model,
+          instance: model,
+        });
+
+        this.logger.info(`Added fallback: ${fallbackConfig.provider} (${fallbackConfig.model})`);
+      } catch (error) {
+        this.logger.warn(`Failed to configure fallback ${fallbackConfig.provider}: ${error}`);
+      }
+    }
+
+    return fallbacks;
+  }
+
   /**
    * Process user message with AI tool calling
    * The LLM will automatically decide which tool to call
@@ -149,17 +224,28 @@ export class AIService {
     toolCalls: any[];
     toolResults: any[];
   }> {
-    if (!this.defaultModel) {
-      this.logger.warn("No AI model configured");
-      throw new Error("AI model not configured");
+    if (!this.defaultModel && this.fallbackModels.length === 0) {
+      this.logger.error("No AI models configured");
+      throw new Error("AI service not available - no models configured");
     }
 
-    try {
-      // Debug: Log tool names to verify they're being passed
-      this.logger.info(`Tools available: ${Object.keys(tools).join(", ")}`);
+    // Try primary model first, then fallbacks
+    const modelsToTry = [
+      { provider: 'primary', instance: this.defaultModel },
+      ...this.fallbackModels.map(f => ({ provider: f.provider, instance: f.instance }))
+    ].filter(m => m.instance);
 
-      const result = await generateText({
-        model: this.defaultModel,
+    let lastError: Error | null = null;
+
+    for (const modelConfig of modelsToTry) {
+      try {
+        this.logger.info(`Attempting AI request with ${modelConfig.provider}`);
+        
+        // Debug: Log tool names to verify they're being passed
+        this.logger.info(`Tools available: ${Object.keys(tools).join(", ")}`);
+
+        const result = await generateText({
+          model: modelConfig.instance,
         system: `You are a helpful AI assistant for a reminder and task management system.
 You help users create, update, delete, and manage reminders and lists through WhatsApp.
 
@@ -271,24 +357,33 @@ Current user timezone: ${timezone}
 Current user ID: ${userId}`,
         prompt: message,
         tools,
-        stopWhen: stepCountIs(5), // Allow up to 5 multi-step tool calls
-      });
+          stopWhen: stepCountIs(5), // Allow up to 5 multi-step tool calls
+        });
 
-      this.logger.info(
-        `AI processed message with ${result.toolCalls.length} tool calls`,
-      );
+        this.logger.info(
+          `AI processed message with ${modelConfig.provider} - ${result.toolCalls.length} tool calls`,
+        );
 
-      return {
-        text: result.text,
-        toolCalls: result.toolCalls,
-        toolResults: result.toolResults,
-      };
-    } catch (error: any) {
-      this.logger.error(
-        { error: error.message || error.name || "Unknown error" },
-        "Failed to process message with AI",
-      );
-      throw error;
+        return {
+          text: result.text,
+          toolCalls: result.toolCalls,
+          toolResults: result.toolResults,
+        };
+      } catch (error: any) {
+        lastError = error;
+        this.logger.warn(
+          { error: error.message, provider: modelConfig.provider },
+          `AI request failed with ${modelConfig.provider}, trying next fallback`
+        );
+        continue;
+      }
     }
+
+    // All models failed
+    this.logger.error(
+      { error: lastError?.message || "Unknown error" },
+      "All AI models failed to process message"
+    );
+    throw new Error(`AI service unavailable: ${lastError?.message || "All providers failed"}`);
   }
 }

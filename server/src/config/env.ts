@@ -1,3 +1,82 @@
+// Environment validation
+function validateEnv() {
+  const errors: string[] = [];
+
+  // Required environment variables
+  const required = {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY,
+  };
+
+  // Check required variables
+  Object.entries(required).forEach(([key, value]) => {
+    if (!value || value.trim() === "") {
+      errors.push(`Missing required environment variable: ${key}`);
+    }
+  });
+
+  // Validate at least one AI provider is configured
+  const aiProviders = [
+    process.env.OPENAI_API_KEY,
+    process.env.GROQ_API_KEY,
+    process.env.XAI_API_KEY,
+    process.env.GOOGLE_API_KEY,
+    process.env.ANTHROPIC_API_KEY,
+    process.env.MISTRAL_API_KEY,
+    process.env.DEEPSEEK_API_KEY,
+    process.env.TOGETHERAI_API_KEY,
+    process.env.COHERE_API_KEY,
+    process.env.FIREWORKS_API_KEY,
+    process.env.DEEPINFRA_API_KEY,
+    process.env.CEREBRAS_API_KEY,
+  ];
+
+  const hasAiProvider = aiProviders.some(key => key && key.trim() !== "");
+  if (!hasAiProvider) {
+    errors.push("At least one AI provider API key must be configured");
+  }
+
+  // Validate AI provider/model combination
+  const aiProvider = process.env.AI_PROVIDER?.toLowerCase() || "openai";
+  const providerKeyMap: Record<string, string> = {
+    openai: "OPENAI_API_KEY",
+    groq: "GROQ_API_KEY",
+    xai: "XAI_API_KEY",
+    google: "GOOGLE_API_KEY",
+    anthropic: "ANTHROPIC_API_KEY",
+    mistral: "MISTRAL_API_KEY",
+    deepseek: "DEEPSEEK_API_KEY",
+    togetherai: "TOGETHERAI_API_KEY",
+    cohere: "COHERE_API_KEY",
+    fireworks: "FIREWORKS_API_KEY",
+    deepinfra: "DEEPINFRA_API_KEY",
+    cerebras: "CEREBRAS_API_KEY",
+  };
+
+  const requiredKey = providerKeyMap[aiProvider];
+  if (requiredKey && !process.env[requiredKey]) {
+    errors.push(`AI provider "${aiProvider}" requires ${requiredKey} to be set`);
+  }
+
+  // Validate port
+  const port = parseInt(process.env.PORT || "3000", 10);
+  if (isNaN(port) || port < 1 || port > 65535) {
+    errors.push("PORT must be a valid number between 1 and 65535");
+  }
+
+  if (errors.length > 0) {
+    console.error("❌ Environment validation failed:");
+    errors.forEach(error => console.error(`  - ${error}`));
+    console.error("\nPlease check your .env file and ensure all required variables are set.");
+    process.exit(1);
+  }
+
+  console.log("✅ Environment validation passed");
+}
+
+// Run validation
+validateEnv();
+
 export const config = {
   server: {
     port: parseInt(process.env.PORT || "3000", 10),
