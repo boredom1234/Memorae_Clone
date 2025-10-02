@@ -151,16 +151,13 @@ export class SupermemoryService {
     }
 
     try {
-      const queryParams = new URLSearchParams({
-        q: params.query,
-        limit: (params.limit || 10).toString(),
-        ...(params.includeContext && { includeContext: "true" }),
-      });
-
-      // Add container tag filter for user isolation
-      const url = `${this.baseUrl}/search?${queryParams}`;
+      // Supermemory v3 /search expects 'q' in the JSON body (POST)
+      const url = `${this.baseUrl}/search`;
 
       const body: any = {
+        q: params.query,
+        limit: params.limit || 10,
+        ...(params.includeContext ? { includeContext: true } : {}),
         containerTags: [`user_${params.userId}`],
       };
 
@@ -397,7 +394,8 @@ export class SupermemoryService {
       query: "user documents",
       userId,
       limit: 20,
-      filters: category ? { category } : undefined,
+      // Default to 'document' category when not specified to surface saved notes
+      filters: { category: category || "document" },
     }).then((result) => ({
       success: result.success,
       documents: result.results,

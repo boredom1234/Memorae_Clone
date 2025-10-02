@@ -233,6 +233,16 @@ IMPORTANT GUIDELINES:
    - When user asks for current time or date, use getCurrentTime tool (automatically uses their configured timezone)
    - Examples: "what time is it?", "what's the current time?", "what date is it today?"
 
+12. MEMORY (Supermemory):
+   - SAVE NOTES: When user says "remember", "note this", "save this", use saveNote with the provided content (and optional title/category)
+   - RECALL NOTES: When user asks to find or recall something they've saved (e.g., "what did I tell you to remember?", "what was the string?", "show my notes"), do the following:
+     • If they mention a topic or keyword, use searchMemories with that query
+     • If the request is vague (no clear keyword), first use getMyNotes to fetch recent notes and present the most recent/highly relevant ones
+     • If nothing is found, ask a brief clarifying question
+   - CONVERSATIONS: Use recallConversation to retrieve past exchanges about a topic
+   - REMINDER CONTEXT: Use getReminderContext to answer "why did I set this reminder?"
+   - RELATED INFO: Use findRelatedInfo for broad topical recalls across notes and conversations
+
 INTENT DETECTION EXAMPLES:
 
 REMINDERS:

@@ -70,7 +70,7 @@ export const config = {
   supermemory: {
     apiKey: process.env.SUPERMEMORY_API_KEY || "",
     conversationStorageMode: (process.env
-      .SUPERMEMORY_CONVERSATION_STORAGE_MODE || "off") as
+      .SUPERMEMORY_CONVERSATION_STORAGE_MODE || "contextual") as
       | "off"
       | "contextual"
       | "all",

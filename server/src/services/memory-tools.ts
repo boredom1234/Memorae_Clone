@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { tool } from "ai";
 import { SupermemoryService } from "./supermemory-service";
 import pino from "pino";
 
@@ -26,10 +27,10 @@ export class MemoryTools {
     }
 
     return {
-      saveNote: {
+      saveNote: tool({
         description:
           "Save a note, document, or piece of information for the user to retrieve later. Use this when the user explicitly asks to save, remember, or store something.",
-        parameters: z.object({
+        inputSchema: z.object({
           content: z.string().describe("The content to save"),
           title: z.string().optional().describe("Optional title for the note"),
           category: z
@@ -68,12 +69,12 @@ export class MemoryTools {
             };
           }
         },
-      },
+      }),
 
-      searchMemories: {
+      searchMemories: tool({
         description:
           "Search through the user's saved notes, past conversations, and stored information. Use this when the user asks to find, recall, or retrieve something they mentioned before.",
-        parameters: z.object({
+        inputSchema: z.object({
           query: z.string().describe("What to search for"),
           category: z
             .string()
@@ -132,12 +133,12 @@ export class MemoryTools {
             };
           }
         },
-      },
+      }),
 
-      getMyNotes: {
+      getMyNotes: tool({
         description:
           "Get all saved notes and documents for the user. Use this when the user asks to see their saved notes, documents, or what they've stored.",
-        parameters: z.object({
+        inputSchema: z.object({
           category: z
             .string()
             .optional()
@@ -190,12 +191,12 @@ export class MemoryTools {
             };
           }
         },
-      },
+      }),
 
-      recallConversation: {
+      recallConversation: tool({
         description:
           "Recall past conversations with the user. Use this when the user asks about what they said before, past discussions, or conversation history.",
-        parameters: z.object({
+        inputSchema: z.object({
           topic: z
             .string()
             .optional()
@@ -265,12 +266,12 @@ export class MemoryTools {
             };
           }
         },
-      },
+      }),
 
-      getReminderContext: {
+      getReminderContext: tool({
         description:
           "Get the original context and reason why a reminder was created. Use this when the user asks why they set a reminder or what the context was.",
-        parameters: z.object({
+        inputSchema: z.object({
           reminderTitle: z
             .string()
             .describe(
@@ -306,12 +307,12 @@ export class MemoryTools {
             };
           }
         },
-      },
+      }),
 
-      findRelatedInfo: {
+      findRelatedInfo: tool({
         description:
           "Find information related to a topic across all stored data (notes, conversations, reminders). Use this for broad searches across everything the user has stored.",
-        parameters: z.object({
+        inputSchema: z.object({
           topic: z
             .string()
             .describe("The topic to find related information about"),
@@ -368,7 +369,7 @@ export class MemoryTools {
             };
           }
         },
-      },
+      }),
     };
   }
 
