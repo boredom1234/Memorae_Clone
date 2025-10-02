@@ -57,6 +57,8 @@ export class WhatsAppManager {
     title: string;
     notes?: string;
     priority: 'low' | 'medium' | 'high';
+    reminderTime: string;
+    isRecurring: boolean;
   }): Promise<void> {
     try {
       // Get user's WhatsApp ID from database
@@ -78,12 +80,42 @@ export class WhatsAppManager {
         low: '🟢',
       }[reminder.priority];
 
-      let message = `${priorityEmoji} *REMINDER*\n\n`;
-      message += `📌 ${reminder.title}\n`;
+      const priorityText = {
+        high: 'High Priority',
+        medium: 'Medium Priority',
+        low: 'Low Priority',
+      }[reminder.priority];
+
+      // Format the reminder time
+      const reminderTime = new Date(reminder.reminderTime);
+      const now = new Date();
+      const timeStr = reminderTime.toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true 
+      });
+      const dateStr = reminderTime.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric',
+        year: reminderTime.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+      });
+
+      let message = `${priorityEmoji} *REMINDER ALERT*\n`;
+      message += `━━━━━━━━━━━━━━━━━━━━\n\n`;
+      message += `📌 *${reminder.title}*\n\n`;
       
       if (reminder.notes) {
-        message += `\n📝 ${reminder.notes}\n`;
+        message += `📝 *Notes:*\n${reminder.notes}\n\n`;
       }
+
+      message += `⏰ *Scheduled for:* ${dateStr} at ${timeStr}\n`;
+      message += `🎯 *Priority:* ${priorityText}\n`;
+      
+      if (reminder.isRecurring) {
+        message += `🔄 *Recurring Reminder*\n`;
+      }
+
+      message += `\n━━━━━━━━━━━━━━━━━━━━`;
 
       // Send the notification via WhatsApp
       if (this.whatsappService) {

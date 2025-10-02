@@ -1,11 +1,53 @@
 import { getSupabaseClient } from '../lib/supabase';
-import { List, ListItem } from '../models/types';
+import { ListItem } from '../models/types';
 import { validate, createListSchema, addItemToListSchema, removeItemFromListSchema, updateListItemSchema, getListsSchema, getListItemsSchema, deleteListSchema, searchListsSchema, sanitizeString } from '../utils/validators';
 import { handleServiceError, NotFoundError, ValidationError } from '../utils/errors';
 import { logInfo, logError, logAudit, logPerformance } from '../utils/logger';
 
 export class ListService {
   private supabase = getSupabaseClient();
+
+  /**
+   * Helper method to find a list by name with fuzzy matching
+   * Normalizes list names by removing common words and making case-insensitive
+   */
+  private async findListByName(userId: string, listName: string): Promise<string | undefined> {
+    const { data: lists } = await this.supabase
+      .from('lists')
+      .select('id, name')
+      .eq('user_id', userId)
+      .eq('is_archived', false);
+
+    if (!lists || lists.length === 0) {
+      return undefined;
+    }
+
+    // Normalize the search name (lowercase, remove common words like "list", "the", "my")
+    const normalizeListName = (name: string) => {
+      return name
+        .toLowerCase()
+        .replace(/\b(list|the|my)\b/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    };
+
+    const searchName = normalizeListName(listName);
+
+    // Try to find exact match first
+    let matchedList = lists.find(
+      (list) => normalizeListName(list.name) === searchName
+    );
+
+    // If no exact match, try partial match
+    if (!matchedList) {
+      matchedList = lists.find((list) =>
+        normalizeListName(list.name).includes(searchName) ||
+        searchName.includes(normalizeListName(list.name))
+      );
+    }
+
+    return matchedList ? matchedList.id : undefined;
+  }
 
   async createList(params: {
     userId: string;
@@ -86,17 +128,11 @@ export class ListService {
 
       // Find list by name if listId not provided
       if (!listId && validatedParams.listName) {
-        const { data: list, error: findError } = await this.supabase
-          .from('lists')
-          .select('id')
-          .eq('user_id', validatedParams.userId)
-          .eq('name', validatedParams.listName)
-          .single();
-
-        if (findError || !list) {
+        listId = await this.findListByName(validatedParams.userId, validatedParams.listName);
+        
+        if (!listId) {
           throw new NotFoundError('List', validatedParams.listName);
         }
-        listId = list.id;
       }
 
       if (!listId) {
@@ -172,17 +208,11 @@ export class ListService {
 
       // Find list by name if listId not provided
       if (!listId && validatedParams.listName) {
-        const { data: list, error: findError } = await this.supabase
-          .from('lists')
-          .select('id')
-          .eq('user_id', validatedParams.userId)
-          .eq('name', validatedParams.listName)
-          .single();
-
-        if (findError || !list) {
+        listId = await this.findListByName(validatedParams.userId, validatedParams.listName);
+        
+        if (!listId) {
           throw new NotFoundError('List', validatedParams.listName);
         }
-        listId = list.id;
       }
 
       let query = this.supabase.from('list_items').delete();
@@ -383,16 +413,7 @@ export class ListService {
     listId?: string;
     listName?: string;
     includeCompleted?: boolean;
-  }): Promise<{
-    listName: string;
-    items: Array<{
-      id: string;
-      content: string;
-      isCompleted: boolean;
-      position: number;
-    }>;
-    total: number;
-  }> {
+  }): Promise<{ listName: string; items: ListItem[]; total: number }> {
     const startTime = Date.now();
     
     try {
@@ -403,17 +424,11 @@ export class ListService {
 
       // Find list by name if listId not provided
       if (!listId && validatedParams.listName) {
-        const { data: list, error: findError } = await this.supabase
-          .from('lists')
-          .select('id, name')
-          .eq('user_id', validatedParams.userId)
-          .eq('name', validatedParams.listName)
-          .single();
-
-        if (findError || !list) {
+        listId = await this.findListByName(validatedParams.userId, validatedParams.listName);
+        
+        if (!listId) {
           throw new NotFoundError('List', validatedParams.listName);
         }
-        listId = list.id;
       }
 
       if (!listId) {
@@ -453,12 +468,7 @@ export class ListService {
 
       return {
         listName: list.name,
-        items: (items || []).map((item) => ({
-          id: item.id,
-          content: item.content,
-          isCompleted: item.is_completed,
-          position: item.position,
-        })),
+        items: (items || []) as ListItem[],
         total: items?.length || 0,
       };
     } catch (error) {
@@ -482,17 +492,11 @@ export class ListService {
 
       // Find list by name if listId not provided
       if (!listId && validatedParams.listName) {
-        const { data: list, error: findError } = await this.supabase
-          .from('lists')
-          .select('id')
-          .eq('user_id', validatedParams.userId)
-          .eq('name', validatedParams.listName)
-          .single();
-
-        if (findError || !list) {
+        listId = await this.findListByName(validatedParams.userId, validatedParams.listName);
+        
+        if (!listId) {
           throw new NotFoundError('List', validatedParams.listName);
         }
-        listId = list.id;
       }
 
       if (!listId) {

@@ -62,15 +62,39 @@ export class WhatsAppService {
       // Get own number from the connection
       const ownNumber = this.connection.getSocket()?.user?.id?.split(':')[0] || '';
 
-      // Mode 1: Only accept messages from others
-      if (filterMode === 1 && isFromMe) {
-        this.logger.debug("Ignoring message from self (mode 1)");
-        return;
+      const isSelfChat = chatPartner === ownNumber;
+
+      // Mode 1: Only accept messages FROM others TO you (not messages you send)
+      if (filterMode === 1) {
+        // Ignore messages sent by you (isFromMe = true)
+        if (isFromMe) {
+          this.logger.debug("Ignoring message sent by me (mode 1)");
+          return;
+        }
+        
+        // Ignore self-chat messages (when someone messages themselves)
+        if (isSelfChat) {
+          this.logger.debug("Ignoring self-chat message (mode 1)");
+          return;
+        }
+
+        // Check whitelist if configured
+        if (config.whatsapp.allowedNumbers.length > 0) {
+          const isAllowed = config.whatsapp.allowedNumbers.some(
+            (allowedNum) => chatPartner.includes(allowedNum) || allowedNum.includes(chatPartner)
+          );
+          
+          if (!isAllowed) {
+            this.logger.debug(`Ignoring message from non-whitelisted number: ${chatPartner} (mode 1)`);
+            return;
+          }
+        }
+        
+        this.logger.debug(`Accepting message from ${chatPartner} (mode 1)`);
       }
 
-      // Mode 2: Only accept messages when chatting with yourself (My number <-> My number)
+      // Mode 2: Only accept messages when chatting with yourself (100 <-> 100)
       if (filterMode === 2) {
-        const isSelfChat = chatPartner === ownNumber;
         if (!isSelfChat) {
           this.logger.debug(`Ignoring message - not self-chat (mode 2). Chat partner: ${chatPartner}, Own: ${ownNumber}`);
           return;
@@ -78,9 +102,27 @@ export class WhatsAppService {
         this.logger.debug("Accepting self-chat message (mode 2)");
       }
 
-      // Mode 3: Accept all messages (no filter)
+      // Mode 3: Accept all messages (combination of mode 1 and mode 2)
       if (filterMode === 3) {
-        this.logger.debug("Accepting all messages (mode 3)");
+        // If it's a message you sent to someone else (not self-chat), ignore it
+        if (isFromMe && !isSelfChat) {
+          this.logger.debug("Ignoring message sent by me to others (mode 3)");
+          return;
+        }
+
+        // If it's not self-chat, check whitelist
+        if (!isSelfChat && config.whatsapp.allowedNumbers.length > 0) {
+          const isAllowed = config.whatsapp.allowedNumbers.some(
+            (allowedNum) => chatPartner.includes(allowedNum) || allowedNum.includes(chatPartner)
+          );
+          
+          if (!isAllowed) {
+            this.logger.debug(`Ignoring message from non-whitelisted number: ${chatPartner} (mode 3)`);
+            return;
+          }
+        }
+        
+        this.logger.debug("Accepting message (mode 3)");
       }
 
       const context = await this.messageHandler.parseMessage(message as any);

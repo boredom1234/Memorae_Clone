@@ -63,5 +63,8 @@ export const config = {
       process.env.WHATSAPP_MESSAGE_FILTER_MODE || "2",
       10
     ) as 1 | 2 | 3,
+    allowedNumbers: process.env.WHATSAPP_ALLOWED_NUMBERS
+      ? process.env.WHATSAPP_ALLOWED_NUMBERS.split(",").map((num) => num.trim())
+      : [],
   },
 };
