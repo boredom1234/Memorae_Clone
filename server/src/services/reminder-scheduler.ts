@@ -425,7 +425,12 @@ export class ReminderScheduler {
         : undefined;
 
       // Helpers to clone date with time preserved
-      const cloneWithTime = (base: Date, year: number, month: number, day: number) => {
+      const cloneWithTime = (
+        base: Date,
+        year: number,
+        month: number,
+        day: number,
+      ) => {
         const d = new Date(base);
         d.setFullYear(year, month, day);
         return d;
@@ -437,7 +442,9 @@ export class ReminderScheduler {
         const candidates: Date[] = [];
         const base = new Date(current);
         // Start searching from current+1 minute to avoid returning current time
-        const searchStart = new Date(Math.max(base.getTime() + 60000, Date.now()));
+        const searchStart = new Date(
+          Math.max(base.getTime() + 60000, Date.now()),
+        );
         // Consider occurrences within next (interval * 4) weeks
         const weeksToScan = Math.max(4, interval * 4);
         for (let w = 0; w < weeksToScan; w++) {
@@ -450,7 +457,12 @@ export class ReminderScheduler {
             const candidate = new Date(weekStart);
             candidate.setDate(weekStart.getDate() + diff);
             // Preserve time-of-day from current
-            candidate.setHours(base.getHours(), base.getMinutes(), base.getSeconds(), base.getMilliseconds());
+            candidate.setHours(
+              base.getHours(),
+              base.getMinutes(),
+              base.getSeconds(),
+              base.getMilliseconds(),
+            );
             if (candidate > searchStart) candidates.push(candidate);
           }
         }
@@ -459,7 +471,13 @@ export class ReminderScheduler {
         return candidates[0];
       };
 
-      const nthWeekdayOfMonth = (year: number, month: number, weekday: number, n: number, baseTime: Date): Date | null => {
+      const nthWeekdayOfMonth = (
+        year: number,
+        month: number,
+        weekday: number,
+        n: number,
+        baseTime: Date,
+      ): Date | null => {
         // n > 0 => nth from start; n < 0 => nth from end (e.g., -1 last)
         if (n > 0) {
           // Find first weekday of month
@@ -482,7 +500,13 @@ export class ReminderScheduler {
       };
 
       const nextFromMonthlyByDayAndSetPos = (): Date | null => {
-        if (!byDays || byDays.length === 0 || !bySetPos || bySetPos.length === 0) return null;
+        if (
+          !byDays ||
+          byDays.length === 0 ||
+          !bySetPos ||
+          bySetPos.length === 0
+        )
+          return null;
         const base = new Date(current);
         const start = new Date(Math.max(base.getTime() + 60000, Date.now()));
         // Scan current month and up to next 12 intervals

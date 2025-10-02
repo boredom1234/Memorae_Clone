@@ -164,13 +164,9 @@ export class MessageController {
               const title = args?.title || "Reminder";
               if (reminderId && title) {
                 this.supermemory
-                  .storeReminderContext(
-                    user.id,
-                    reminderId,
-                    title,
-                    text,
-                    { timestamp: new Date().toISOString() },
-                  )
+                  .storeReminderContext(user.id, reminderId, title, text, {
+                    timestamp: new Date().toISOString(),
+                  })
                   .catch((error) =>
                     this.logger.warn(
                       { error },
@@ -331,7 +327,10 @@ export class MessageController {
         return `List "${result.listName || "Unknown"}" is empty.`;
       }
       return `📝 ${result.listName}:\n${result.items
-        .map((item: any, i: number) => `${i + 1}. ${item.isCompleted ? "✅" : "⬜"} ${item.content}`)
+        .map(
+          (item: any, i: number) =>
+            `${i + 1}. ${item.isCompleted ? "✅" : "⬜"} ${item.content}`,
+        )
         .join("\n")}`;
     }
 
@@ -347,6 +346,11 @@ export class MessageController {
 
     if (result.removedCount !== undefined) {
       return `✅ Removed ${result.removedCount} item(s) from list`;
+    }
+
+    // Handle getCurrentTime response
+    if (result.formattedTime && result.timezone) {
+      return `🕐 Current time: ${result.formattedTime}`;
     }
 
     return "Done!";

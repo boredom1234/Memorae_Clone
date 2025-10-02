@@ -69,11 +69,11 @@ export const config = {
   },
   supermemory: {
     apiKey: process.env.SUPERMEMORY_API_KEY || "",
-    conversationStorageMode:
-      (process.env.SUPERMEMORY_CONVERSATION_STORAGE_MODE || "off") as
-        | "off"
-        | "contextual"
-        | "all",
+    conversationStorageMode: (process.env
+      .SUPERMEMORY_CONVERSATION_STORAGE_MODE || "off") as
+      | "off"
+      | "contextual"
+      | "all",
     storeReminderContext:
       (process.env.SUPERMEMORY_STORE_REMINDER_CONTEXT || "true") === "true",
   },

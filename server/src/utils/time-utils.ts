@@ -30,7 +30,11 @@ export function wallClockToUTCFromZone(date: Date, zone: string): string {
 }
 
 // Format an ISO date (UTC or with TZ) in a user's timezone
-export function formatInZone(iso: string, zone: string, fmt: string = DateTime.DATETIME_MED_WITH_SECONDS): string {
+export function formatInZone(
+  iso: string,
+  zone: string,
+  fmt: string = DateTime.DATETIME_MED_WITH_SECONDS,
+): string {
   const dt = DateTime.fromISO(iso, { setZone: true }).setZone(zone);
   if (!dt.isValid) return iso;
   return dt.toFormat(typeof fmt === "string" ? fmt : (fmt as any));

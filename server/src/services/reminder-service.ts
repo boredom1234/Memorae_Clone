@@ -24,7 +24,6 @@ import { DateTime } from "luxon";
 
 export class ReminderService {
   private supabase = getSupabaseClient();
-  
 
   async createReminder(params: {
     userId: string;

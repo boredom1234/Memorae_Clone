@@ -7,17 +7,15 @@ export const nonEmptyStringSchema = z
   .string()
   .min(1, "Cannot be empty")
   .max(500, "Too long");
-export const dateStringSchema = z
-  .string()
-  .refine((val) => {
-    // Very flexible datetime validation - accept anything that can be parsed as a date
-    try {
-      const date = new Date(val);
-      return !isNaN(date.getTime()) && val.trim().length > 0;
-    } catch {
-      return false;
-    }
-  }, "Invalid datetime format");
+export const dateStringSchema = z.string().refine((val) => {
+  // Very flexible datetime validation - accept anything that can be parsed as a date
+  try {
+    const date = new Date(val);
+    return !isNaN(date.getTime()) && val.trim().length > 0;
+  } catch {
+    return false;
+  }
+}, "Invalid datetime format");
 export const timezoneSchema = z.string().min(1, "Timezone is required");
 export const prioritySchema = z.enum(["low", "medium", "high"]);
 export const statusSchema = z.enum([
@@ -31,7 +29,7 @@ export const statusSchema = z.enum([
 const hasTimezone = (s: string) => {
   // Accept explicit timezone indicators
   if (/Z$/i.test(s) || /[+-]\d{2}:?\d{2}$/.test(s)) return true;
-  
+
   // Also accept if it's a valid date string (LLM might generate timezone-aware dates)
   try {
     const date = new Date(s);
@@ -342,7 +340,10 @@ export function validate<T>(schema: z.ZodSchema<T>, data: unknown): T {
         message: e.message,
       }));
       // Log validation errors for debugging
-      console.error("Validation failed:", JSON.stringify({ data, errors }, null, 2));
+      console.error(
+        "Validation failed:",
+        JSON.stringify({ data, errors }, null, 2),
+      );
       throw new ValidationError("Validation failed", { errors });
     }
     throw error;

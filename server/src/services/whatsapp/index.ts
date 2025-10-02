@@ -24,20 +24,21 @@ export class WhatsAppService {
    */
   private isNumberAllowed(phoneNumber: string): boolean {
     const allowedNumbers = config.whatsapp.allowedNumbers;
-    
+
     // If no allowed numbers configured, allow all
     if (allowedNumbers.length === 0) {
       return true;
     }
-    
+
     // If "all" is in the allowed numbers, allow all
-    if (allowedNumbers.some(num => num.toLowerCase() === "all")) {
+    if (allowedNumbers.some((num) => num.toLowerCase() === "all")) {
       return true;
     }
-    
+
     // Check if the phone number matches any of the allowed numbers
-    return allowedNumbers.some(allowedNum => 
-      phoneNumber.includes(allowedNum) || allowedNum.includes(phoneNumber)
+    return allowedNumbers.some(
+      (allowedNum) =>
+        phoneNumber.includes(allowedNum) || allowedNum.includes(phoneNumber),
     );
   }
 

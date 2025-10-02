@@ -1,5 +1,5 @@
 import * as chrono from "chrono-node";
-import { wallClockToUTCFromZone } from "../utils/time-utils";
+import { wallClockToUTCFromZone, formatInZone } from "../utils/time-utils";
 import {
   validate,
   parseNaturalLanguageDateSchema,
@@ -290,6 +290,35 @@ export class UtilityService {
         taskDescription: params.taskDescription,
       });
       throw handleServiceError(error, "suggestReminderTime");
+    }
+  }
+
+  getCurrentTime(params: { timezone: string }): {
+    currentTime: string;
+    formattedTime: string;
+    timezone: string;
+  } {
+    try {
+      const now = new Date();
+      const utcISO = now.toISOString();
+
+      // Format the current time in the user's timezone
+      const formattedTime = formatInZone(
+        utcISO,
+        params.timezone,
+        "DATETIME_MED_WITH_SECONDS",
+      );
+
+      return {
+        currentTime: utcISO,
+        formattedTime,
+        timezone: params.timezone,
+      };
+    } catch (error) {
+      logError("Failed to get current time", error, {
+        timezone: params.timezone,
+      });
+      throw handleServiceError(error, "getCurrentTime");
     }
   }
 }

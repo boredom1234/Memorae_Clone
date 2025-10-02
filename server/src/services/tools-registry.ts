@@ -253,6 +253,13 @@ export class ToolsRegistry {
           this.utilityService,
         ),
       },
+      getCurrentTime: {
+        description: "Get the current time in the user's timezone",
+        parameters: {
+          timezone: "string",
+        },
+        handler: this.utilityService.getCurrentTime.bind(this.utilityService),
+      },
     };
   }
 
@@ -402,12 +409,17 @@ export class ToolsRegistry {
             throw new Error("Could not find that reminder");
           }
 
+          // Fetch user's timezone for time-related updates
+          const settings = await this.userService.getUserSettings(userId);
+          const tz = settings?.timezone || "UTC";
+
           // Update the reminder
           return await this.reminderService.updateReminder({
             userId,
             reminderId: searchResult.results[0].id,
             title: params.title,
             reminderTime: params.reminderTime,
+            timezone: tz,
             priority: params.priority,
           });
         },
@@ -554,7 +566,8 @@ export class ToolsRegistry {
       }),
 
       searchReminders: tool({
-        description: 'Search and find reminders by keyword, title, or content. Use this when the user wants to find specific reminders using a search term or phrase. Trigger phrases: "find", "search", "look for", "where is", "do I have a reminder about". Examples: "find my dentist reminder", "search for reminders about John", "look for meeting reminders", "do I have a reminder about groceries?", "search for all work-related reminders".',
+        description:
+          'Search and find reminders by keyword, title, or content. Use this when the user wants to find specific reminders using a search term or phrase. Trigger phrases: "find", "search", "look for", "where is", "do I have a reminder about". Examples: "find my dentist reminder", "search for reminders about John", "look for meeting reminders", "do I have a reminder about groceries?", "search for all work-related reminders".',
         inputSchema: z.object({
           query: z.string().describe("Search query"),
           limit: z.number().optional().describe("Maximum results"),
@@ -596,10 +609,15 @@ export class ToolsRegistry {
             throw new Error("Could not find that reminder");
           }
 
+          // Fetch user's timezone for snooze time calculation
+          const settings = await this.userService.getUserSettings(userId);
+          const tz = settings?.timezone || "UTC";
+
           return await this.reminderService.snoozeReminder({
             userId,
             reminderId: searchResult.results[0].id,
             snoozeUntil: params.snoozeUntil,
+            timezone: tz,
           });
         },
       }),
@@ -845,6 +863,21 @@ export class ToolsRegistry {
             params.endTime || "07:00",
             params.days,
           );
+        },
+      }),
+
+      getCurrentTime: tool({
+        description:
+          'Get the current date and time in the user\'s timezone. Use this when the user asks for the current time, date, or "what time is it now?". Trigger phrases: "what time is it", "current time", "what\'s the time", "time now", "what date is it", "today\'s date". Examples: "what time is it?", "what\'s the current time?", "what date is it today?".',
+        inputSchema: z.object({}),
+        execute: async () => {
+          // Fetch user's timezone automatically
+          const settings = await this.userService.getUserSettings(userId);
+          const tz = settings?.timezone || "UTC";
+
+          return await this.utilityService.getCurrentTime({
+            timezone: tz,
+          });
         },
       }),
 

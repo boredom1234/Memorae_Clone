@@ -85,11 +85,11 @@ export class WhatsAppManager {
 
       // De-duplication: skip if already sent around this reminder time
       try {
-        const { data: existingNotifs } = await this.supabase
+        const { data: existingNotifs } = (await this.supabase
           .from("notification_history")
           .select("id")
           .eq("reminder_id", reminder.id)
-          .in("status", ["sent", "delivered"]) as any;
+          .in("status", ["sent", "delivered"])) as any;
         // Optionally filter by sent_at >= windowStart if available
         if (existingNotifs && existingNotifs.length > 0) {
           this.logger.info(
@@ -127,26 +127,28 @@ export class WhatsAppManager {
       const dateStr = reminderTime.toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
-        year: reminderTime.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+        year:
+          reminderTime.getFullYear() !== now.getFullYear()
+            ? "numeric"
+            : undefined,
         timeZone: user.timezone || "UTC",
       });
 
-      let message = `${priorityEmoji} *REMINDER ALERT*\n`;
-      message += `━━━━━━━━━━━━━━━━━━━━\n\n`;
-      message += `📌 *${reminder.title}*\n\n`;
+      let message = `*REMINDER NOTIFICATION*\n\n`;
+      message += `*Task:* ${reminder.title}\n\n`;
 
       if (reminder.notes) {
-        message += `📝 *Notes:*\n${reminder.notes}\n\n`;
+        message += `*Details:* ${reminder.notes}\n\n`;
       }
 
-      message += `⏰ *Scheduled for:* ${dateStr} at ${timeStr}\n`;
-      message += `🎯 *Priority:* ${priorityText}\n`;
+      message += `*Scheduled Time:* ${dateStr} at ${timeStr}\n`;
+      message += `*Priority Level:* ${priorityText}\n`;
 
       if (reminder.isRecurring) {
-        message += `🔄 *Recurring Reminder*\n`;
+        message += `*Type:* Recurring Reminder\n`;
       }
 
-      message += `\n━━━━━━━━━━━━━━━━━━━━`;
+      message += `\n---\nMemorae Reminder Service`;
 
       // Respect notification_enabled and quiet hours
       const notificationsEnabled = user.notification_enabled !== false;
@@ -170,7 +172,9 @@ export class WhatsAppManager {
         if (!user.quiet_hours_enabled) return false;
         try {
           const tz = user.timezone || "UTC";
-          const localNow = new Date(new Date().toLocaleString("en-US", { timeZone: tz }));
+          const localNow = new Date(
+            new Date().toLocaleString("en-US", { timeZone: tz }),
+          );
           const dayNames = [
             "sunday",
             "monday",
@@ -180,7 +184,10 @@ export class WhatsAppManager {
             "friday",
             "saturday",
           ];
-          if (Array.isArray(user.quiet_hours_days) && user.quiet_hours_days.length > 0) {
+          if (
+            Array.isArray(user.quiet_hours_days) &&
+            user.quiet_hours_days.length > 0
+          ) {
             const today = dayNames[localNow.getDay()];
             if (!user.quiet_hours_days.includes(today)) return false;
           }
@@ -279,9 +286,10 @@ export class WhatsAppManager {
       const result = await this.messageController.handleMessage(context);
 
       // Get response message (prefer pre-rendered text with user's timezone)
-      const responseText = (result && result.renderedText)
-        ? result.renderedText
-        : this.messageController.getResponseMessage(result);
+      const responseText =
+        result && result.renderedText
+          ? result.renderedText
+          : this.messageController.getResponseMessage(result);
 
       // Send response
       if (this.whatsappService && responseText) {
@@ -302,7 +310,7 @@ export class WhatsAppManager {
       if (this.whatsappService) {
         await this.whatsappService.sendMessage({
           to: context.from,
-          text: `❌ Error: ${error.message || "Something went wrong"}`,
+          text: `We apologize, but an error occurred while processing your request. Please try again later or contact support if the issue persists.`,
         });
       }
     }

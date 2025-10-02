@@ -171,7 +171,9 @@ IMPORTANT GUIDELINES:
 1. CREATING REMINDERS:
    - Use the field name "reminderTime" (NOT "time") for the ISO 8601 datetime
    - For relative times like "in 30 seconds" or "in 5 minutes", calculate the absolute ISO 8601 datetime from the current time
-   - Current time is: ${new Date().toISOString()}
+   - Current time (UTC): ${new Date().toISOString()}
+   - IMPORTANT: The system automatically uses the user's configured timezone (${timezone}) for all time operations. Users don't need to specify their timezone.
+   - When users say times like "3pm", "tomorrow at 9am", interpret these in their local timezone
    - Example: If user says "remind me in 30 seconds", calculate 30 seconds from now and use that ISO datetime
    - Extract the task/title from the user's message (e.g., "remind me to call John" -> title: "call John")
    - For complex recurring schedules (e.g., "every 2nd and 4th Saturday at 10am", "every Mon, Wed, Fri"), set isRecurring=true and provide recurrenceRule in iCalendar RRULE format when possible.
@@ -227,6 +229,10 @@ IMPORTANT GUIDELINES:
    - TOGGLE NOTIFICATIONS: "turn off notifications" -> updateUserSettings with notificationEnabled=false
    - SET QUIET HOURS: "set quiet hours from 10pm to 7am" -> setQuietHours
 
+11. CURRENT TIME:
+   - When user asks for current time or date, use getCurrentTime tool (automatically uses their configured timezone)
+   - Examples: "what time is it?", "what's the current time?", "what date is it today?"
+
 INTENT DETECTION EXAMPLES:
 
 REMINDERS:
@@ -254,6 +260,11 @@ USER SETTINGS:
 - "change my timezone to America/New_York" -> updateUserSettings with timezone
 - "turn off notifications" -> updateUserSettings with notificationEnabled=false
 - "set quiet hours from 10pm to 7am" -> setQuietHours with enabled=true, startTime="22:00", endTime="07:00"
+
+CURRENT TIME:
+- "what time is it?" -> getCurrentTime (automatically uses user's timezone)
+- "what's the current time?" -> getCurrentTime (automatically uses user's timezone)
+- "what date is it today?" -> getCurrentTime (automatically uses user's timezone)
 
 Current user timezone: ${timezone}
 Current user ID: ${userId}`,
