@@ -362,8 +362,117 @@ export class ReminderScheduler {
 
       const freq = parts["freq"];
       const interval = parseInt(parts["interval"] || "1", 10);
+      const byDayStr = parts["byday"]; // e.g., "MO,WE,FR" or "SA"
+      const bySetPosStr = parts["bysetpos"]; // e.g., "2,4" or "-1"
 
-      // Calculate next occurrence based on frequency
+      const dayMap: Record<string, number> = {
+        su: 0,
+        mo: 1,
+        tu: 2,
+        we: 3,
+        th: 4,
+        fr: 5,
+        sa: 6,
+      };
+
+      const byDays: number[] | undefined = byDayStr
+        ? byDayStr
+            .split(",")
+            .map((d) => d.trim())
+            .filter(Boolean)
+            .map((d) => dayMap[d])
+            .filter((n) => n !== undefined)
+        : undefined;
+      const bySetPos: number[] | undefined = bySetPosStr
+        ? bySetPosStr
+            .split(",")
+            .map((p) => parseInt(p.trim(), 10))
+            .filter((n) => !isNaN(n) && n !== 0)
+        : undefined;
+
+      // Helpers to clone date with time preserved
+      const cloneWithTime = (base: Date, year: number, month: number, day: number) => {
+        const d = new Date(base);
+        d.setFullYear(year, month, day);
+        return d;
+      };
+
+      const nextFromWeeklyByDay = (): Date | null => {
+        if (!byDays || byDays.length === 0) return null;
+        // Search upcoming occurrences across a few weeks respecting interval
+        const candidates: Date[] = [];
+        const base = new Date(current);
+        // Start searching from current+1 minute to avoid returning current time
+        const searchStart = new Date(Math.max(base.getTime() + 60000, Date.now()));
+        // Consider occurrences within next (interval * 4) weeks
+        const weeksToScan = Math.max(4, interval * 4);
+        for (let w = 0; w < weeksToScan; w++) {
+          const weekStart = new Date(base);
+          weekStart.setDate(weekStart.getDate() + w * 7 * interval);
+          // Normalize to same week as weekStart
+          for (const day of byDays) {
+            // Compute date of given weekday in the week of weekStart
+            const diff = (day - weekStart.getDay() + 7) % 7;
+            const candidate = new Date(weekStart);
+            candidate.setDate(weekStart.getDate() + diff);
+            // Preserve time-of-day from current
+            candidate.setHours(base.getHours(), base.getMinutes(), base.getSeconds(), base.getMilliseconds());
+            if (candidate > searchStart) candidates.push(candidate);
+          }
+        }
+        if (candidates.length === 0) return null;
+        candidates.sort((a, b) => a.getTime() - b.getTime());
+        return candidates[0];
+      };
+
+      const nthWeekdayOfMonth = (year: number, month: number, weekday: number, n: number, baseTime: Date): Date | null => {
+        // n > 0 => nth from start; n < 0 => nth from end (e.g., -1 last)
+        if (n > 0) {
+          // Find first weekday of month
+          const firstOfMonth = new Date(year, month, 1);
+          const firstWeekdayDiff = (weekday - firstOfMonth.getDay() + 7) % 7;
+          const day = 1 + firstWeekdayDiff + (n - 1) * 7;
+          const candidate = cloneWithTime(baseTime, year, month, day);
+          // Validate day in month
+          if (candidate.getMonth() !== month) return null;
+          return candidate;
+        } else {
+          // From end of month
+          const lastOfMonth = new Date(year, month + 1, 0);
+          const lastWeekdayDiff = (lastOfMonth.getDay() - weekday + 7) % 7;
+          const day = lastOfMonth.getDate() - lastWeekdayDiff + (n + 1) * 7; // n is negative
+          const candidate = cloneWithTime(baseTime, year, month, day);
+          if (candidate.getMonth() !== month) return null;
+          return candidate;
+        }
+      };
+
+      const nextFromMonthlyByDayAndSetPos = (): Date | null => {
+        if (!byDays || byDays.length === 0 || !bySetPos || bySetPos.length === 0) return null;
+        const base = new Date(current);
+        const start = new Date(Math.max(base.getTime() + 60000, Date.now()));
+        // Scan current month and up to next 12 intervals
+        for (let m = 0; m <= 12; m++) {
+          const date = new Date(base);
+          date.setMonth(date.getMonth() + m * interval);
+          const year = date.getFullYear();
+          const month = date.getMonth();
+          const candidates: Date[] = [];
+          for (const wd of byDays) {
+            for (const pos of bySetPos) {
+              const cand = nthWeekdayOfMonth(year, month, wd, pos, base);
+              if (cand && cand > start) candidates.push(cand);
+            }
+          }
+          if (candidates.length > 0) {
+            candidates.sort((a, b) => a.getTime() - b.getTime());
+            return candidates[0];
+          }
+        }
+        return null;
+      };
+
+      // Calculate next occurrence based on frequency with BYDAY/BYSETPOS support
       switch (freq) {
         case "secondly":
           next.setSeconds(next.getSeconds() + interval);
@@ -377,12 +486,18 @@ export class ReminderScheduler {
         case "daily":
           next.setDate(next.getDate() + interval);
           break;
-        case "weekly":
-          next.setDate(next.getDate() + interval * 7);
+        case "weekly": {
+          const candidate = nextFromWeeklyByDay();
+          if (candidate) next = candidate;
+          else next.setDate(next.getDate() + interval * 7);
           break;
-        case "monthly":
-          next.setMonth(next.getMonth() + interval);
+        }
+        case "monthly": {
+          const candidate = nextFromMonthlyByDayAndSetPos();
+          if (candidate) next = candidate;
+          else next.setMonth(next.getMonth() + interval);
           break;
+        }
         case "yearly":
           next.setFullYear(next.getFullYear() + interval);
           break;

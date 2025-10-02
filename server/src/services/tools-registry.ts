@@ -2,6 +2,7 @@ import { UserService } from "./user-service";
 import { ReminderService } from "./reminder-service";
 import { ListService } from "./list-service";
 import { UtilityService } from "./utility-service";
+import { MemoryTools } from "./memory-tools";
 import { AppError } from "../utils/errors";
 import { logError, logInfo } from "../utils/logger";
 import { tool } from "ai";
@@ -318,6 +319,8 @@ export class ToolsRegistry {
 
   // Get AI SDK compatible tools for tool calling
   getAISDKTools(userId: string) {
+    // Initialize memory tools
+    const memoryTools = new MemoryTools(userId);
     // Define schemas separately to ensure they're properly initialized
     const createReminderSchema = z.object({
       title: z.string().describe("The reminder title/description"),
@@ -335,7 +338,7 @@ export class ToolsRegistry {
         .string()
         .optional()
         .describe(
-          'Recurrence rule in plain English format. Examples: "daily", "weekly", "monthly", "yearly", "every 10 seconds", "every 5 minutes", "every 2 hours", "every 3 days", "every 2 weeks", "weekdays", "weekends". Use simple text format, NOT iCalendar RRULE format.',
+          'Recurrence rule. Accepts either plain English (e.g., "daily", "every 2 weeks", "weekdays") OR iCalendar RRULE (e.g., "FREQ=MONTHLY;BYDAY=SA;BYSETPOS=2,4" for 2nd and 4th Saturday).',
         ),
       notes: z.string().optional().describe("Additional notes"),
       priority: z
@@ -356,7 +359,7 @@ export class ToolsRegistry {
     return {
       createReminder: tool({
         description:
-          'Create a new reminder for the user. Use this when the user wants to be reminded about something at a specific time. Examples: "remind me to call John at 3pm", "set a reminder for my meeting tomorrow at 10am", "remind me in 30 seconds to check the oven".',
+          'Create a new reminder for the user. For complex recurring patterns (e.g., "every 2nd and 4th Saturday at 10am"), set isRecurring=true and provide recurrenceRule as RRULE (e.g., "FREQ=MONTHLY;BYDAY=SA;BYSETPOS=2,4").',
         inputSchema: createReminderSchema,
         execute: async (params) => {
           return await this.reminderService.createReminder({
@@ -618,7 +621,7 @@ export class ToolsRegistry {
 
       batchCreateReminders: tool({
         description:
-          "Create multiple reminders at once. Use this when the user wants to create several reminders in a single request.",
+          "Create multiple reminders at once. For complex recurrence, each reminder can include an RRULE in recurrenceRule (e.g., FREQ=MONTHLY;BYDAY=SA;BYSETPOS=2,4).",
         inputSchema: z.object({
           reminders: z
             .array(
@@ -637,7 +640,7 @@ export class ToolsRegistry {
                   .string()
                   .optional()
                   .describe(
-                    'Recurrence rule in plain English format. Examples: "daily", "weekly", "every 10 seconds", "every 5 minutes", "every 2 hours". Use simple text, NOT iCalendar RRULE.',
+                    'Recurrence rule in plain English or RRULE. Examples: "daily" or "FREQ=WEEKLY;BYDAY=MO,WE,FR".',
                   ),
               }),
             )
@@ -838,6 +841,9 @@ export class ToolsRegistry {
           );
         },
       }),
+
+      // Memory Tools (Supermemory)
+      ...memoryTools.getTools(),
     };
   }
 }

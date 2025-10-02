@@ -25,6 +25,25 @@ export class ReminderService {
   private readonly MAX_RETRY_ATTEMPTS = 3;
   private readonly RETRY_DELAY_MS = 1000;
 
+  // Ensure ISO 8601 with timezone (Z) if missing
+  private normalizeISODate(input: string): string {
+    if (!input || typeof input !== "string") return input;
+    // If already has timezone (Z or +HH:MM/-HH:MM), return as-is
+    if (/Z$/i.test(input) || /[+-]\d{2}:?\d{2}$/.test(input)) {
+      return input;
+    }
+    // If matches YYYY-MM-DDTHH:MM or YYYY-MM-DDTHH:MM:SS (no timezone), append Z
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(input)) {
+      // Ensure seconds exist
+      const withSeconds = /:\d{2}$/.test(input) ? input : `${input}:00`;
+      return `${withSeconds}Z`;
+    }
+    // Fallback: try Date parse and return ISO if valid
+    const d = new Date(input);
+    if (!isNaN(d.getTime())) return d.toISOString();
+    return input;
+  }
+
   async createReminder(params: {
     userId: string;
     title: string;
@@ -43,8 +62,14 @@ export class ReminderService {
     const startTime = Date.now();
 
     try {
+      // Normalize reminderTime to valid ISO 8601 with timezone if missing
+      const normalized = {
+        ...params,
+        reminderTime: this.normalizeISODate(params.reminderTime),
+      };
+
       // Validate input
-      const validatedParams = validate(createReminderSchema, params);
+      const validatedParams = validate(createReminderSchema, normalized);
 
       logInfo("Creating reminder", {
         userId: params.userId,

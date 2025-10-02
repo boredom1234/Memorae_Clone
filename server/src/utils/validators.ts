@@ -294,6 +294,8 @@ export function validate<T>(schema: z.ZodSchema<T>, data: unknown): T {
         field: e.path.join("."),
         message: e.message,
       }));
+      // Log validation errors for debugging
+      console.error("Validation failed:", JSON.stringify({ data, errors }, null, 2));
       throw new ValidationError("Validation failed", { errors });
     }
     throw error;

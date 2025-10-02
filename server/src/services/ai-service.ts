@@ -174,6 +174,12 @@ IMPORTANT GUIDELINES:
    - Current time is: ${new Date().toISOString()}
    - Example: If user says "remind me in 30 seconds", calculate 30 seconds from now and use that ISO datetime
    - Extract the task/title from the user's message (e.g., "remind me to call John" -> title: "call John")
+   - For complex recurring schedules (e.g., "every 2nd and 4th Saturday at 10am", "every Mon, Wed, Fri"), set isRecurring=true and provide recurrenceRule in iCalendar RRULE format when possible.
+     Examples:
+       • 2nd and 4th Saturday monthly at 10:00 -> FREQ=MONTHLY;BYDAY=SA;BYSETPOS=2,4
+       • Every Monday, Wednesday, Friday -> FREQ=WEEKLY;BYDAY=MO,WE,FR
+       • Weekdays -> FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR
+     If the schedule is simple ("daily", "weekly"), you may use plain English in recurrenceRule as well.
 
 2. UPDATING REMINDERS:
    - When user wants to change a reminder, use updateReminder tool
