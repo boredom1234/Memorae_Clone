@@ -1,23 +1,23 @@
-import { generateText, stepCountIs } from 'ai';
-import { openai } from '@ai-sdk/openai';
-import { anthropic } from '@ai-sdk/anthropic';
-import { google } from '@ai-sdk/google';
-import { groq } from '@ai-sdk/groq';
-import { mistral } from '@ai-sdk/mistral';
-import { xai } from '@ai-sdk/xai';
-import { azure } from '@ai-sdk/azure';
-import { deepinfra } from '@ai-sdk/deepinfra';
-import { vertex } from '@ai-sdk/google-vertex';
-import { togetherai } from '@ai-sdk/togetherai';
-import { cohere } from '@ai-sdk/cohere';
-import { fireworks } from '@ai-sdk/fireworks';
-import { deepseek } from '@ai-sdk/deepseek';
-import { cerebras } from '@ai-sdk/cerebras';
-import { config } from '../config/env';
-import pino from 'pino';
+import { generateText, stepCountIs } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { google } from "@ai-sdk/google";
+import { groq } from "@ai-sdk/groq";
+import { mistral } from "@ai-sdk/mistral";
+import { xai } from "@ai-sdk/xai";
+import { azure } from "@ai-sdk/azure";
+import { deepinfra } from "@ai-sdk/deepinfra";
+import { vertex } from "@ai-sdk/google-vertex";
+import { togetherai } from "@ai-sdk/togetherai";
+import { cohere } from "@ai-sdk/cohere";
+import { fireworks } from "@ai-sdk/fireworks";
+import { deepseek } from "@ai-sdk/deepseek";
+import { cerebras } from "@ai-sdk/cerebras";
+import { config } from "../config/env";
+import pino from "pino";
 
 export class AIService {
-  private logger = pino({ level: 'info' });
+  private logger = pino({ level: "info" });
   private defaultModel: any;
 
   constructor() {
@@ -33,76 +33,94 @@ export class AIService {
 
     try {
       switch (provider) {
-        case 'openai':
-          if (!config.ai.openaiApiKey) throw new Error('OpenAI API key not configured');
+        case "openai":
+          if (!config.ai.openaiApiKey)
+            throw new Error("OpenAI API key not configured");
           this.logger.info(`Using OpenAI (${model})`);
           return openai(model);
 
-        case 'groq':
-          if (!config.ai.groqApiKey) throw new Error('Groq API key not configured');
+        case "groq":
+          if (!config.ai.groqApiKey)
+            throw new Error("Groq API key not configured");
           this.logger.info(`Using Groq (${model})`);
           return groq(model);
 
-        case 'xai':
-          if (!config.ai.xaiApiKey) throw new Error('xAI API key not configured');
+        case "xai":
+          if (!config.ai.xaiApiKey)
+            throw new Error("xAI API key not configured");
           this.logger.info(`Using xAI (${model})`);
           return xai(model);
 
-        case 'google':
-          if (!config.ai.googleApiKey) throw new Error('Google API key not configured');
+        case "google":
+          if (!config.ai.googleApiKey)
+            throw new Error("Google API key not configured");
           this.logger.info(`Using Google (${model})`);
           return google(model);
 
-        case 'anthropic':
-          if (!config.ai.anthropicApiKey) throw new Error('Anthropic API key not configured');
+        case "anthropic":
+          if (!config.ai.anthropicApiKey)
+            throw new Error("Anthropic API key not configured");
           this.logger.info(`Using Anthropic (${model})`);
           return anthropic(model);
 
-        case 'deepseek':
-          if (!config.ai.deepseekApiKey) throw new Error('DeepSeek API key not configured');
+        case "deepseek":
+          if (!config.ai.deepseekApiKey)
+            throw new Error("DeepSeek API key not configured");
           this.logger.info(`Using DeepSeek (${model})`);
           return deepseek(model);
 
-        case 'mistral':
-          if (!config.ai.mistralApiKey) throw new Error('Mistral API key not configured');
+        case "mistral":
+          if (!config.ai.mistralApiKey)
+            throw new Error("Mistral API key not configured");
           this.logger.info(`Using Mistral (${model})`);
           return mistral(model);
 
-        case 'togetherai':
-          if (!config.ai.togetheraiApiKey) throw new Error('Together.ai API key not configured');
+        case "togetherai":
+          if (!config.ai.togetheraiApiKey)
+            throw new Error("Together.ai API key not configured");
           this.logger.info(`Using Together.ai (${model})`);
           return togetherai(model);
 
-        case 'cohere':
-          if (!config.ai.cohereApiKey) throw new Error('Cohere API key not configured');
+        case "cohere":
+          if (!config.ai.cohereApiKey)
+            throw new Error("Cohere API key not configured");
           this.logger.info(`Using Cohere (${model})`);
           return cohere(model);
 
-        case 'fireworks':
-          if (!config.ai.fireworksApiKey) throw new Error('Fireworks API key not configured');
+        case "fireworks":
+          if (!config.ai.fireworksApiKey)
+            throw new Error("Fireworks API key not configured");
           this.logger.info(`Using Fireworks (${model})`);
           return fireworks(model);
 
-        case 'deepinfra':
-          if (!config.ai.deepinfraApiKey) throw new Error('DeepInfra API key not configured');
+        case "deepinfra":
+          if (!config.ai.deepinfraApiKey)
+            throw new Error("DeepInfra API key not configured");
           this.logger.info(`Using DeepInfra (${model})`);
           return deepinfra(model);
 
-        case 'cerebras':
-          if (!config.ai.cerebrasApiKey) throw new Error('Cerebras API key not configured');
+        case "cerebras":
+          if (!config.ai.cerebrasApiKey)
+            throw new Error("Cerebras API key not configured");
           this.logger.info(`Using Cerebras (${model})`);
           return cerebras(model);
 
-        case 'azure':
-          if (!config.ai.azureApiKey || !config.ai.azureResourceName || !config.ai.azureDeploymentName) {
-            throw new Error('Azure OpenAI not fully configured');
+        case "azure":
+          if (
+            !config.ai.azureApiKey ||
+            !config.ai.azureResourceName ||
+            !config.ai.azureDeploymentName
+          ) {
+            throw new Error("Azure OpenAI not fully configured");
           }
-          this.logger.info(`Using Azure OpenAI (${config.ai.azureDeploymentName})`);
+          this.logger.info(
+            `Using Azure OpenAI (${config.ai.azureDeploymentName})`,
+          );
           return azure(config.ai.azureDeploymentName);
 
-        case 'vertex':
+        case "vertex":
           if (!config.ai.vertexProjectId || !config.ai.vertexLocation) {
-            throw new Error('Google Vertex AI not fully configured');
+            throw new Error("Google Vertex AI not fully configured");
           }
           this.logger.info(`Using Google Vertex AI (${model})`);
           return vertex(model);
@@ -112,7 +130,7 @@ export class AIService {
       }
     } catch (error: any) {
       this.logger.error(`Failed to configure AI provider: ${error.message}`);
-      this.logger.warn('AI features will not work.');
+      this.logger.warn("AI features will not work.");
       return null;
     }
   }
@@ -121,20 +139,25 @@ export class AIService {
    * Process user message with AI tool calling
    * The LLM will automatically decide which tool to call
    */
-  async processMessageWithTools(message: string, userId: string, timezone: string, tools: any): Promise<{
+  async processMessageWithTools(
+    message: string,
+    userId: string,
+    timezone: string,
+    tools: any,
+  ): Promise<{
     text: string;
     toolCalls: any[];
     toolResults: any[];
   }> {
     if (!this.defaultModel) {
-      this.logger.warn('No AI model configured');
-      throw new Error('AI model not configured');
+      this.logger.warn("No AI model configured");
+      throw new Error("AI model not configured");
     }
 
     try {
       // Debug: Log tool names to verify they're being passed
-      this.logger.info(`Tools available: ${Object.keys(tools).join(', ')}`);
-      
+      this.logger.info(`Tools available: ${Object.keys(tools).join(", ")}`);
+
       const result = await generateText({
         model: this.defaultModel,
         system: `You are a helpful AI assistant for a reminder and task management system.
@@ -233,17 +256,21 @@ Current user ID: ${userId}`,
         stopWhen: stepCountIs(5), // Allow up to 5 multi-step tool calls
       });
 
-      this.logger.info(`AI processed message with ${result.toolCalls.length} tool calls`);
-      
+      this.logger.info(
+        `AI processed message with ${result.toolCalls.length} tool calls`,
+      );
+
       return {
         text: result.text,
         toolCalls: result.toolCalls,
         toolResults: result.toolResults,
       };
     } catch (error: any) {
-      this.logger.error({ error: error.message || error.name || 'Unknown error' }, 'Failed to process message with AI');
+      this.logger.error(
+        { error: error.message || error.name || "Unknown error" },
+        "Failed to process message with AI",
+      );
       throw error;
     }
   }
-
 }

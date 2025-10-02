@@ -27,8 +27,8 @@ export interface Reminder {
   is_recurring: boolean;
   recurrence_rule?: string;
   recurrence_end_date?: string;
-  priority: 'low' | 'medium' | 'high';
-  status: 'pending' | 'completed' | 'cancelled' | 'snoozed';
+  priority: "low" | "medium" | "high";
+  status: "pending" | "completed" | "cancelled" | "snoozed";
   snoozed_until?: string;
   snooze_count: number;
   completed_at?: string;
@@ -65,7 +65,7 @@ export interface ListItem {
 export interface CalendarConnection {
   id: string;
   user_id: string;
-  provider: 'google' | 'outlook' | 'apple';
+  provider: "google" | "outlook" | "apple";
   provider_account_id?: string;
   provider_account_email?: string;
   access_token?: string;
@@ -81,12 +81,12 @@ export interface CalendarConnection {
 export interface NotificationHistory {
   id: string;
   user_id: string;
-  type: 'reminder' | 'shared' | 'system' | 'calendar';
+  type: "reminder" | "shared" | "system" | "calendar";
   content: string;
   reminder_id?: string;
   list_id?: string;
   recipient_whatsapp_id?: string;
-  status: 'pending' | 'sent' | 'failed' | 'delivered';
+  status: "pending" | "sent" | "failed" | "delivered";
   error_message?: string;
   retry_count: number;
   sent_at?: string;
@@ -109,7 +109,7 @@ export interface ConversationContext {
 export interface MediaAttachment {
   id: string;
   user_id: string;
-  media_type: 'image' | 'audio' | 'video' | 'document';
+  media_type: "image" | "audio" | "video" | "document";
   file_url: string;
   file_size?: number;
   mime_type?: string;

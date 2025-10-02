@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import "dotenv/config";
 import { buildApp } from "./app";
 import { config } from "./config/env";
 import { WhatsAppManager } from "./services/whatsapp-manager";

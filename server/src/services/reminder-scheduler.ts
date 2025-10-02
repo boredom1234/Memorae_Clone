@@ -1,6 +1,5 @@
-import { getSupabaseClient } from '../lib/supabase';
-import { logInfo, logError, logWarn } from '../utils/logger';
-import * as chrono from 'chrono-node';
+import { getSupabaseClient } from "../lib/supabase";
+import { logInfo, logError, logWarn } from "../utils/logger";
 
 export interface ReminderNotificationCallback {
   (reminder: {
@@ -8,7 +7,7 @@ export interface ReminderNotificationCallback {
     userId: string;
     title: string;
     notes?: string;
-    priority: 'low' | 'medium' | 'high';
+    priority: "low" | "medium" | "high";
     reminderTime: string;
     isRecurring: boolean;
   }): Promise<void>;
@@ -21,7 +20,8 @@ export class ReminderScheduler {
   private checkIntervalMs: number;
   private onReminderDue?: ReminderNotificationCallback;
 
-  constructor(checkIntervalMs: number = 30000) { // Default: check every 30 seconds
+  constructor(checkIntervalMs: number = 5000) {
+    // Default: check every 5 seconds
     this.checkIntervalMs = checkIntervalMs;
   }
 
@@ -37,11 +37,13 @@ export class ReminderScheduler {
    */
   start() {
     if (this.isRunning) {
-      logWarn('Reminder scheduler is already running');
+      logWarn("Reminder scheduler is already running");
       return;
     }
 
-    logInfo('Starting reminder scheduler', { checkIntervalMs: this.checkIntervalMs });
+    logInfo("Starting reminder scheduler", {
+      checkIntervalMs: this.checkIntervalMs,
+    });
     this.isRunning = true;
 
     // Check immediately on start
@@ -58,12 +60,12 @@ export class ReminderScheduler {
    */
   stop() {
     if (!this.isRunning) {
-      logWarn('Reminder scheduler is not running');
+      logWarn("Reminder scheduler is not running");
       return;
     }
 
-    logInfo('Stopping reminder scheduler');
-    
+    logInfo("Stopping reminder scheduler");
+
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
@@ -83,15 +85,17 @@ export class ReminderScheduler {
       // 1. Status is 'pending'
       // 2. Reminder time is in the past or now
       const { data: dueReminders, error } = await this.supabase
-        .from('reminders')
-        .select('id, user_id, title, notes, priority, reminder_time, is_recurring, recurrence_rule, recurrence_end_date')
-        .eq('status', 'pending')
-        .lte('reminder_time', now)
-        .order('reminder_time', { ascending: true })
+        .from("reminders")
+        .select(
+          "id, user_id, title, notes, priority, reminder_time, is_recurring, recurrence_rule, recurrence_end_date",
+        )
+        .eq("status", "pending")
+        .lte("reminder_time", now)
+        .order("reminder_time", { ascending: true })
         .limit(50); // Process max 50 reminders per check
 
       if (error) {
-        logError('Failed to fetch due reminders', error);
+        logError("Failed to fetch due reminders", error);
         return;
       }
 
@@ -99,7 +103,9 @@ export class ReminderScheduler {
         return; // No due reminders
       }
 
-      logInfo(`Found ${dueReminders.length} due reminder(s)`, { count: dueReminders.length });
+      logInfo(`Found ${dueReminders.length} due reminder(s)`, {
+        count: dueReminders.length,
+      });
 
       // Process each due reminder
       for (const reminder of dueReminders) {
@@ -123,18 +129,18 @@ export class ReminderScheduler {
             const nextOccurrence = this.calculateNextOccurrence(
               reminder.reminder_time,
               reminder.recurrence_rule,
-              reminder.recurrence_end_date
+              reminder.recurrence_end_date,
             );
 
             if (nextOccurrence) {
               // Update reminder with next occurrence time
               await this.supabase
-                .from('reminders')
+                .from("reminders")
                 .update({
                   reminder_time: nextOccurrence.toISOString(),
                   updated_at: new Date().toISOString(),
                 })
-                .eq('id', reminder.id);
+                .eq("id", reminder.id);
 
               logInfo(`Recurring reminder updated with next occurrence`, {
                 reminderId: reminder.id,
@@ -144,13 +150,13 @@ export class ReminderScheduler {
             } else {
               // No more occurrences (reached end date or invalid rule)
               await this.supabase
-                .from('reminders')
+                .from("reminders")
                 .update({
-                  status: 'completed',
+                  status: "completed",
                   completed_at: new Date().toISOString(),
                   updated_at: new Date().toISOString(),
                 })
-                .eq('id', reminder.id);
+                .eq("id", reminder.id);
 
               logInfo(`Recurring reminder completed (no more occurrences)`, {
                 reminderId: reminder.id,
@@ -160,13 +166,13 @@ export class ReminderScheduler {
           } else {
             // One-time reminder - mark as completed
             await this.supabase
-              .from('reminders')
+              .from("reminders")
               .update({
-                status: 'completed',
+                status: "completed",
                 completed_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
               })
-              .eq('id', reminder.id);
+              .eq("id", reminder.id);
 
             logInfo(`One-time reminder marked as completed`, {
               reminderId: reminder.id,
@@ -181,7 +187,7 @@ export class ReminderScheduler {
         }
       }
     } catch (error) {
-      logError('Error in checkDueReminders', error);
+      logError("Error in checkDueReminders", error);
     }
   }
 
@@ -202,14 +208,14 @@ export class ReminderScheduler {
   /**
    * Calculate the next occurrence of a recurring reminder
    * @param currentTime - Current reminder time
-   * @param recurrenceRule - Recurrence rule (e.g., "daily", "weekly", "monthly", "every 2 days")
+   * @param recurrenceRule - Recurrence rule (e.g., "daily", "weekly", "monthly", "every 10 seconds", "every 5 minutes", "every 2 hours", "every 3 days")
    * @param endDate - Optional end date for recurrence
    * @returns Next occurrence date or null if no more occurrences
    */
   private calculateNextOccurrence(
     currentTime: string,
     recurrenceRule: string,
-    endDate?: string | null
+    endDate?: string | null,
   ): Date | null {
     try {
       const current = new Date(currentTime);
@@ -219,17 +225,22 @@ export class ReminderScheduler {
       // Normalize the recurrence rule
       const rule = recurrenceRule.toLowerCase().trim();
 
+      // Handle iCalendar RRULE format (convert to simple format)
+      if (rule.startsWith("freq=")) {
+        return this.parseRRULE(rule, current, endDate);
+      }
+
       // Parse common recurrence patterns
-      if (rule === 'daily' || rule === 'every day') {
+      if (rule === "daily" || rule === "every day") {
         next = new Date(current);
         next.setDate(next.getDate() + 1);
-      } else if (rule === 'weekly' || rule === 'every week') {
+      } else if (rule === "weekly" || rule === "every week") {
         next = new Date(current);
         next.setDate(next.getDate() + 7);
-      } else if (rule === 'monthly' || rule === 'every month') {
+      } else if (rule === "monthly" || rule === "every month") {
         next = new Date(current);
         next.setMonth(next.getMonth() + 1);
-      } else if (rule === 'yearly' || rule === 'every year') {
+      } else if (rule === "yearly" || rule === "every year") {
         next = new Date(current);
         next.setFullYear(next.getFullYear() + 1);
       } else if (rule.match(/^every (\d+) days?$/)) {
@@ -243,7 +254,7 @@ export class ReminderScheduler {
         const match = rule.match(/^every (\d+) weeks?$/);
         const weeks = parseInt(match![1], 10);
         next = new Date(current);
-        next.setDate(next.getDate() + (weeks * 7));
+        next.setDate(next.getDate() + weeks * 7);
       } else if (rule.match(/^every (\d+) months?$/)) {
         // Pattern: "every N months" or "every N month"
         const match = rule.match(/^every (\d+) months?$/);
@@ -256,6 +267,18 @@ export class ReminderScheduler {
         const hours = parseInt(match![1], 10);
         next = new Date(current);
         next.setHours(next.getHours() + hours);
+      } else if (rule.match(/^every (\d+) minutes?$/)) {
+        // Pattern: "every N minutes" or "every N minute"
+        const match = rule.match(/^every (\d+) minutes?$/);
+        const minutes = parseInt(match![1], 10);
+        next = new Date(current);
+        next.setMinutes(next.getMinutes() + minutes);
+      } else if (rule.match(/^every (\d+) seconds?$/)) {
+        // Pattern: "every N seconds" or "every N second"
+        const match = rule.match(/^every (\d+) seconds?$/);
+        const seconds = parseInt(match![1], 10);
+        next = new Date(current);
+        next.setSeconds(next.getSeconds() + seconds);
       } else if (rule.match(/weekdays?/)) {
         // Weekdays only (Monday-Friday)
         next = new Date(current);
@@ -271,7 +294,9 @@ export class ReminderScheduler {
         }
       } else {
         // Try to parse as a natural language expression
-        logWarn(`Unknown recurrence rule: ${recurrenceRule}, attempting natural language parse`);
+        logWarn(
+          `Unknown recurrence rule: ${recurrenceRule}, attempting natural language parse`,
+        );
         // Default to daily if we can't parse
         next = new Date(current);
         next.setDate(next.getDate() + 1);
@@ -280,14 +305,18 @@ export class ReminderScheduler {
       // Ensure next occurrence is in the future
       if (next && next <= now) {
         // If calculated next is still in the past, recursively calculate again
-        return this.calculateNextOccurrence(next.toISOString(), recurrenceRule, endDate);
+        return this.calculateNextOccurrence(
+          next.toISOString(),
+          recurrenceRule,
+          endDate,
+        );
       }
 
       // Check if next occurrence exceeds end date
       if (next && endDate) {
         const end = new Date(endDate);
         if (next > end) {
-          logInfo('Next occurrence exceeds recurrence end date', {
+          logInfo("Next occurrence exceeds recurrence end date", {
             nextOccurrence: next.toISOString(),
             endDate: endDate,
           });
@@ -297,10 +326,87 @@ export class ReminderScheduler {
 
       return next;
     } catch (error) {
-      logError('Failed to calculate next occurrence', error, {
+      logError("Failed to calculate next occurrence", error, {
         currentTime,
         recurrenceRule,
       });
+      return null;
+    }
+  }
+
+  /**
+   * Parse iCalendar RRULE format and convert to next occurrence
+   * @param rrule - iCalendar RRULE string (e.g., "FREQ=DAILY;INTERVAL=1")
+   * @param current - Current reminder time
+   * @param endDate - Optional end date
+   * @returns Next occurrence date or null
+   */
+  private parseRRULE(
+    rrule: string,
+    current: Date,
+    endDate?: string | null,
+  ): Date | null {
+    try {
+      const now = new Date();
+      let next = new Date(current);
+
+      // Parse RRULE components
+      const parts = rrule.split(";").reduce(
+        (acc, part) => {
+          const [key, value] = part.split("=");
+          acc[key.toLowerCase()] = value.toLowerCase();
+          return acc;
+        },
+        {} as Record<string, string>,
+      );
+
+      const freq = parts["freq"];
+      const interval = parseInt(parts["interval"] || "1", 10);
+
+      // Calculate next occurrence based on frequency
+      switch (freq) {
+        case "secondly":
+          next.setSeconds(next.getSeconds() + interval);
+          break;
+        case "minutely":
+          next.setMinutes(next.getMinutes() + interval);
+          break;
+        case "hourly":
+          next.setHours(next.getHours() + interval);
+          break;
+        case "daily":
+          next.setDate(next.getDate() + interval);
+          break;
+        case "weekly":
+          next.setDate(next.getDate() + interval * 7);
+          break;
+        case "monthly":
+          next.setMonth(next.getMonth() + interval);
+          break;
+        case "yearly":
+          next.setFullYear(next.getFullYear() + interval);
+          break;
+        default:
+          logWarn(`Unknown RRULE frequency: ${freq}`);
+          return null;
+      }
+
+      // Ensure next occurrence is in the future
+      if (next <= now) {
+        return this.parseRRULE(rrule, next, endDate);
+      }
+
+      // Check if next occurrence exceeds end date
+      if (endDate) {
+        const end = new Date(endDate);
+        if (next > end) {
+          return null;
+        }
+      }
+
+      return next;
+    } catch (error) {
+      logError("Failed to parse RRULE", error, { rrule });
       return null;
     }
   }

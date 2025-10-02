@@ -15,8 +15,8 @@ export class WhatsAppManager {
 
   constructor() {
     this.messageController = new MessageController();
-    this.reminderScheduler = new ReminderScheduler(30000); // Check every 30 seconds
-    
+    this.reminderScheduler = new ReminderScheduler(5000); // Check every 5 seconds
+
     // Set up reminder notification callback
     this.reminderScheduler.setNotificationCallback(async (reminder) => {
       await this.sendReminderNotification(reminder);
@@ -38,11 +38,11 @@ export class WhatsAppManager {
       });
 
       await this.whatsappService.initialize();
-      
+
       // Start the reminder scheduler
       this.reminderScheduler.start();
       this.logger.info("✅ Reminder scheduler started");
-      
+
       this.isInitialized = true;
       this.logger.info("✅ WhatsApp manager initialized successfully");
     } catch (error) {
@@ -56,61 +56,67 @@ export class WhatsAppManager {
     userId: string;
     title: string;
     notes?: string;
-    priority: 'low' | 'medium' | 'high';
+    priority: "low" | "medium" | "high";
     reminderTime: string;
     isRecurring: boolean;
   }): Promise<void> {
     try {
       // Get user's WhatsApp ID from database
       const { data: user, error } = await this.supabase
-        .from('users')
-        .select('whatsapp_id, phone_number, name')
-        .eq('id', reminder.userId)
+        .from("users")
+        .select("whatsapp_id, phone_number, name")
+        .eq("id", reminder.userId)
         .single();
 
       if (error || !user) {
-        this.logger.error({ error, userId: reminder.userId }, 'Failed to get user for reminder notification');
+        this.logger.error(
+          { error, userId: reminder.userId },
+          "Failed to get user for reminder notification",
+        );
         return;
       }
 
       // Format the reminder notification message
       const priorityEmoji = {
-        high: '🔴',
-        medium: '🟡',
-        low: '🟢',
+        high: "🔴",
+        medium: "🟡",
+        low: "🟢",
       }[reminder.priority];
 
       const priorityText = {
-        high: 'High Priority',
-        medium: 'Medium Priority',
-        low: 'Low Priority',
+        high: "High Priority",
+        medium: "Medium Priority",
+        low: "Low Priority",
       }[reminder.priority];
 
       // Format the reminder time
       const reminderTime = new Date(reminder.reminderTime);
       const now = new Date();
-      const timeStr = reminderTime.toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
-        minute: '2-digit',
-        hour12: true 
+      const timeStr = reminderTime.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
       });
-      const dateStr = reminderTime.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric',
-        year: reminderTime.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+      const dateStr = reminderTime.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year:
+          reminderTime.getFullYear() !== now.getFullYear()
+            ? "numeric"
+            : undefined,
       });
 
       let message = `${priorityEmoji} *REMINDER ALERT*\n`;
       message += `━━━━━━━━━━━━━━━━━━━━\n\n`;
       message += `📌 *${reminder.title}*\n\n`;
-      
+
       if (reminder.notes) {
         message += `📝 *Notes:*\n${reminder.notes}\n\n`;
       }
 
       message += `⏰ *Scheduled for:* ${dateStr} at ${timeStr}\n`;
       message += `🎯 *Priority:* ${priorityText}\n`;
-      
+
       if (reminder.isRecurring) {
         message += `🔄 *Recurring Reminder*\n`;
       }
@@ -126,20 +132,26 @@ export class WhatsAppManager {
         });
 
         if (success) {
-          this.logger.info({
-            reminderId: reminder.id,
-            title: reminder.title,
-            user: user.name || user.phone_number,
-          }, `✅ Reminder notification sent`);
+          this.logger.info(
+            {
+              reminderId: reminder.id,
+              title: reminder.title,
+              user: user.name || user.phone_number,
+            },
+            `✅ Reminder notification sent`,
+          );
         } else {
-          this.logger.error({
-            reminderId: reminder.id,
-            userId: reminder.userId,
-          }, 'Failed to send reminder notification');
+          this.logger.error(
+            {
+              reminderId: reminder.id,
+              userId: reminder.userId,
+            },
+            "Failed to send reminder notification",
+          );
         }
       }
     } catch (error) {
-      this.logger.error({ error }, 'Error sending reminder notification');
+      this.logger.error({ error }, "Error sending reminder notification");
     }
   }
 
@@ -175,7 +187,7 @@ export class WhatsAppManager {
       if (this.whatsappService) {
         await this.whatsappService.sendMessage({
           to: context.from,
-          text: `❌ Error: ${error.message || 'Something went wrong'}`,
+          text: `❌ Error: ${error.message || "Something went wrong"}`,
         });
       }
     }
@@ -206,7 +218,7 @@ export class WhatsAppManager {
     // Stop the reminder scheduler
     this.reminderScheduler.stop();
     this.logger.info("Reminder scheduler stopped");
-    
+
     if (this.whatsappService) {
       await this.whatsappService.disconnect();
       this.isInitialized = false;

@@ -18,7 +18,7 @@ export const config = {
     // Provider and Model Selection
     provider: process.env.AI_PROVIDER || "openai",
     model: process.env.AI_MODEL || "gpt-4o-mini",
-    
+
     // API Keys
     openaiApiKey: process.env.OPENAI_API_KEY || "",
     groqApiKey: process.env.GROQ_API_KEY || "",
@@ -32,16 +32,16 @@ export const config = {
     fireworksApiKey: process.env.FIREWORKS_API_KEY || "",
     deepinfraApiKey: process.env.DEEPINFRA_API_KEY || "",
     cerebrasApiKey: process.env.CEREBRAS_API_KEY || "",
-    
+
     // Azure OpenAI
     azureApiKey: process.env.AZURE_OPENAI_API_KEY || "",
     azureResourceName: process.env.AZURE_RESOURCE_NAME || "",
     azureDeploymentName: process.env.AZURE_DEPLOYMENT_NAME || "",
-    
+
     // Google Vertex AI
     vertexProjectId: process.env.VERTEX_PROJECT_ID || "",
     vertexLocation: process.env.VERTEX_LOCATION || "",
-    
+
     // AWS Bedrock
     awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
     awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
@@ -61,7 +61,7 @@ export const config = {
     sessionPath: process.env.WHATSAPP_SESSION_PATH || "./whatsapp-session",
     messageFilterMode: parseInt(
       process.env.WHATSAPP_MESSAGE_FILTER_MODE || "2",
-      10
+      10,
     ) as 1 | 2 | 3,
     allowedNumbers: process.env.WHATSAPP_ALLOWED_NUMBERS
       ? process.env.WHATSAPP_ALLOWED_NUMBERS.split(",").map((num) => num.trim())

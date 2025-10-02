@@ -54,13 +54,14 @@ export class WhatsAppService {
       // Apply message filter based on config
       const filterMode = config.whatsapp.messageFilterMode;
       const isFromMe = message.key.fromMe;
-      const remoteJid = message.key.remoteJid || '';
-      
+      const remoteJid = message.key.remoteJid || "";
+
       // Extract the phone number from remoteJid (format: "1234567890@s.whatsapp.net")
-      const chatPartner = remoteJid.split('@')[0];
-      
+      const chatPartner = remoteJid.split("@")[0];
+
       // Get own number from the connection
-      const ownNumber = this.connection.getSocket()?.user?.id?.split(':')[0] || '';
+      const ownNumber =
+        this.connection.getSocket()?.user?.id?.split(":")[0] || "";
 
       const isSelfChat = chatPartner === ownNumber;
 
@@ -71,7 +72,7 @@ export class WhatsAppService {
           this.logger.debug("Ignoring message sent by me (mode 1)");
           return;
         }
-        
+
         // Ignore self-chat messages (when someone messages themselves)
         if (isSelfChat) {
           this.logger.debug("Ignoring self-chat message (mode 1)");
@@ -81,22 +82,28 @@ export class WhatsAppService {
         // Check whitelist if configured
         if (config.whatsapp.allowedNumbers.length > 0) {
           const isAllowed = config.whatsapp.allowedNumbers.some(
-            (allowedNum) => chatPartner.includes(allowedNum) || allowedNum.includes(chatPartner)
+            (allowedNum) =>
+              chatPartner.includes(allowedNum) ||
+              allowedNum.includes(chatPartner),
           );
-          
+
           if (!isAllowed) {
-            this.logger.debug(`Ignoring message from non-whitelisted number: ${chatPartner} (mode 1)`);
+            this.logger.debug(
+              `Ignoring message from non-whitelisted number: ${chatPartner} (mode 1)`,
+            );
             return;
           }
         }
-        
+
         this.logger.debug(`Accepting message from ${chatPartner} (mode 1)`);
       }
 
       // Mode 2: Only accept messages when chatting with yourself (100 <-> 100)
       if (filterMode === 2) {
         if (!isSelfChat) {
-          this.logger.debug(`Ignoring message - not self-chat (mode 2). Chat partner: ${chatPartner}, Own: ${ownNumber}`);
+          this.logger.debug(
+            `Ignoring message - not self-chat (mode 2). Chat partner: ${chatPartner}, Own: ${ownNumber}`,
+          );
           return;
         }
         this.logger.debug("Accepting self-chat message (mode 2)");
@@ -113,15 +120,19 @@ export class WhatsAppService {
         // If it's not self-chat, check whitelist
         if (!isSelfChat && config.whatsapp.allowedNumbers.length > 0) {
           const isAllowed = config.whatsapp.allowedNumbers.some(
-            (allowedNum) => chatPartner.includes(allowedNum) || allowedNum.includes(chatPartner)
+            (allowedNum) =>
+              chatPartner.includes(allowedNum) ||
+              allowedNum.includes(chatPartner),
           );
-          
+
           if (!isAllowed) {
-            this.logger.debug(`Ignoring message from non-whitelisted number: ${chatPartner} (mode 3)`);
+            this.logger.debug(
+              `Ignoring message from non-whitelisted number: ${chatPartner} (mode 3)`,
+            );
             return;
           }
         }
-        
+
         this.logger.debug("Accepting message (mode 3)");
       }
 
