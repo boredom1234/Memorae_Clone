@@ -1,4 +1,5 @@
 import * as chrono from "chrono-node";
+import { wallClockToUTCFromZone } from "../utils/time-utils";
 import {
   validate,
   parseNaturalLanguageDateSchema,
@@ -47,9 +48,14 @@ export class UtilityService {
         .map((result) => {
           try {
             const date = result.start.date();
+            // Interpret the parsed wall-clock time in the user's timezone and convert to UTC
+            const utcISO = wallClockToUTCFromZone(
+              date,
+              validatedParams.timezone,
+            );
             return {
               originalText: result.text,
-              parsedDate: date.toISOString(),
+              parsedDate: utcISO,
               confidence: result.start.isCertain("hour") ? 0.9 : 0.7,
               type: result.start.isCertain("day")
                 ? ("absolute" as const)

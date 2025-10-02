@@ -327,7 +327,7 @@ export class ToolsRegistry {
       reminderTime: z
         .string()
         .describe(
-          'ISO 8601 datetime string when the reminder should trigger. For relative times like "in 30 seconds", calculate the absolute time from now.',
+          'ISO 8601 datetime string when the reminder should trigger. For relative times like "in 30 seconds", calculate the absolute time from now. If the user specifies a time that has already passed today (e.g., "3pm" when it\'s already 4pm), assume they mean the next occurrence (tomorrow at 3pm).',
         ),
       isRecurring: z
         .boolean()
@@ -359,14 +359,17 @@ export class ToolsRegistry {
     return {
       createReminder: tool({
         description:
-          'Create a new reminder for the user. For complex recurring patterns (e.g., "every 2nd and 4th Saturday at 10am"), set isRecurring=true and provide recurrenceRule as RRULE (e.g., "FREQ=MONTHLY;BYDAY=SA;BYSETPOS=2,4").',
+          'Create a new reminder for the user at a specific date and time. Use this when the user wants to be reminded about something in the future. Trigger phrases: "remind me", "set a reminder", "don\'t let me forget", "alert me", "notify me when", "schedule a reminder". For one-time reminders, set isRecurring=false. For recurring reminders (daily, weekly, monthly, etc.), set isRecurring=true and provide recurrenceRule. Examples: "remind me to call mom tomorrow at 3pm", "set a daily reminder to take medicine at 9am", "remind me every Monday at 10am for team meeting".',
         inputSchema: createReminderSchema,
         execute: async (params) => {
+          // Fetch user's timezone
+          const settings = await this.userService.getUserSettings(userId);
+          const tz = settings?.timezone || "UTC";
           return await this.reminderService.createReminder({
             userId,
             title: params.title,
             reminderTime: params.reminderTime,
-            timezone: "UTC", // Will be overridden by user's timezone
+            timezone: tz,
             isRecurring: params.isRecurring ?? false,
             recurrenceRule: params.recurrenceRule,
             notes: params.notes,
@@ -377,7 +380,7 @@ export class ToolsRegistry {
 
       updateReminder: tool({
         description:
-          'Update an existing reminder. Use this when the user wants to change the time, title, or priority of a reminder. Examples: "change my dentist reminder to 4pm", "update the meeting reminder to tomorrow", "make the call reminder high priority".',
+          'Modify an existing reminder\'s time, title, notes, or priority. Use this when the user wants to change, edit, reschedule, or update a reminder they already created. Trigger phrases: "change", "update", "modify", "edit", "reschedule", "move", "shift". Examples: "change my dentist reminder to 4pm", "update the meeting reminder to tomorrow", "make the call reminder high priority", "move my workout reminder to 7am", "reschedule the interview to next week".',
         inputSchema: z.object({
           searchQuery: z.string().describe("Text to search for the reminder"),
           title: z.string().optional().describe("New title for the reminder"),
@@ -401,6 +404,7 @@ export class ToolsRegistry {
 
           // Update the reminder
           return await this.reminderService.updateReminder({
+            userId,
             reminderId: searchResult.results[0].id,
             title: params.title,
             reminderTime: params.reminderTime,
@@ -411,7 +415,7 @@ export class ToolsRegistry {
 
       deleteReminder: tool({
         description:
-          'Delete a reminder. Use this when the user wants to remove or cancel a reminder. Examples: "delete my dentist reminder", "cancel the meeting reminder", "remove the reminder about calling John".',
+          'Permanently delete or cancel a reminder. Use this when the user no longer needs a reminder and wants to remove it completely from the system. Trigger phrases: "delete", "remove", "cancel", "get rid of", "clear", "erase". Examples: "delete my dentist reminder", "cancel the meeting reminder", "remove the reminder about calling John", "get rid of all reminders for tomorrow", "clear my workout reminder".',
         inputSchema: z.object({
           searchQuery: z
             .string()
@@ -437,7 +441,7 @@ export class ToolsRegistry {
 
       listReminders: tool({
         description:
-          'List all reminders for the user with optional filters. Use this when the user wants to see their reminders. Examples: "show me my reminders", "list all my pending reminders", "what reminders do I have?".',
+          'Display a list of the user\'s reminders with optional filtering by status (pending/completed/all), date range, and sorting. Use this when the user wants to view, see, or check their reminders without a specific search query. Trigger phrases: "list", "show", "display", "what reminders", "my reminders", "all reminders". Examples: "show me my reminders", "list all my pending reminders", "what reminders do I have?", "display completed reminders", "show me all reminders for next week".',
         inputSchema: z.object({
           status: z
             .enum(["pending", "completed", "all"])
@@ -460,7 +464,7 @@ export class ToolsRegistry {
 
       completeReminder: tool({
         description:
-          'Mark a reminder as completed. Use this when the user has finished a task and wants to mark it as done. Examples: "mark the dentist reminder as done", "complete the meeting reminder", "I finished calling John".',
+          'Mark a reminder as completed or done. Use this when the user has finished the task associated with a reminder and wants to mark it as complete. This does NOT delete the reminder, just changes its status to completed. Trigger phrases: "mark as done", "complete", "finished", "completed", "mark as complete", "done with", "I did". Examples: "mark the dentist reminder as done", "complete the meeting reminder", "I finished calling John", "done with my workout reminder", "completed the grocery shopping reminder".',
         inputSchema: z.object({
           searchQuery: z
             .string()
@@ -478,6 +482,7 @@ export class ToolsRegistry {
           }
 
           return await this.reminderService.completeReminder({
+            userId,
             reminderId: searchResult.results[0].id,
           });
         },
@@ -485,7 +490,7 @@ export class ToolsRegistry {
 
       createList: tool({
         description:
-          'Create a new list for the user. Use this when the user wants to create a shopping list, todo list, or any other type of list. Examples: "create a shopping list", "make a list called groceries", "start a new todo list".',
+          'Create a new named list (shopping list, todo list, task list, etc.). Use this when the user explicitly wants to create a new list container. Trigger phrases: "create a list", "make a list", "start a list", "new list". Examples: "create a shopping list", "make a list called groceries", "start a new todo list", "create a vacation packing list", "make a work tasks list".',
         inputSchema: z.object({
           name: z.string().describe("Name of the list"),
           description: z
@@ -507,7 +512,7 @@ export class ToolsRegistry {
 
       addItemToList: tool({
         description:
-          'Add items to an existing list or create a new list if it doesn\'t exist. Use this when the user wants to add items to a list. Examples: "add milk to my shopping list", "add buy groceries to my todo list", "put eggs and bread on the shopping list".',
+          'Add one or more items to an existing list. If the list doesn\'t exist, it will be created automatically. Use this when the user wants to add, put, or append items to a list. Trigger phrases: "add to", "put on", "add [item] to [list]", "include in". Examples: "add milk to my shopping list", "add buy groceries to my todo list", "put eggs and bread on the shopping list", "add workout to my daily tasks", "include meeting notes in my work list".',
         inputSchema: z.object({
           listName: z.string().describe("Name of the list"),
           items: z.array(z.string()).describe("Items to add to the list"),
@@ -532,7 +537,7 @@ export class ToolsRegistry {
 
       getLists: tool({
         description:
-          'Get all lists for the user. Use this when the user wants to see their lists. Examples: "show me my lists", "what lists do I have?", "list all my lists".',
+          'Display all lists the user has created. Use this when the user wants to see an overview of all their lists (shopping lists, todo lists, etc.). Trigger phrases: "show my lists", "what lists", "all lists", "list my lists", "display lists". Examples: "show me my lists", "what lists do I have?", "list all my lists", "display all my lists", "what lists have I created?".',
         inputSchema: z.object({
           includeItems: z
             .boolean()
@@ -549,7 +554,7 @@ export class ToolsRegistry {
       }),
 
       searchReminders: tool({
-        description: "Search for reminders by text query.",
+        description: 'Search and find reminders by keyword, title, or content. Use this when the user wants to find specific reminders using a search term or phrase. Trigger phrases: "find", "search", "look for", "where is", "do I have a reminder about". Examples: "find my dentist reminder", "search for reminders about John", "look for meeting reminders", "do I have a reminder about groceries?", "search for all work-related reminders".',
         inputSchema: z.object({
           query: z.string().describe("Search query"),
           limit: z.number().optional().describe("Maximum results"),
@@ -569,7 +574,7 @@ export class ToolsRegistry {
 
       snoozeReminder: tool({
         description:
-          "Snooze a reminder to a later time. Use this when the user wants to postpone a reminder.",
+          'Postpone or delay a reminder to a later time or date. Use this when the user wants to temporarily push back a reminder without deleting it. The reminder will trigger again at the new time. Trigger phrases: "snooze", "postpone", "delay", "push back", "remind me later", "move it to". Examples: "snooze my alarm for 10 minutes", "postpone the meeting reminder to 3pm", "delay the dentist reminder until tomorrow", "remind me about this in 2 hours", "push back my workout to 7pm".',
         inputSchema: z.object({
           searchQuery: z
             .string()
@@ -592,6 +597,7 @@ export class ToolsRegistry {
           }
 
           return await this.reminderService.snoozeReminder({
+            userId,
             reminderId: searchResult.results[0].id,
             snoozeUntil: params.snoozeUntil,
           });
@@ -600,7 +606,7 @@ export class ToolsRegistry {
 
       getUpcomingReminders: tool({
         description:
-          "Get upcoming reminders for a specific timeframe. Use this when the user asks about reminders coming up today, tomorrow, this week, or this month.",
+          'Retrieve reminders scheduled for a specific upcoming timeframe: today, tomorrow, this week, or this month. Use this when the user asks about future reminders within a defined time period. Trigger phrases: "what\'s coming up", "upcoming", "what do I have", "reminders for", "what\'s scheduled", "what\'s next". Examples: "what reminders do I have today?", "show me tomorrow\'s reminders", "what\'s coming up this week?", "reminders for this month", "what do I have scheduled today?".',
         inputSchema: z.object({
           timeframe: z
             .enum(["today", "tomorrow", "week", "month"])
@@ -621,7 +627,7 @@ export class ToolsRegistry {
 
       batchCreateReminders: tool({
         description:
-          "Create multiple reminders at once. For complex recurrence, each reminder can include an RRULE in recurrenceRule (e.g., FREQ=MONTHLY;BYDAY=SA;BYSETPOS=2,4).",
+          'Create multiple reminders in a single operation. Use this when the user provides a list of multiple tasks or events they want to be reminded about. This is more efficient than creating reminders one by one. Trigger phrases: "remind me to [list of things]", "set reminders for", "create reminders for", "I need reminders for". Examples: "remind me to call mom, buy groceries, and pay bills", "set reminders for my meetings tomorrow at 10am, 2pm, and 4pm", "create reminders for all my tasks: workout, study, cook dinner".',
         inputSchema: z.object({
           reminders: z
             .array(
@@ -656,7 +662,7 @@ export class ToolsRegistry {
 
       getListItems: tool({
         description:
-          'Get items from a specific list. Use this when the user wants to see what\'s in a particular list. Examples: "show me my shopping list", "what\'s on my todo list?", "display the groceries list".',
+          'Display all items within a specific named list. Use this when the user wants to see the contents or items of a particular list. Trigger phrases: "show [list name]", "what\'s on", "what\'s in", "display [list]", "view [list]". Examples: "show me my shopping list", "what\'s on my todo list?", "display the groceries list", "what\'s in my work tasks?", "view my vacation packing list".',
         inputSchema: z.object({
           listName: z.string().describe("Name of the list to get items from"),
           includeCompleted: z
@@ -675,7 +681,7 @@ export class ToolsRegistry {
 
       removeItemFromList: tool({
         description:
-          'Remove items from a list. Use this when the user wants to delete or remove items from a list. Examples: "remove milk from my shopping list", "delete eggs from the groceries list", "take bread off the shopping list".',
+          'Delete or remove specific items from a list. Use this when the user wants to take items off a list (e.g., after buying them or completing them). Trigger phrases: "remove", "delete", "take off", "remove [item] from [list]", "delete [item]". Examples: "remove milk from my shopping list", "delete eggs from the groceries list", "take bread off the shopping list", "remove workout from my todo list", "delete completed items".',
         inputSchema: z.object({
           listName: z.string().describe("Name of the list"),
           itemText: z
@@ -693,7 +699,7 @@ export class ToolsRegistry {
 
       updateListItem: tool({
         description:
-          'Update a list item (mark as completed, change content, or reorder). Use this when the user wants to check off an item or modify it. Examples: "mark milk as done", "check off eggs from the list", "complete buy groceries".',
+          'Modify a list item: mark it as completed/uncompleted, change its content, or reorder it. Use this when the user wants to check off, update, or edit an item within a list. Trigger phrases: "mark as done", "check off", "complete", "mark as complete", "update [item]", "change [item]". Examples: "mark milk as done", "check off eggs from the list", "complete buy groceries", "mark workout as complete", "update meeting notes to include agenda".',
         inputSchema: z.object({
           listName: z.string().describe("Name of the list containing the item"),
           itemText: z
@@ -736,7 +742,7 @@ export class ToolsRegistry {
 
       deleteList: tool({
         description:
-          'Delete an entire list. Use this when the user wants to remove a whole list. Examples: "delete my shopping list", "remove the groceries list", "get rid of my todo list".',
+          'Permanently delete an entire list and all its items. Use this when the user wants to remove a complete list, not just individual items. Trigger phrases: "delete [list]", "remove [list]", "get rid of [list]", "clear [list]". Examples: "delete my shopping list", "remove the groceries list", "get rid of my todo list", "delete the vacation packing list", "clear my work tasks list".',
         inputSchema: z.object({
           listName: z.string().describe("Name of the list to delete"),
         }),
@@ -750,7 +756,7 @@ export class ToolsRegistry {
 
       searchLists: tool({
         description:
-          'Search for lists or items within lists. Use this when the user wants to find something in their lists. Examples: "find milk in my lists", "search for eggs", "where is buy groceries?".',
+          'Search across all lists and their items to find specific content. Use this when the user wants to locate a list or item but doesn\'t remember which list it\'s in. Trigger phrases: "find", "search", "where is", "look for", "do I have". Examples: "find milk in my lists", "search for eggs", "where is buy groceries?", "do I have bread on any list?", "look for workout in my lists".',
         inputSchema: z.object({
           query: z.string().describe("Search query"),
           searchIn: z
@@ -771,7 +777,7 @@ export class ToolsRegistry {
 
       getUserSettings: tool({
         description:
-          'Get the user\'s current settings including timezone, language, and notification preferences. Use this when the user asks about their settings. Examples: "what are my settings?", "what\'s my timezone?", "show my preferences".',
+          'Retrieve the user\'s current configuration settings including timezone, language, notification preferences, and quiet hours. Use this when the user wants to view or check their current settings. Trigger phrases: "my settings", "what are my settings", "show settings", "my preferences", "what\'s my timezone", "my configuration". Examples: "what are my settings?", "what\'s my timezone?", "show my preferences", "what\'s my current language?", "display my notification settings".',
         inputSchema: z.object({}),
         execute: async () => {
           return await this.userService.getUserSettings(userId);
@@ -780,7 +786,7 @@ export class ToolsRegistry {
 
       updateUserSettings: tool({
         description:
-          'Update user settings like timezone, language, or notification preferences. Use this when the user wants to change their settings. Examples: "change my timezone to EST", "set my language to Spanish", "turn off notifications".',
+          'Modify user configuration settings such as timezone, language, or notification preferences. Use this when the user wants to change, update, or configure their settings. Trigger phrases: "change", "set", "update", "configure", "switch", "turn on/off". Examples: "change my timezone to EST", "set my language to Spanish", "turn off notifications", "update my timezone to Asia/Kolkata", "switch language to French", "enable notifications".',
         inputSchema: z.object({
           timezone: z
             .string()
@@ -815,7 +821,7 @@ export class ToolsRegistry {
 
       setQuietHours: tool({
         description:
-          'Set quiet hours when the user doesn\'t want to receive notifications. Use this when the user wants to configure do-not-disturb times. Examples: "set quiet hours from 10pm to 7am", "don\'t disturb me between 11pm and 8am", "turn on quiet hours".',
+          'Configure do-not-disturb time windows when the user doesn\'t want to receive reminder notifications. Use this when the user wants to set, enable, disable, or modify quiet hours. Trigger phrases: "quiet hours", "do not disturb", "don\'t disturb", "DND", "silent hours", "no notifications". Examples: "set quiet hours from 10pm to 7am", "don\'t disturb me between 11pm and 8am", "turn on quiet hours", "enable do not disturb from 9pm to 6am", "disable quiet hours", "set DND for weekends".',
         inputSchema: z.object({
           enabled: z.boolean().describe("Enable or disable quiet hours"),
           startTime: z

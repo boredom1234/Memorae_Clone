@@ -81,22 +81,39 @@ export class ReminderScheduler {
     try {
       const now = new Date().toISOString();
 
-      // Query for reminders that are:
-      // 1. Status is 'pending'
-      // 2. Reminder time is in the past or now
-      const { data: dueReminders, error } = await this.supabase
-        .from("reminders")
-        .select(
-          "id, user_id, title, notes, priority, reminder_time, is_recurring, recurrence_rule, recurrence_end_date",
-        )
-        .eq("status", "pending")
-        .lte("reminder_time", now)
-        .order("reminder_time", { ascending: true })
-        .limit(50); // Process max 50 reminders per check
+      // First, try to claim via RPC using SKIP LOCKED
+      let dueReminders: any[] | null = null;
+      let usedRpc = false;
+      try {
+        const { data: claimed, error: rpcError } = await this.supabase.rpc(
+          "claim_due_reminders",
+          { now_ts: now, batch_size: 50 },
+        );
+        if (!rpcError && Array.isArray(claimed)) {
+          dueReminders = claimed as any[];
+          usedRpc = true;
+        }
+      } catch (e) {
+        logWarn("RPC claim_due_reminders not available, falling back", { e });
+      }
 
-      if (error) {
-        logError("Failed to fetch due reminders", error);
-        return;
+      // Fallback: read due reminders without claim (will per-row claim below)
+      if (!dueReminders) {
+        const { data, error } = await this.supabase
+          .from("reminders")
+          .select(
+            "id, user_id, title, notes, priority, reminder_time, is_recurring, recurrence_rule, recurrence_end_date",
+          )
+          .eq("status", "pending")
+          .lte("reminder_time", now)
+          .order("reminder_time", { ascending: true })
+          .limit(50);
+
+        if (error) {
+          logError("Failed to fetch due reminders (fallback)", error);
+          return;
+        }
+        dueReminders = data || [];
       }
 
       if (!dueReminders || dueReminders.length === 0) {
@@ -110,6 +127,23 @@ export class ReminderScheduler {
       // Process each due reminder
       for (const reminder of dueReminders) {
         try {
+          // If we didn't use RPC to claim, attempt a per-row claim here
+          if (!usedRpc) {
+            const claim = await this.supabase
+              .from("reminders")
+              .update({ updated_at: new Date().toISOString() })
+              .eq("id", reminder.id)
+              .eq("status", "pending")
+              .lte("reminder_time", now)
+              .select("id")
+              .single();
+
+            if (claim.error || !claim.data) {
+              // Another worker likely claimed/processed it
+              continue;
+            }
+          }
+
           // Send notification
           if (this.onReminderDue) {
             await this.onReminderDue({

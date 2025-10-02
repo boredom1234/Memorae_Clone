@@ -17,6 +17,30 @@ export class WhatsAppService {
   private logger = pino({ level: "info" });
   private onMessageCallback?: (context: MessageContext) => Promise<void>;
 
+  /**
+   * Check if a phone number is allowed based on the allowedNumbers configuration
+   * @param phoneNumber The phone number to check
+   * @returns true if the number is allowed, false otherwise
+   */
+  private isNumberAllowed(phoneNumber: string): boolean {
+    const allowedNumbers = config.whatsapp.allowedNumbers;
+    
+    // If no allowed numbers configured, allow all
+    if (allowedNumbers.length === 0) {
+      return true;
+    }
+    
+    // If "all" is in the allowed numbers, allow all
+    if (allowedNumbers.some(num => num.toLowerCase() === "all")) {
+      return true;
+    }
+    
+    // Check if the phone number matches any of the allowed numbers
+    return allowedNumbers.some(allowedNum => 
+      phoneNumber.includes(allowedNum) || allowedNum.includes(phoneNumber)
+    );
+  }
+
   constructor(config: WhatsAppServiceConfig) {
     this.connection = new WhatsAppConnection(config);
     this.messageHandler = new MessageHandler();
@@ -79,20 +103,12 @@ export class WhatsAppService {
           return;
         }
 
-        // Check whitelist if configured
-        if (config.whatsapp.allowedNumbers.length > 0) {
-          const isAllowed = config.whatsapp.allowedNumbers.some(
-            (allowedNum) =>
-              chatPartner.includes(allowedNum) ||
-              allowedNum.includes(chatPartner),
+        // Check if number is allowed
+        if (!this.isNumberAllowed(chatPartner)) {
+          this.logger.debug(
+            `Ignoring message from non-allowed number: ${chatPartner} (mode 1)`,
           );
-
-          if (!isAllowed) {
-            this.logger.debug(
-              `Ignoring message from non-whitelisted number: ${chatPartner} (mode 1)`,
-            );
-            return;
-          }
+          return;
         }
 
         this.logger.debug(`Accepting message from ${chatPartner} (mode 1)`);
@@ -117,20 +133,12 @@ export class WhatsAppService {
           return;
         }
 
-        // If it's not self-chat, check whitelist
-        if (!isSelfChat && config.whatsapp.allowedNumbers.length > 0) {
-          const isAllowed = config.whatsapp.allowedNumbers.some(
-            (allowedNum) =>
-              chatPartner.includes(allowedNum) ||
-              allowedNum.includes(chatPartner),
+        // If it's not self-chat, check if number is allowed
+        if (!isSelfChat && !this.isNumberAllowed(chatPartner)) {
+          this.logger.debug(
+            `Ignoring message from non-allowed number: ${chatPartner} (mode 3)`,
           );
-
-          if (!isAllowed) {
-            this.logger.debug(
-              `Ignoring message from non-whitelisted number: ${chatPartner} (mode 3)`,
-            );
-            return;
-          }
+          return;
         }
 
         this.logger.debug("Accepting message (mode 3)");

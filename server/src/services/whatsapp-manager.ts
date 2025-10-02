@@ -23,6 +23,11 @@ export class WhatsAppManager {
     });
   }
 
+  // Public status
+  isSchedulerRunning(): boolean {
+    return this.reminderScheduler.isSchedulerRunning();
+  }
+
   async initialize(): Promise<void> {
     if (this.isInitialized) {
       this.logger.warn("WhatsApp manager already initialized");
@@ -64,7 +69,9 @@ export class WhatsAppManager {
       // Get user's WhatsApp ID from database
       const { data: user, error } = await this.supabase
         .from("users")
-        .select("whatsapp_id, phone_number, name")
+        .select(
+          "whatsapp_id, phone_number, name, timezone, notification_enabled, quiet_hours_enabled, quiet_hours_start, quiet_hours_end, quiet_hours_days",
+        )
         .eq("id", reminder.userId)
         .single();
 
@@ -74,6 +81,25 @@ export class WhatsAppManager {
           "Failed to get user for reminder notification",
         );
         return;
+      }
+
+      // De-duplication: skip if already sent around this reminder time
+      try {
+        const { data: existingNotifs } = await this.supabase
+          .from("notification_history")
+          .select("id")
+          .eq("reminder_id", reminder.id)
+          .in("status", ["sent", "delivered"]) as any;
+        // Optionally filter by sent_at >= windowStart if available
+        if (existingNotifs && existingNotifs.length > 0) {
+          this.logger.info(
+            { reminderId: reminder.id },
+            "Skipping notification - already sent",
+          );
+          return;
+        }
+      } catch (e) {
+        this.logger.warn({ e }, "De-duplication check failed, proceeding");
       }
 
       // Format the reminder notification message
@@ -89,21 +115,20 @@ export class WhatsAppManager {
         low: "Low Priority",
       }[reminder.priority];
 
-      // Format the reminder time
+      // Format the reminder time in user's timezone
       const reminderTime = new Date(reminder.reminderTime);
       const now = new Date();
       const timeStr = reminderTime.toLocaleTimeString("en-US", {
         hour: "numeric",
         minute: "2-digit",
         hour12: true,
+        timeZone: user.timezone || "UTC",
       });
       const dateStr = reminderTime.toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
-        year:
-          reminderTime.getFullYear() !== now.getFullYear()
-            ? "numeric"
-            : undefined,
+        year: reminderTime.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+        timeZone: user.timezone || "UTC",
       });
 
       let message = `${priorityEmoji} *REMINDER ALERT*\n`;
@@ -123,6 +148,77 @@ export class WhatsAppManager {
 
       message += `\n━━━━━━━━━━━━━━━━━━━━`;
 
+      // Respect notification_enabled and quiet hours
+      const notificationsEnabled = user.notification_enabled !== false;
+      if (!notificationsEnabled) {
+        this.logger.info(
+          { userId: reminder.userId },
+          "Notifications disabled for user, skipping",
+        );
+        await this.supabase.from("notification_history").insert({
+          user_id: reminder.userId,
+          type: "reminder",
+          content: message,
+          reminder_id: reminder.id,
+          status: "pending",
+          error_message: "Notifications disabled",
+        });
+        return;
+      }
+
+      const withinQuietHours = (() => {
+        if (!user.quiet_hours_enabled) return false;
+        try {
+          const tz = user.timezone || "UTC";
+          const localNow = new Date(new Date().toLocaleString("en-US", { timeZone: tz }));
+          const dayNames = [
+            "sunday",
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+            "saturday",
+          ];
+          if (Array.isArray(user.quiet_hours_days) && user.quiet_hours_days.length > 0) {
+            const today = dayNames[localNow.getDay()];
+            if (!user.quiet_hours_days.includes(today)) return false;
+          }
+          const start = user.quiet_hours_start || "22:00";
+          const end = user.quiet_hours_end || "07:00";
+          const [sh, sm] = start.split(":").map((n: string) => parseInt(n, 10));
+          const [eh, em] = end.split(":").map((n: string) => parseInt(n, 10));
+          const startD = new Date(localNow);
+          startD.setHours(sh, sm, 0, 0);
+          const endD = new Date(localNow);
+          endD.setHours(eh, em, 0, 0);
+          if (startD <= endD) {
+            return localNow >= startD && localNow <= endD;
+          } else {
+            // overnight window
+            return localNow >= startD || localNow <= endD;
+          }
+        } catch {
+          return false;
+        }
+      })();
+
+      if (withinQuietHours) {
+        this.logger.info(
+          { userId: reminder.userId },
+          "Within quiet hours, deferring notification",
+        );
+        await this.supabase.from("notification_history").insert({
+          user_id: reminder.userId,
+          type: "reminder",
+          content: message,
+          reminder_id: reminder.id,
+          status: "pending",
+          error_message: "Deferred due to quiet hours",
+        });
+        return;
+      }
+
       // Send the notification via WhatsApp
       if (this.whatsappService) {
         const whatsappJid = user.whatsapp_id;
@@ -132,6 +228,14 @@ export class WhatsAppManager {
         });
 
         if (success) {
+          await this.supabase.from("notification_history").insert({
+            user_id: reminder.userId,
+            type: "reminder",
+            content: message,
+            reminder_id: reminder.id,
+            status: "sent",
+            sent_at: new Date().toISOString(),
+          });
           this.logger.info(
             {
               reminderId: reminder.id,
@@ -141,6 +245,15 @@ export class WhatsAppManager {
             `✅ Reminder notification sent`,
           );
         } else {
+          await this.supabase.from("notification_history").insert({
+            user_id: reminder.userId,
+            type: "reminder",
+            content: message,
+            reminder_id: reminder.id,
+            status: "failed",
+            error_message: "Failed to send via WhatsApp",
+            retry_count: 0,
+          });
           this.logger.error(
             {
               reminderId: reminder.id,
@@ -165,8 +278,10 @@ export class WhatsAppManager {
       // Process the message and get result
       const result = await this.messageController.handleMessage(context);
 
-      // Get response message
-      const responseText = this.messageController.getResponseMessage(result);
+      // Get response message (prefer pre-rendered text with user's timezone)
+      const responseText = (result && result.renderedText)
+        ? result.renderedText
+        : this.messageController.getResponseMessage(result);
 
       // Send response
       if (this.whatsappService && responseText) {

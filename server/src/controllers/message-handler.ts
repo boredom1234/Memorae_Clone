@@ -5,6 +5,7 @@ import { SupermemoryService } from "../services/supermemory-service";
 import { User } from "../models/types";
 import pino from "pino";
 import { config } from "../config/env";
+import { formatInZone } from "../utils/time-utils";
 
 export class MessageController {
   private logger = pino({ level: "info" });
@@ -240,6 +241,7 @@ export class MessageController {
         text: result.text,
         toolCalls: result.toolCalls,
         toolResults: result.toolResults,
+        renderedText: this.getResponseMessage(result, user.timezone),
       };
     } catch (error: any) {
       this.logger.error({ error }, `Failed to process message with AI`);
@@ -264,7 +266,7 @@ export class MessageController {
   }
 
   // Public method to get response for WhatsApp
-  getResponseMessage(result: any): string {
+  getResponseMessage(result: any, timezone?: string): string {
     if (!result) return "Done!";
 
     // If result has text from AI, use that
@@ -280,10 +282,12 @@ export class MessageController {
         return "No reminders found.";
       }
       return `📅 Your reminders:\n${result.reminders
-        .map(
-          (r: any, i: number) =>
-            `${i + 1}. ${r.title} - ${new Date(r.reminderTime).toLocaleString()}`,
-        )
+        .map((r: any, i: number) => {
+          const ts = timezone
+            ? formatInZone(r.reminderTime, timezone)
+            : new Date(r.reminderTime).toLocaleString();
+          return `${i + 1}. ${r.title} - ${ts}`;
+        })
         .join("\n")}`;
     }
 
@@ -293,10 +297,12 @@ export class MessageController {
         return "No reminders found matching your search.";
       }
       return `🔍 Found ${result.total} reminder(s):\n${result.results
-        .map(
-          (r: any, i: number) =>
-            `${i + 1}. ${r.title} - ${new Date(r.reminderTime).toLocaleString()}`,
-        )
+        .map((r: any, i: number) => {
+          const ts = timezone
+            ? formatInZone(r.reminderTime, timezone)
+            : new Date(r.reminderTime).toLocaleString();
+          return `${i + 1}. ${r.title} - ${ts}`;
+        })
         .join("\n")}`;
     }
 
@@ -325,10 +331,7 @@ export class MessageController {
         return `List "${result.listName || "Unknown"}" is empty.`;
       }
       return `📝 ${result.listName}:\n${result.items
-        .map(
-          (item: any, i: number) =>
-            `${i + 1}. ${item.isCompleted ? "✅" : "⬜"} ${item.content}`,
-        )
+        .map((item: any, i: number) => `${i + 1}. ${item.isCompleted ? "✅" : "⬜"} ${item.content}`)
         .join("\n")}`;
     }
 

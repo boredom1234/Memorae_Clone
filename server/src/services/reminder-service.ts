@@ -19,30 +19,12 @@ import {
   ValidationError,
 } from "../utils/errors";
 import { logInfo, logError, logAudit, logPerformance } from "../utils/logger";
+import { toUTC } from "../utils/time-utils";
+import { DateTime } from "luxon";
 
 export class ReminderService {
   private supabase = getSupabaseClient();
-  private readonly MAX_RETRY_ATTEMPTS = 3;
-  private readonly RETRY_DELAY_MS = 1000;
-
-  // Ensure ISO 8601 with timezone (Z) if missing
-  private normalizeISODate(input: string): string {
-    if (!input || typeof input !== "string") return input;
-    // If already has timezone (Z or +HH:MM/-HH:MM), return as-is
-    if (/Z$/i.test(input) || /[+-]\d{2}:?\d{2}$/.test(input)) {
-      return input;
-    }
-    // If matches YYYY-MM-DDTHH:MM or YYYY-MM-DDTHH:MM:SS (no timezone), append Z
-    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(input)) {
-      // Ensure seconds exist
-      const withSeconds = /:\d{2}$/.test(input) ? input : `${input}:00`;
-      return `${withSeconds}Z`;
-    }
-    // Fallback: try Date parse and return ISO if valid
-    const d = new Date(input);
-    if (!isNaN(d.getTime())) return d.toISOString();
-    return input;
-  }
+  
 
   async createReminder(params: {
     userId: string;
@@ -62,14 +44,8 @@ export class ReminderService {
     const startTime = Date.now();
 
     try {
-      // Normalize reminderTime to valid ISO 8601 with timezone if missing
-      const normalized = {
-        ...params,
-        reminderTime: this.normalizeISODate(params.reminderTime),
-      };
-
-      // Validate input
-      const validatedParams = validate(createReminderSchema, normalized);
+      // Validate input (timezone presence enforced by schema)
+      const validatedParams = validate(createReminderSchema, params);
 
       logInfo("Creating reminder", {
         userId: params.userId,
@@ -81,7 +57,7 @@ export class ReminderService {
         .insert({
           user_id: validatedParams.userId,
           title: validatedParams.title,
-          reminder_time: validatedParams.reminderTime,
+          reminder_time: toUTC(validatedParams.reminderTime),
           is_recurring: validatedParams.isRecurring,
           recurrence_rule: validatedParams.recurrenceRule,
           notes: validatedParams.notes,
@@ -121,6 +97,7 @@ export class ReminderService {
   }
 
   async updateReminder(params: {
+    userId: string;
     reminderId: string;
     title?: string;
     reminderTime?: string;
@@ -142,8 +119,9 @@ export class ReminderService {
       // Check if reminder exists
       const { data: existing, error: checkError } = await this.supabase
         .from("reminders")
-        .select("id, status")
+        .select("id, status, user_id")
         .eq("id", validatedParams.reminderId)
+        .eq("user_id", validatedParams.userId)
         .single();
 
       if (checkError || !existing) {
@@ -157,7 +135,7 @@ export class ReminderService {
       const updateData: any = {};
       if (validatedParams.title) updateData.title = validatedParams.title;
       if (validatedParams.reminderTime)
-        updateData.reminder_time = validatedParams.reminderTime;
+        updateData.reminder_time = toUTC(validatedParams.reminderTime);
       if (validatedParams.isRecurring !== undefined)
         updateData.is_recurring = validatedParams.isRecurring;
       if (validatedParams.recurrenceRule)
@@ -172,6 +150,7 @@ export class ReminderService {
         .from("reminders")
         .update(updateData)
         .eq("id", validatedParams.reminderId)
+        .eq("user_id", validatedParams.userId)
         .select()
         .single();
 
@@ -344,6 +323,7 @@ export class ReminderService {
   }
 
   async snoozeReminder(params: {
+    userId: string;
     reminderId: string;
     snoozeUntil: string;
     snoozeDuration?: number;
@@ -359,6 +339,7 @@ export class ReminderService {
         .from("reminders")
         .select("id, status, snooze_count, user_id")
         .eq("id", validatedParams.reminderId)
+        .eq("user_id", validatedParams.userId)
         .single();
 
       if (checkError || !existing) {
@@ -369,15 +350,17 @@ export class ReminderService {
         throw new ValidationError("Cannot snooze a completed reminder");
       }
 
+      // Fix snooze flow: move reminder_time forward and keep status pending
       const { data, error } = await this.supabase
         .from("reminders")
         .update({
-          status: "snoozed",
-          snoozed_until: validatedParams.snoozeUntil,
+          status: "pending",
+          reminder_time: toUTC(validatedParams.snoozeUntil),
           snooze_count: (existing.snooze_count || 0) + 1,
           updated_at: new Date().toISOString(),
         })
         .eq("id", validatedParams.reminderId)
+        .eq("user_id", validatedParams.userId)
         .select()
         .single();
 
@@ -408,6 +391,7 @@ export class ReminderService {
   }
 
   async completeReminder(params: {
+    userId: string;
     reminderId: string;
   }): Promise<{ success: boolean; message: string }> {
     const startTime = Date.now();
@@ -421,6 +405,7 @@ export class ReminderService {
         .from("reminders")
         .select("id, status, user_id")
         .eq("id", validatedParams.reminderId)
+        .eq("user_id", validatedParams.userId)
         .single();
 
       if (checkError || !existing) {
@@ -441,7 +426,8 @@ export class ReminderService {
           completed_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq("id", validatedParams.reminderId);
+        .eq("id", validatedParams.reminderId)
+        .eq("user_id", validatedParams.userId);
 
       if (error) {
         throw error;
@@ -483,36 +469,45 @@ export class ReminderService {
       // Validate input
       const validatedParams = validate(getUpcomingRemindersSchema, params);
 
-      const now = new Date();
-      let endDate: Date;
+      // Fetch user's timezone
+      const { data: userTzRow } = await this.supabase
+        .from("users")
+        .select("timezone")
+        .eq("id", validatedParams.userId)
+        .single();
+      const tz = userTzRow?.timezone || "UTC";
 
+      // Compute window in user's timezone, then convert to UTC
+      const zoneNow = DateTime.now().setZone(tz);
+      let start = zoneNow;
+      let end: DateTime;
       switch (validatedParams.timeframe) {
         case "today":
-          endDate = new Date(now);
-          endDate.setHours(23, 59, 59, 999);
+          // From now until end of day
+          end = zoneNow.endOf("day");
           break;
         case "tomorrow":
-          endDate = new Date(now);
-          endDate.setDate(endDate.getDate() + 1);
-          endDate.setHours(23, 59, 59, 999);
+          // Only tomorrow's day window
+          start = zoneNow.plus({ days: 1 }).startOf("day");
+          end = zoneNow.plus({ days: 1 }).endOf("day");
           break;
         case "week":
-          endDate = new Date(now);
-          endDate.setDate(endDate.getDate() + 7);
+          end = zoneNow.plus({ days: 7 });
           break;
         case "month":
-          endDate = new Date(now);
-          endDate.setMonth(endDate.getMonth() + 1);
+          end = zoneNow.plus({ months: 1 });
           break;
       }
+      const startUTC = start.toUTC().toISO()!;
+      const endUTC = end.toUTC().toISO()!;
 
       const { data, error } = await this.supabase
         .from("reminders")
         .select("*")
         .eq("user_id", validatedParams.userId)
         .eq("status", "pending")
-        .gte("reminder_time", now.toISOString())
-        .lte("reminder_time", endDate.toISOString())
+        .gte("reminder_time", startUTC)
+        .lte("reminder_time", endUTC)
         .order("reminder_time", { ascending: true })
         .limit(validatedParams.limit || 10);
 
@@ -521,8 +516,9 @@ export class ReminderService {
       }
 
       const reminders = (data || []).map((r) => {
-        const reminderTime = new Date(r.reminder_time);
-        const diffMs = reminderTime.getTime() - now.getTime();
+        const rt = DateTime.fromISO(r.reminder_time, { setZone: true }).toUTC();
+        const nowUTC = DateTime.utc();
+        const diffMs = rt.toMillis() - nowUTC.toMillis();
         const diffMins = Math.floor(diffMs / 60000);
         const diffHours = Math.floor(diffMins / 60);
         const diffDays = Math.floor(diffHours / 24);

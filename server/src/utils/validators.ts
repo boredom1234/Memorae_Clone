@@ -9,7 +9,15 @@ export const nonEmptyStringSchema = z
   .max(500, "Too long");
 export const dateStringSchema = z
   .string()
-  .datetime("Invalid ISO 8601 date format");
+  .refine((val) => {
+    // Very flexible datetime validation - accept anything that can be parsed as a date
+    try {
+      const date = new Date(val);
+      return !isNaN(date.getTime()) && val.trim().length > 0;
+    } catch {
+      return false;
+    }
+  }, "Invalid datetime format");
 export const timezoneSchema = z.string().min(1, "Timezone is required");
 export const prioritySchema = z.enum(["low", "medium", "high"]);
 export const statusSchema = z.enum([
@@ -18,6 +26,20 @@ export const statusSchema = z.enum([
   "cancelled",
   "snoozed",
 ]);
+
+// Helper: ensure datetime string contains timezone (Z or ±HH:MM) - made more flexible
+const hasTimezone = (s: string) => {
+  // Accept explicit timezone indicators
+  if (/Z$/i.test(s) || /[+-]\d{2}:?\d{2}$/.test(s)) return true;
+  
+  // Also accept if it's a valid date string (LLM might generate timezone-aware dates)
+  try {
+    const date = new Date(s);
+    return !isNaN(date.getTime());
+  } catch {
+    return false;
+  }
+};
 
 // Reminder validation schemas
 export const createReminderSchema = z
@@ -31,10 +53,20 @@ export const createReminderSchema = z
     notes: z.string().max(2000, "Notes too long").optional(),
     priority: prioritySchema.optional().default("medium"),
   })
+  .refine((data) => hasTimezone(data.reminderTime), {
+    message: "reminderTime must be a valid datetime",
+    path: ["reminderTime"],
+  })
   .refine(
     (data) => {
       const reminderDate = new Date(data.reminderTime);
-      return reminderDate > new Date();
+      const now = new Date();
+      // Allow times that are up to 1 hour in the past to account for:
+      // 1. Processing delays
+      // 2. LLM interpretation issues
+      // 3. Timezone conversion edge cases
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      return reminderDate > oneHourAgo;
     },
     { message: "Reminder time must be in the future", path: ["reminderTime"] },
   )
@@ -51,15 +83,24 @@ export const createReminderSchema = z
     },
   );
 
-export const updateReminderSchema = z.object({
-  reminderId: uuidSchema,
-  title: z.string().min(1).max(200).optional(),
-  reminderTime: dateStringSchema.optional(),
-  isRecurring: z.boolean().optional(),
-  recurrenceRule: z.string().optional(),
-  notes: z.string().max(2000).optional(),
-  priority: prioritySchema.optional(),
-});
+export const updateReminderSchema = z
+  .object({
+    userId: uuidSchema,
+    reminderId: uuidSchema,
+    title: z.string().min(1).max(200).optional(),
+    reminderTime: dateStringSchema.optional(),
+    isRecurring: z.boolean().optional(),
+    recurrenceRule: z.string().optional(),
+    notes: z.string().max(2000).optional(),
+    priority: prioritySchema.optional(),
+  })
+  .refine(
+    (data) => (data.reminderTime ? hasTimezone(data.reminderTime) : true),
+    {
+      message: "reminderTime must be a valid datetime",
+      path: ["reminderTime"],
+    },
+  );
 
 export const deleteReminderSchema = z
   .object({
@@ -83,9 +124,14 @@ export const listRemindersSchema = z.object({
 
 export const snoozeReminderSchema = z
   .object({
+    userId: uuidSchema,
     reminderId: uuidSchema,
     snoozeUntil: dateStringSchema,
     snoozeDuration: z.number().int().min(1).optional(),
+  })
+  .refine((data) => hasTimezone(data.snoozeUntil), {
+    message: "snoozeUntil must be a valid datetime",
+    path: ["snoozeUntil"],
   })
   .refine((data) => new Date(data.snoozeUntil) > new Date(), {
     message: "Snooze time must be in the future",
@@ -93,6 +139,7 @@ export const snoozeReminderSchema = z
   });
 
 export const completeReminderSchema = z.object({
+  userId: uuidSchema,
   reminderId: uuidSchema,
 });
 

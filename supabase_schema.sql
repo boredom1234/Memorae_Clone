@@ -335,6 +335,35 @@ CREATE TRIGGER sync_reminder_to_list_item AFTER UPDATE ON reminders
   FOR EACH ROW EXECUTE FUNCTION sync_list_item_completion();
 
 -- =============================================
+-- RPC: Claim due reminders atomically (de-dup across workers)
+-- =============================================
+
+-- Claims up to batch_size reminders that are due at or before now_ts.
+-- Uses FOR UPDATE SKIP LOCKED to avoid double-processing across instances.
+CREATE OR REPLACE FUNCTION claim_due_reminders(
+  now_ts TIMESTAMPTZ,
+  batch_size INTEGER DEFAULT 50
+)
+RETURNS SETOF reminders AS $$
+BEGIN
+  RETURN QUERY
+    WITH c AS (
+      SELECT id
+      FROM reminders
+      WHERE status = 'pending' AND reminder_time <= now_ts
+      ORDER BY reminder_time ASC
+      FOR UPDATE SKIP LOCKED
+      LIMIT batch_size
+    )
+    UPDATE reminders r
+    SET updated_at = NOW()
+    FROM c
+    WHERE r.id = c.id
+    RETURNING r.*;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- =============================================
 -- ROW LEVEL SECURITY (RLS)
 -- =============================================
 
