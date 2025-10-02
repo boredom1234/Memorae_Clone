@@ -2,6 +2,7 @@ import { UserService } from "./user-service";
 import { ReminderService } from "./reminder-service";
 import { ListService } from "./list-service";
 import { UtilityService } from "./utility-service";
+import { NotesService } from "./notes-service";
 import { AppError } from "../utils/errors";
 import { logError, logInfo } from "../utils/logger";
 import { tool } from "ai";
@@ -13,12 +14,14 @@ export class ToolsRegistry {
   private reminderService: ReminderService;
   private listService: ListService;
   private utilityService: UtilityService;
+  private notesService: NotesService;
 
   constructor() {
     this.userService = new UserService();
     this.reminderService = new ReminderService();
     this.listService = new ListService();
     this.utilityService = new UtilityService();
+    this.notesService = new NotesService();
   }
 
   // Get all available tools with their schemas
@@ -321,6 +324,11 @@ export class ToolsRegistry {
   // Get utility service for direct access
   getUtilityService() {
     return this.utilityService;
+  }
+
+  // Get notes service for direct access
+  getNotesService() {
+    return this.notesService;
   }
 
   // Get AI SDK compatible tools for tool calling
@@ -875,6 +883,134 @@ export class ToolsRegistry {
           return await this.utilityService.getCurrentTime({
             timezone: tz,
           });
+        },
+      }),
+
+      // Notes/Memory Management
+      createNote: tool({
+        description:
+          'Save and remember arbitrary information, facts, or notes for the user. Use this when the user wants to store information for later retrieval, such as personal details, important facts, project IDs, locations of items, or any other information they want to remember. Trigger phrases: "remember", "note", "save", "store", "keep track", "write down", "take a note". Examples: "remember that I kept my wallet in second shelf", "take a note of my Project ID: 22987AC", "note that my favorite restaurant is XYZ", "remember my car license plate is ABC123", "save this information for later".',
+        inputSchema: z.object({
+          content: z.string().describe("The information/note content to remember"),
+          title: z.string().optional().describe("Optional title for the note"),
+          category: z.string().optional().describe("Category like 'personal', 'work', 'general'"),
+          tags: z.array(z.string()).optional().describe("Optional tags for organization"),
+          isPinned: z.boolean().optional().describe("Mark as important/pinned"),
+        }),
+        execute: async (params) => {
+          return await this.notesService.createNote({
+            userId,
+            content: params.content,
+            title: params.title,
+            category: params.category || 'general',
+            tags: params.tags,
+            isPinned: params.isPinned || false,
+          });
+        },
+      }),
+
+      searchNotes: tool({
+        description:
+          'Search through saved notes and memories to find specific information. Use this when the user is looking for something they previously asked you to remember or when they want to find specific notes. Trigger phrases: "what did I", "find my note", "search", "look for", "do you remember", "what was", "where did I". Examples: "what did I say about my wallet?", "find my note about the project ID", "search for restaurant information", "do you remember where I kept my keys?", "what was my license plate number?".',
+        inputSchema: z.object({
+          query: z.string().describe("Search query to find in notes"),
+          category: z.string().optional().describe("Filter by category"),
+          tags: z.array(z.string()).optional().describe("Filter by tags"),
+          limit: z.number().optional().describe("Maximum results to return"),
+        }),
+        execute: async (params) => {
+          return await this.notesService.searchNotes({
+            userId,
+            query: params.query,
+            category: params.category,
+            tags: params.tags,
+            limit: Math.min(params.limit || 5, 10), // Cap at 10 for performance
+            includeArchived: false,
+          });
+        },
+      }),
+
+      listNotes: tool({
+        description:
+          'Display all saved notes and memories. Use this when the user wants to see all their stored information or get an overview of what they have saved. Trigger phrases: "show my notes", "list my memories", "what have I saved", "all my notes", "my stored information". Examples: "show me all my notes", "list everything I\'ve saved", "what information do I have stored?", "display all my memories".',
+        inputSchema: z.object({
+          category: z.string().optional().describe("Filter by category"),
+          tags: z.array(z.string()).optional().describe("Filter by tags"),
+          onlyPinned: z.boolean().optional().describe("Show only pinned/important notes"),
+          limit: z.number().optional().describe("Maximum results to return"),
+        }),
+        execute: async (params) => {
+          return await this.notesService.listNotes({
+            userId,
+            category: params.category,
+            tags: params.tags,
+            onlyPinned: params.onlyPinned || false,
+            limit: Math.min(params.limit || 10, 15), // Cap at 15 for WhatsApp limits
+            includeArchived: false,
+            sortBy: 'created',
+            sortOrder: 'desc',
+          });
+        },
+      }),
+
+      updateNote: tool({
+        description:
+          'Update or modify an existing note/memory. Use this when the user wants to change, edit, or update information they previously saved. Trigger phrases: "update", "change", "modify", "edit", "correct". Examples: "update my project ID note", "change the wallet location", "modify my restaurant note", "edit that information", "correct my license plate number".',
+        inputSchema: z.object({
+          searchQuery: z.string().describe("Text to search for the note to update"),
+          content: z.string().optional().describe("New content for the note"),
+          title: z.string().optional().describe("New title for the note"),
+          category: z.string().optional().describe("New category"),
+          tags: z.array(z.string()).optional().describe("New tags"),
+          isPinned: z.boolean().optional().describe("Mark as pinned/unpinned"),
+        }),
+        execute: async (params) => {
+          // First search for the note
+          const searchResult = await this.notesService.searchNotes({
+            userId,
+            query: params.searchQuery,
+            limit: 1,
+            includeArchived: false,
+          });
+
+          if (searchResult.notes.length === 0) {
+            throw new Error("Could not find that note");
+          }
+
+          // Update the note
+          return await this.notesService.updateNote({
+            userId,
+            noteId: searchResult.notes[0].id,
+            content: params.content,
+            title: params.title,
+            category: params.category,
+            tags: params.tags,
+            isPinned: params.isPinned,
+          });
+        },
+      }),
+
+      deleteNote: tool({
+        description:
+          'Delete a saved note or memory permanently. Use this when the user no longer needs certain information and wants to remove it. Trigger phrases: "delete", "remove", "forget", "get rid of", "clear". Examples: "delete my wallet note", "remove the project ID information", "forget about the restaurant", "get rid of that note", "clear my license plate info".',
+        inputSchema: z.object({
+          searchQuery: z.string().describe("Text to search for the note to delete"),
+        }),
+        execute: async (params) => {
+          // First search for the note
+          const searchResult = await this.notesService.searchNotes({
+            userId,
+            query: params.searchQuery,
+            limit: 1,
+            includeArchived: false,
+          });
+
+          if (searchResult.notes.length === 0) {
+            throw new Error("Could not find that note");
+          }
+
+          // Delete the note
+          return await this.notesService.deleteNote(userId, searchResult.notes[0].id);
         },
       }),
 

@@ -130,6 +130,20 @@ CREATE TABLE public.shared_reminders (
   CONSTRAINT shared_reminders_reminder_id_fkey FOREIGN KEY (reminder_id) REFERENCES public.reminders(id),
   CONSTRAINT shared_reminders_sender_user_id_fkey FOREIGN KEY (sender_user_id) REFERENCES public.users(id)
 );
+CREATE TABLE public.user_notes (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  user_id uuid NOT NULL,
+  title character varying,
+  content text NOT NULL,
+  tags ARRAY,
+  category character varying DEFAULT 'general'::character varying,
+  is_pinned boolean DEFAULT false,
+  is_archived boolean DEFAULT false,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT user_notes_pkey PRIMARY KEY (id),
+  CONSTRAINT user_notes_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
 CREATE TABLE public.users (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   whatsapp_id character varying NOT NULL UNIQUE,
@@ -147,5 +161,6 @@ CREATE TABLE public.users (
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   last_active_at timestamp with time zone DEFAULT now(),
+  notes_count integer DEFAULT 0,
   CONSTRAINT users_pkey PRIMARY KEY (id)
 );

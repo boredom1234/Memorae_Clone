@@ -363,6 +363,64 @@ export class MessageController {
       return `🕐 Current time: ${result.formattedTime}`;
     }
 
+    // Handle notes responses
+    if (result.notes && Array.isArray(result.notes)) {
+      if (result.notes.length === 0) {
+        return "No notes found.";
+      }
+      
+      const totalText = result.total ? ` (showing ${result.notes.length} of ${result.total})` : '';
+      let response = `📝 Found ${result.notes.length} note(s)${totalText}:\n`;
+      
+      const formattedNotes = result.notes.map((note: any, i: number) => {
+        const title = note.title ? `**${note.title}**` : '';
+        const content = note.content.length > 80 ? 
+          note.content.substring(0, 80) + '...' : 
+          note.content;
+        const tags = note.tags && note.tags.length > 0 ? 
+          ` #${note.tags.slice(0, 3).join(' #')}${note.tags.length > 3 ? '...' : ''}` : '';
+        const pinned = note.isPinned ? '📌 ' : '';
+        return `${i + 1}. ${pinned}${title}${title ? '\n   ' : ''}${content}${tags}`;
+      }).join('\n\n');
+      
+      response += formattedNotes;
+      
+      // Add helpful hints for large result sets
+      if (result.total && result.total > result.notes.length) {
+        response += `\n\n💡 *Tip: Use more specific search terms or categories to narrow results*`;
+      }
+      
+      // Truncate if response is too long (WhatsApp limit ~4000 chars)
+      if (response.length > 3500) {
+        const truncatedNotes = result.notes.slice(0, Math.floor(result.notes.length * 0.7));
+        const newResponse = `📝 Found ${result.notes.length} note(s)${totalText} (showing first ${truncatedNotes.length}):\n`;
+        const truncatedFormatted = truncatedNotes.map((note: any, i: number) => {
+          const title = note.title ? `**${note.title}**` : '';
+          const content = note.content.length > 60 ? 
+            note.content.substring(0, 60) + '...' : 
+            note.content;
+          const pinned = note.isPinned ? '📌 ' : '';
+          return `${i + 1}. ${pinned}${title}${title ? '\n   ' : ''}${content}`;
+        }).join('\n\n');
+        response = newResponse + truncatedFormatted + '\n\n💡 *Use more specific search to see all results*';
+      }
+      
+      return response;
+    }
+
+    // Handle single note response (create/update)
+    if (result.content && result.id) {
+      const title = result.title ? `**${result.title}**` : '';
+      const tags = result.tags && result.tags.length > 0 ? 
+        ` #${result.tags.join(' #')}` : '';
+      return `✅ Note saved!\n${title}${title ? '\n' : ''}${result.content}${tags}`;
+    }
+
+    // Handle note deletion
+    if (result.success === true) {
+      return "✅ Note deleted successfully!";
+    }
+
     return "Done!";
   }
 }
