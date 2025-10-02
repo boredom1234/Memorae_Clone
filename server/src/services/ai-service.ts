@@ -14,6 +14,7 @@ import { fireworks } from "@ai-sdk/fireworks";
 import { deepseek } from "@ai-sdk/deepseek";
 import { cerebras } from "@ai-sdk/cerebras";
 import { config } from "../config/env";
+import { ConversationMessage } from "../types/conversation";
 import pino from "pino";
 
 export class AIService {
@@ -219,6 +220,7 @@ export class AIService {
     userId: string,
     timezone: string,
     tools: any,
+    conversationHistory: ConversationMessage[] = [],
   ): Promise<{
     text: string;
     toolCalls: any[];
@@ -244,13 +246,30 @@ export class AIService {
         // Debug: Log tool names to verify they're being passed
         this.logger.info(`Tools available: ${Object.keys(tools).join(", ")}`);
 
+        // Convert conversation history to AI SDK format
+        const messages = conversationHistory.map(msg => ({
+          role: msg.role,
+          content: msg.content,
+        }));
+
+        // Add current message
+        messages.push({
+          role: 'user' as const,
+          content: message,
+        });
+
         const result = await generateText({
           model: modelConfig.instance,
+          messages,
         system: `You are a helpful AI assistant for a reminder and task management system.
 You help users create, update, delete, and manage reminders and lists through WhatsApp.
 
 When users ask you to do something, use the appropriate tool to help them.
 Be friendly, concise, and helpful in your responses.
+
+IMPORTANT: You have access to conversation history. Use it to understand context from previous messages.
+For example, if a user previously asked "Delete my reminder" and you responded with a list of reminders,
+and now they say "1", you should understand they want to delete the first reminder from that list.
 
 IMPORTANT GUIDELINES:
 
@@ -355,7 +374,6 @@ CURRENT TIME:
 
 Current user timezone: ${timezone}
 Current user ID: ${userId}`,
-        prompt: message,
         tools,
           stopWhen: stepCountIs(5), // Allow up to 5 multi-step tool calls
         });

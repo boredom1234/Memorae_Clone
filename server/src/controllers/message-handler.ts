@@ -2,6 +2,7 @@ import { MessageContext } from "../services/whatsapp";
 import { ToolsRegistry } from "../services/tools-registry";
 import { AIService } from "../services/ai-service";
 import { User } from "../models/types";
+import { ConversationMessage, ConversationContext } from "../types/conversation";
 import pino from "pino";
 import { formatInZone } from "../utils/time-utils";
 import { validateAIInput } from "../middleware/validation";
@@ -11,7 +12,9 @@ export class MessageController {
   private tools: ToolsRegistry;
   private aiService: AIService;
   private userCache: Map<string, User> = new Map();
+  private conversationContexts: Map<string, ConversationContext> = new Map();
   private cacheCleanupInterval: NodeJS.Timeout;
+  private contextCleanupInterval: NodeJS.Timeout;
 
   constructor() {
     this.tools = new ToolsRegistry();
@@ -21,6 +24,11 @@ export class MessageController {
     this.cacheCleanupInterval = setInterval(() => {
       this.cleanupUserCache();
     }, 30 * 60 * 1000);
+
+    // Start conversation context cleanup - clean every 15 minutes
+    this.contextCleanupInterval = setInterval(() => {
+      this.cleanupConversationContexts();
+    }, 15 * 60 * 1000);
   }
 
   async handleMessage(context: MessageContext): Promise<any> {
@@ -101,13 +109,71 @@ export class MessageController {
   }
 
   /**
+   * Clean up old conversation contexts
+   * Remove contexts not accessed in the last 1 hour
+   */
+  private cleanupConversationContexts(): void {
+    const now = Date.now();
+    const maxAge = 60 * 60 * 1000; // 1 hour in milliseconds
+    let cleanedCount = 0;
+
+    for (const [userId, context] of this.conversationContexts.entries()) {
+      if (now - context.lastActivity.getTime() > maxAge) {
+        this.conversationContexts.delete(userId);
+        cleanedCount++;
+      }
+    }
+
+    if (cleanedCount > 0) {
+      this.logger.info(`Cleaned ${cleanedCount} conversation contexts. Active contexts: ${this.conversationContexts.size}`);
+    }
+  }
+
+  /**
+   * Get or create conversation context for a user
+   */
+  private getConversationContext(userId: string): ConversationContext {
+    if (!this.conversationContexts.has(userId)) {
+      this.conversationContexts.set(userId, {
+        userId,
+        messages: [],
+        lastActivity: new Date(),
+        maxMessages: 7, // Keep last 7 messages for context
+      });
+    }
+
+    const context = this.conversationContexts.get(userId)!;
+    context.lastActivity = new Date();
+    return context;
+  }
+
+  /**
+   * Add a message to conversation context
+   */
+  private addToConversationContext(userId: string, message: ConversationMessage): void {
+    const context = this.getConversationContext(userId);
+    context.messages.push(message);
+
+    // Keep only the last N messages to prevent memory bloat
+    if (context.messages.length > context.maxMessages) {
+      context.messages = context.messages.slice(-context.maxMessages);
+    }
+
+    context.lastActivity = new Date();
+  }
+
+  /**
    * Cleanup method for graceful shutdown
    */
   cleanup(): void {
     if (this.cacheCleanupInterval) {
       clearInterval(this.cacheCleanupInterval);
     }
+    if (this.contextCleanupInterval) {
+      clearInterval(this.contextCleanupInterval);
+    }
     this.userCache.clear();
+    this.conversationContexts.clear();
   }
 
   private async handleTextMessage(
@@ -131,28 +197,50 @@ export class MessageController {
 
     this.logger.info(`Text message: \"${validatedText}\"`);
 
+    // Get conversation context
+    const conversationContext = this.getConversationContext(user.id);
+    
+    // Add user message to conversation context
+    this.addToConversationContext(user.id, {
+      role: 'user',
+      content: validatedText,
+      timestamp: new Date(),
+      messageId: context.messageId,
+    });
+
     // Get AI SDK compatible tools
     const tools = this.tools.getAISDKTools(user.id);
 
     // Debug: Log tool structure
     this.logger.info(`Tool keys: ${Object.keys(tools).join(", ")}`);
+    this.logger.info(`Conversation history: ${conversationContext.messages.length} messages`);
     if (tools.createReminder) {
       this.logger.info(
         `createReminder tool exists: ${typeof tools.createReminder}`,
       );
     }
 
-    // Process message with AI tool calling
+    // Process message with AI tool calling and conversation history
     try {
       const result = await this.aiService.processMessageWithTools(
         validatedText,
         user.id,
         user.timezone,
         tools,
+        conversationContext.messages,
       );
 
       this.logger.info(`AI response: ${result.text}`);
       this.logger.info(`Tool calls: ${result.toolCalls.length}`);
+
+      // Add AI response to conversation context
+      if (result.text) {
+        this.addToConversationContext(user.id, {
+          role: 'assistant',
+          content: result.text,
+          timestamp: new Date(),
+        });
+      }
 
       // Return the AI's response text and tool results
       return {
