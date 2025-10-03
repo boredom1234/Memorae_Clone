@@ -20,11 +20,13 @@ export class NotificationRetryService {
   private isRunning = false;
   private retryIntervalMs: number;
   private maxRetries: number;
-  private onRetryCallback?: (notification: RetryableNotification) => Promise<boolean>;
+  private onRetryCallback?: (
+    notification: RetryableNotification,
+  ) => Promise<boolean>;
 
   constructor(
     retryIntervalMs: number = 30000, // Check every 30 seconds
-    maxRetries: number = 5
+    maxRetries: number = 5,
   ) {
     this.retryIntervalMs = retryIntervalMs;
     this.maxRetries = maxRetries;
@@ -33,7 +35,9 @@ export class NotificationRetryService {
   /**
    * Set the callback function to be called when retrying a notification
    */
-  setRetryCallback(callback: (notification: RetryableNotification) => Promise<boolean>) {
+  setRetryCallback(
+    callback: (notification: RetryableNotification) => Promise<boolean>,
+  ) {
     this.onRetryCallback = callback;
   }
 
@@ -103,7 +107,9 @@ export class NotificationRetryService {
         return;
       }
 
-      logInfo(`Processing ${failedNotifications.length} failed notifications for retry`);
+      logInfo(
+        `Processing ${failedNotifications.length} failed notifications for retry`,
+      );
 
       for (const notification of failedNotifications) {
         await this.retryNotification(notification);
@@ -125,21 +131,24 @@ export class NotificationRetryService {
     try {
       // Calculate exponential backoff delay
       const backoffDelay = Math.pow(2, notification.retry_count) * 1000; // 1s, 2s, 4s, 8s, 16s
-      const timeSinceCreated = Date.now() - new Date(notification.created_at).getTime();
+      const timeSinceCreated =
+        Date.now() - new Date(notification.created_at).getTime();
 
       // Skip if not enough time has passed for backoff
       if (timeSinceCreated < backoffDelay) {
         return;
       }
 
-      logInfo(`Retrying notification ${notification.id} (attempt ${notification.retry_count + 1})`);
+      logInfo(
+        `Retrying notification ${notification.id} (attempt ${notification.retry_count + 1})`,
+      );
 
       // Attempt to send the notification
       const success = await withRetry(
         () => this.onRetryCallback!(notification),
         1, // Single attempt here since we handle retries at service level
         0,
-        `notification-retry-${notification.id}`
+        `notification-retry-${notification.id}`,
       );
 
       if (success) {
@@ -179,7 +188,9 @@ export class NotificationRetryService {
     // If max retries exceeded, mark as permanently failed
     if (newRetryCount >= this.maxRetries) {
       updateData.status = "permanently_failed";
-      logWarn(`Notification ${notification.id} permanently failed after ${this.maxRetries} retries`);
+      logWarn(
+        `Notification ${notification.id} permanently failed after ${this.maxRetries} retries`,
+      );
     }
 
     await this.supabase
@@ -217,7 +228,10 @@ export class NotificationRetryService {
       await this.retryNotification(notification);
       return true;
     } catch (error) {
-      logError(`Failed to manually retry notification ${notificationId}`, error);
+      logError(
+        `Failed to manually retry notification ${notificationId}`,
+        error,
+      );
       return false;
     }
   }

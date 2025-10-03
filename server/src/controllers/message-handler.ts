@@ -2,7 +2,10 @@ import { MessageContext } from "../services/whatsapp";
 import { ToolsRegistry } from "../services/tools-registry";
 import { AIService } from "../services/ai-service";
 import { User } from "../models/types";
-import { ConversationMessage, ConversationContext } from "../types/conversation";
+import {
+  ConversationMessage,
+  ConversationContext,
+} from "../types/conversation";
 import pino from "pino";
 import { formatInZone } from "../utils/time-utils";
 import { validateAIInput } from "../middleware/validation";
@@ -19,16 +22,22 @@ export class MessageController {
   constructor() {
     this.tools = new ToolsRegistry();
     this.aiService = new AIService();
-    
+
     // Start cache cleanup - clean every 30 minutes
-    this.cacheCleanupInterval = setInterval(() => {
-      this.cleanupUserCache();
-    }, 30 * 60 * 1000);
+    this.cacheCleanupInterval = setInterval(
+      () => {
+        this.cleanupUserCache();
+      },
+      30 * 60 * 1000,
+    );
 
     // Start conversation context cleanup - clean every 15 minutes
-    this.contextCleanupInterval = setInterval(() => {
-      this.cleanupConversationContexts();
-    }, 15 * 60 * 1000);
+    this.contextCleanupInterval = setInterval(
+      () => {
+        this.cleanupConversationContexts();
+      },
+      15 * 60 * 1000,
+    );
   }
 
   async handleMessage(context: MessageContext): Promise<any> {
@@ -104,7 +113,9 @@ export class MessageController {
     }
 
     if (cleanedCount > 0) {
-      this.logger.info(`Cleaned ${cleanedCount} entries from user cache. Cache size: ${this.userCache.size}`);
+      this.logger.info(
+        `Cleaned ${cleanedCount} entries from user cache. Cache size: ${this.userCache.size}`,
+      );
     }
   }
 
@@ -125,7 +136,9 @@ export class MessageController {
     }
 
     if (cleanedCount > 0) {
-      this.logger.info(`Cleaned ${cleanedCount} conversation contexts. Active contexts: ${this.conversationContexts.size}`);
+      this.logger.info(
+        `Cleaned ${cleanedCount} conversation contexts. Active contexts: ${this.conversationContexts.size}`,
+      );
     }
   }
 
@@ -150,7 +163,10 @@ export class MessageController {
   /**
    * Add a message to conversation context
    */
-  private addToConversationContext(userId: string, message: ConversationMessage): void {
+  private addToConversationContext(
+    userId: string,
+    message: ConversationMessage,
+  ): void {
     const context = this.getConversationContext(userId);
     context.messages.push(message);
 
@@ -199,10 +215,10 @@ export class MessageController {
 
     // Get conversation context
     const conversationContext = this.getConversationContext(user.id);
-    
+
     // Add user message to conversation context
     this.addToConversationContext(user.id, {
-      role: 'user',
+      role: "user",
       content: validatedText,
       timestamp: new Date(),
       messageId: context.messageId,
@@ -213,7 +229,9 @@ export class MessageController {
 
     // Debug: Log tool structure
     this.logger.info(`Tool keys: ${Object.keys(tools).join(", ")}`);
-    this.logger.info(`Conversation history: ${conversationContext.messages.length} messages`);
+    this.logger.info(
+      `Conversation history: ${conversationContext.messages.length} messages`,
+    );
     if (tools.createReminder) {
       this.logger.info(
         `createReminder tool exists: ${typeof tools.createReminder}`,
@@ -236,7 +254,7 @@ export class MessageController {
       // Add AI response to conversation context
       if (result.text) {
         this.addToConversationContext(user.id, {
-          role: 'assistant',
+          role: "assistant",
           content: result.text,
           timestamp: new Date(),
         });
@@ -368,52 +386,70 @@ export class MessageController {
       if (result.notes.length === 0) {
         return "No notes found.";
       }
-      
-      const totalText = result.total ? ` (showing ${result.notes.length} of ${result.total})` : '';
+
+      const totalText = result.total
+        ? ` (showing ${result.notes.length} of ${result.total})`
+        : "";
       let response = `📝 Found ${result.notes.length} note(s)${totalText}:\n`;
-      
-      const formattedNotes = result.notes.map((note: any, i: number) => {
-        const title = note.title ? `**${note.title}**` : '';
-        const content = note.content.length > 80 ? 
-          note.content.substring(0, 80) + '...' : 
-          note.content;
-        const tags = note.tags && note.tags.length > 0 ? 
-          ` #${note.tags.slice(0, 3).join(' #')}${note.tags.length > 3 ? '...' : ''}` : '';
-        const pinned = note.isPinned ? '📌 ' : '';
-        return `${i + 1}. ${pinned}${title}${title ? '\n   ' : ''}${content}${tags}`;
-      }).join('\n\n');
-      
+
+      const formattedNotes = result.notes
+        .map((note: any, i: number) => {
+          const title = note.title ? `**${note.title}**` : "";
+          const content =
+            note.content.length > 80
+              ? note.content.substring(0, 80) + "..."
+              : note.content;
+          const tags =
+            note.tags && note.tags.length > 0
+              ? ` #${note.tags.slice(0, 3).join(" #")}${note.tags.length > 3 ? "..." : ""}`
+              : "";
+          const pinned = note.isPinned ? "📌 " : "";
+          return `${i + 1}. ${pinned}${title}${title ? "\n   " : ""}${content}${tags}`;
+        })
+        .join("\n\n");
+
       response += formattedNotes;
-      
+
       // Add helpful hints for large result sets
       if (result.total && result.total > result.notes.length) {
         response += `\n\n💡 *Tip: Use more specific search terms or categories to narrow results*`;
       }
-      
+
       // Truncate if response is too long (WhatsApp limit ~4000 chars)
       if (response.length > 3500) {
-        const truncatedNotes = result.notes.slice(0, Math.floor(result.notes.length * 0.7));
+        const truncatedNotes = result.notes.slice(
+          0,
+          Math.floor(result.notes.length * 0.7),
+        );
         const newResponse = `📝 Found ${result.notes.length} note(s)${totalText} (showing first ${truncatedNotes.length}):\n`;
-        const truncatedFormatted = truncatedNotes.map((note: any, i: number) => {
-          const title = note.title ? `**${note.title}**` : '';
-          const content = note.content.length > 60 ? 
-            note.content.substring(0, 60) + '...' : 
-            note.content;
-          const pinned = note.isPinned ? '📌 ' : '';
-          return `${i + 1}. ${pinned}${title}${title ? '\n   ' : ''}${content}`;
-        }).join('\n\n');
-        response = newResponse + truncatedFormatted + '\n\n💡 *Use more specific search to see all results*';
+        const truncatedFormatted = truncatedNotes
+          .map((note: any, i: number) => {
+            const title = note.title ? `**${note.title}**` : "";
+            const content =
+              note.content.length > 60
+                ? note.content.substring(0, 60) + "..."
+                : note.content;
+            const pinned = note.isPinned ? "📌 " : "";
+            return `${i + 1}. ${pinned}${title}${title ? "\n   " : ""}${content}`;
+          })
+          .join("\n\n");
+        response =
+          newResponse +
+          truncatedFormatted +
+          "\n\n💡 *Use more specific search to see all results*";
       }
-      
+
       return response;
     }
 
     // Handle single note response (create/update)
     if (result.content && result.id) {
-      const title = result.title ? `**${result.title}**` : '';
-      const tags = result.tags && result.tags.length > 0 ? 
-        ` #${result.tags.join(' #')}` : '';
-      return `✅ Note saved!\n${title}${title ? '\n' : ''}${result.content}${tags}`;
+      const title = result.title ? `**${result.title}**` : "";
+      const tags =
+        result.tags && result.tags.length > 0
+          ? ` #${result.tags.join(" #")}`
+          : "";
+      return `✅ Note saved!\n${title}${title ? "\n" : ""}${result.content}${tags}`;
     }
 
     // Handle note deletion

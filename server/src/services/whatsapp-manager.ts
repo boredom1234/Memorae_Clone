@@ -379,14 +379,19 @@ export class WhatsAppManager {
       });
 
       if (success) {
-        this.logger.info(`Successfully retried notification ${notification.id}`);
+        this.logger.info(
+          `Successfully retried notification ${notification.id}`,
+        );
         return true;
       } else {
         this.logger.warn(`Failed to retry notification ${notification.id}`);
         return false;
       }
     } catch (error) {
-      this.logger.error({ error }, `Error retrying notification ${notification.id}`);
+      this.logger.error(
+        { error },
+        `Error retrying notification ${notification.id}`,
+      );
       return false;
     }
   }

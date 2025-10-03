@@ -891,10 +891,18 @@ export class ToolsRegistry {
         description:
           'Save and remember arbitrary information, facts, or notes for the user. Use this when the user wants to store information for later retrieval, such as personal details, important facts, project IDs, locations of items, or any other information they want to remember. Trigger phrases: "remember", "note", "save", "store", "keep track", "write down", "take a note". Examples: "remember that I kept my wallet in second shelf", "take a note of my Project ID: 22987AC", "note that my favorite restaurant is XYZ", "remember my car license plate is ABC123", "save this information for later".',
         inputSchema: z.object({
-          content: z.string().describe("The information/note content to remember"),
+          content: z
+            .string()
+            .describe("The information/note content to remember"),
           title: z.string().optional().describe("Optional title for the note"),
-          category: z.string().optional().describe("Category like 'personal', 'work', 'general'"),
-          tags: z.array(z.string()).optional().describe("Optional tags for organization"),
+          category: z
+            .string()
+            .optional()
+            .describe("Category like 'personal', 'work', 'general'"),
+          tags: z
+            .array(z.string())
+            .optional()
+            .describe("Optional tags for organization"),
           isPinned: z.boolean().optional().describe("Mark as important/pinned"),
         }),
         execute: async (params) => {
@@ -902,7 +910,7 @@ export class ToolsRegistry {
             userId,
             content: params.content,
             title: params.title,
-            category: params.category || 'general',
+            category: params.category || "general",
             tags: params.tags,
             isPinned: params.isPinned || false,
           });
@@ -936,7 +944,10 @@ export class ToolsRegistry {
         inputSchema: z.object({
           category: z.string().optional().describe("Filter by category"),
           tags: z.array(z.string()).optional().describe("Filter by tags"),
-          onlyPinned: z.boolean().optional().describe("Show only pinned/important notes"),
+          onlyPinned: z
+            .boolean()
+            .optional()
+            .describe("Show only pinned/important notes"),
           limit: z.number().optional().describe("Maximum results to return"),
         }),
         execute: async (params) => {
@@ -947,8 +958,8 @@ export class ToolsRegistry {
             onlyPinned: params.onlyPinned || false,
             limit: Math.min(params.limit || 10, 15), // Cap at 15 for WhatsApp limits
             includeArchived: false,
-            sortBy: 'created',
-            sortOrder: 'desc',
+            sortBy: "created",
+            sortOrder: "desc",
           });
         },
       }),
@@ -957,7 +968,9 @@ export class ToolsRegistry {
         description:
           'Update or modify an existing note/memory. Use this when the user wants to change, edit, or update information they previously saved. Trigger phrases: "update", "change", "modify", "edit", "correct". Examples: "update my project ID note", "change the wallet location", "modify my restaurant note", "edit that information", "correct my license plate number".',
         inputSchema: z.object({
-          searchQuery: z.string().describe("Text to search for the note to update"),
+          searchQuery: z
+            .string()
+            .describe("Text to search for the note to update"),
           content: z.string().optional().describe("New content for the note"),
           title: z.string().optional().describe("New title for the note"),
           category: z.string().optional().describe("New category"),
@@ -994,7 +1007,9 @@ export class ToolsRegistry {
         description:
           'Delete a saved note or memory permanently. Use this when the user no longer needs certain information and wants to remove it. Trigger phrases: "delete", "remove", "forget", "get rid of", "clear". Examples: "delete my wallet note", "remove the project ID information", "forget about the restaurant", "get rid of that note", "clear my license plate info".',
         inputSchema: z.object({
-          searchQuery: z.string().describe("Text to search for the note to delete"),
+          searchQuery: z
+            .string()
+            .describe("Text to search for the note to delete"),
         }),
         execute: async (params) => {
           // First search for the note
@@ -1010,10 +1025,12 @@ export class ToolsRegistry {
           }
 
           // Delete the note
-          return await this.notesService.deleteNote(userId, searchResult.notes[0].id);
+          return await this.notesService.deleteNote(
+            userId,
+            searchResult.notes[0].id,
+          );
         },
       }),
-
     };
   }
 }

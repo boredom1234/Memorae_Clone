@@ -19,30 +19,33 @@ export interface ErrorResponse {
 export function globalErrorHandler(
   error: FastifyError,
   request: FastifyRequest,
-  reply: FastifyReply
+  reply: FastifyReply,
 ) {
   const timestamp = new Date().toISOString();
   const path = request.url;
   const requestId = request.id;
 
   // Log the error with context
-  logger.error({
-    error: {
-      name: error.name,
-      message: error.message,
-      stack: error.stack,
-      statusCode: error.statusCode,
+  logger.error(
+    {
+      error: {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+        statusCode: error.statusCode,
+      },
+      request: {
+        method: request.method,
+        url: request.url,
+        headers: request.headers,
+        params: request.params,
+        query: request.query,
+        ip: request.ip,
+      },
+      requestId,
     },
-    request: {
-      method: request.method,
-      url: request.url,
-      headers: request.headers,
-      params: request.params,
-      query: request.query,
-      ip: request.ip,
-    },
-    requestId,
-  }, "Request error occurred");
+    "Request error occurred",
+  );
 
   let statusCode = 500;
   let message = "Internal Server Error";
@@ -91,7 +94,7 @@ export function globalErrorHandler(
  * Async error wrapper for route handlers
  */
 export function asyncHandler<T extends any[], R>(
-  fn: (...args: T) => Promise<R>
+  fn: (...args: T) => Promise<R>,
 ) {
   return (...args: T): Promise<R> => {
     return Promise.resolve(fn(...args)).catch((error) => {
@@ -107,7 +110,7 @@ export function asyncHandler<T extends any[], R>(
 export async function safeAsync<T>(
   operation: () => Promise<T>,
   fallback?: T,
-  context?: string
+  context?: string,
 ): Promise<T | undefined> {
   try {
     return await operation();
@@ -124,7 +127,7 @@ export async function withRetry<T>(
   operation: () => Promise<T>,
   maxRetries: number = 3,
   delay: number = 1000,
-  context?: string
+  context?: string,
 ): Promise<T> {
   let lastError: Error;
 
@@ -133,27 +136,32 @@ export async function withRetry<T>(
       return await operation();
     } catch (error) {
       lastError = error as Error;
-      
-      logger.warn({
-        error: lastError.message,
-        attempt,
-        maxRetries,
-        context,
-      }, "Operation failed, retrying...");
+
+      logger.warn(
+        {
+          error: lastError.message,
+          attempt,
+          maxRetries,
+          context,
+        },
+        "Operation failed, retrying...",
+      );
 
       if (attempt === maxRetries) {
         break;
       }
 
       // Exponential backoff
-      await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, attempt - 1)));
+      await new Promise((resolve) =>
+        setTimeout(resolve, delay * Math.pow(2, attempt - 1)),
+      );
     }
   }
 
   throw new AppError(
     `Operation failed after ${maxRetries} attempts: ${lastError!.message}`,
     500,
-    "RETRY_EXHAUSTED"
+    "RETRY_EXHAUSTED",
   );
 }
 
@@ -163,22 +171,22 @@ export async function withRetry<T>(
 export class CircuitBreaker {
   private failures = 0;
   private lastFailureTime = 0;
-  private state: 'CLOSED' | 'OPEN' | 'HALF_OPEN' = 'CLOSED';
+  private state: "CLOSED" | "OPEN" | "HALF_OPEN" = "CLOSED";
 
   constructor(
     private threshold: number = 5,
-    private timeout: number = 60000 // 1 minute
+    private timeout: number = 60000, // 1 minute
   ) {}
 
   async execute<T>(operation: () => Promise<T>): Promise<T> {
-    if (this.state === 'OPEN') {
+    if (this.state === "OPEN") {
       if (Date.now() - this.lastFailureTime > this.timeout) {
-        this.state = 'HALF_OPEN';
+        this.state = "HALF_OPEN";
       } else {
         throw new AppError(
-          'Circuit breaker is OPEN',
+          "Circuit breaker is OPEN",
           503,
-          'CIRCUIT_BREAKER_OPEN'
+          "CIRCUIT_BREAKER_OPEN",
         );
       }
     }
@@ -195,15 +203,15 @@ export class CircuitBreaker {
 
   private onSuccess() {
     this.failures = 0;
-    this.state = 'CLOSED';
+    this.state = "CLOSED";
   }
 
   private onFailure() {
     this.failures++;
     this.lastFailureTime = Date.now();
-    
+
     if (this.failures >= this.threshold) {
-      this.state = 'OPEN';
+      this.state = "OPEN";
     }
   }
 

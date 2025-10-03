@@ -30,11 +30,13 @@ export class AIService {
   private initializeModels() {
     // Get primary model
     this.defaultModel = this.getDefaultModel();
-    
+
     // Initialize fallback models
     this.fallbackModels = this.getFallbackModels();
-    
-    this.logger.info(`AI Service initialized with ${this.fallbackModels.length} fallback models`);
+
+    this.logger.info(
+      `AI Service initialized with ${this.fallbackModels.length} fallback models`,
+    );
   }
 
   private getDefaultModel() {
@@ -149,15 +151,35 @@ export class AIService {
 
   private getFallbackModels(): any[] {
     const fallbacks: any[] = [];
-    
+
     // Define fallback providers in order of preference
     const fallbackConfigs = [
-      { provider: 'groq', model: 'llama-3.1-8b-instant', apiKey: config.ai.groqApiKey },
-      { provider: 'openai', model: 'gpt-4o-mini', apiKey: config.ai.openaiApiKey },
-      { provider: 'xai', model: 'grok-beta', apiKey: config.ai.xaiApiKey },
-      { provider: 'anthropic', model: 'claude-3-haiku-20240307', apiKey: config.ai.anthropicApiKey },
-      { provider: 'google', model: 'gemini-1.5-flash', apiKey: config.ai.googleApiKey },
-      { provider: 'deepseek', model: 'deepseek-chat', apiKey: config.ai.deepseekApiKey },
+      {
+        provider: "groq",
+        model: "llama-3.1-8b-instant",
+        apiKey: config.ai.groqApiKey,
+      },
+      {
+        provider: "openai",
+        model: "gpt-4o-mini",
+        apiKey: config.ai.openaiApiKey,
+      },
+      { provider: "xai", model: "grok-beta", apiKey: config.ai.xaiApiKey },
+      {
+        provider: "anthropic",
+        model: "claude-3-haiku-20240307",
+        apiKey: config.ai.anthropicApiKey,
+      },
+      {
+        provider: "google",
+        model: "gemini-1.5-flash",
+        apiKey: config.ai.googleApiKey,
+      },
+      {
+        provider: "deepseek",
+        model: "deepseek-chat",
+        apiKey: config.ai.deepseekApiKey,
+      },
     ];
 
     for (const fallbackConfig of fallbackConfigs) {
@@ -174,22 +196,22 @@ export class AIService {
       try {
         let model: any;
         switch (fallbackConfig.provider) {
-          case 'openai':
+          case "openai":
             model = openai(fallbackConfig.model);
             break;
-          case 'groq':
+          case "groq":
             model = groq(fallbackConfig.model);
             break;
-          case 'xai':
+          case "xai":
             model = xai(fallbackConfig.model);
             break;
-          case 'anthropic':
+          case "anthropic":
             model = anthropic(fallbackConfig.model);
             break;
-          case 'google':
+          case "google":
             model = google(fallbackConfig.model);
             break;
-          case 'deepseek':
+          case "deepseek":
             model = deepseek(fallbackConfig.model);
             break;
           default:
@@ -202,9 +224,13 @@ export class AIService {
           instance: model,
         });
 
-        this.logger.info(`Added fallback: ${fallbackConfig.provider} (${fallbackConfig.model})`);
+        this.logger.info(
+          `Added fallback: ${fallbackConfig.provider} (${fallbackConfig.model})`,
+        );
       } catch (error) {
-        this.logger.warn(`Failed to configure fallback ${fallbackConfig.provider}: ${error}`);
+        this.logger.warn(
+          `Failed to configure fallback ${fallbackConfig.provider}: ${error}`,
+        );
       }
     }
 
@@ -233,35 +259,38 @@ export class AIService {
 
     // Try primary model first, then fallbacks
     const modelsToTry = [
-      { provider: 'primary', instance: this.defaultModel },
-      ...this.fallbackModels.map(f => ({ provider: f.provider, instance: f.instance }))
-    ].filter(m => m.instance);
+      { provider: "primary", instance: this.defaultModel },
+      ...this.fallbackModels.map((f) => ({
+        provider: f.provider,
+        instance: f.instance,
+      })),
+    ].filter((m) => m.instance);
 
     let lastError: Error | null = null;
 
     for (const modelConfig of modelsToTry) {
       try {
         this.logger.info(`Attempting AI request with ${modelConfig.provider}`);
-        
+
         // Debug: Log tool names to verify they're being passed
         this.logger.info(`Tools available: ${Object.keys(tools).join(", ")}`);
 
         // Convert conversation history to AI SDK format
-        const messages = conversationHistory.map(msg => ({
+        const messages = conversationHistory.map((msg) => ({
           role: msg.role,
           content: msg.content,
         }));
 
         // Add current message
         messages.push({
-          role: 'user' as const,
+          role: "user" as const,
           content: message,
         });
 
         const result = await generateText({
           model: modelConfig.instance,
           messages,
-        system: `You are a helpful AI assistant for a reminder and task management system.
+          system: `You are a helpful AI assistant for a reminder and task management system.
 You help users create, update, delete, and manage reminders and lists through WhatsApp.
 
 When users ask you to do something, use the appropriate tool to help them.
@@ -382,7 +411,7 @@ CURRENT TIME:
 
 Current user timezone: ${timezone}
 Current user ID: ${userId}`,
-        tools,
+          tools,
           stopWhen: stepCountIs(5), // Allow up to 5 multi-step tool calls
         });
 
@@ -399,7 +428,7 @@ Current user ID: ${userId}`,
         lastError = error;
         this.logger.warn(
           { error: error.message, provider: modelConfig.provider },
-          `AI request failed with ${modelConfig.provider}, trying next fallback`
+          `AI request failed with ${modelConfig.provider}, trying next fallback`,
         );
         continue;
       }
@@ -408,8 +437,10 @@ Current user ID: ${userId}`,
     // All models failed
     this.logger.error(
       { error: lastError?.message || "Unknown error" },
-      "All AI models failed to process message"
+      "All AI models failed to process message",
     );
-    throw new Error(`AI service unavailable: ${lastError?.message || "All providers failed"}`);
+    throw new Error(
+      `AI service unavailable: ${lastError?.message || "All providers failed"}`,
+    );
   }
 }

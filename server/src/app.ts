@@ -4,7 +4,11 @@ import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import { config } from "./config/env";
 import { globalErrorHandler } from "./utils/error-handler";
-import { validateBody, whatsappMessageSchema, rateLimitByUser } from "./middleware/validation";
+import {
+  validateBody,
+  whatsappMessageSchema,
+  rateLimitByUser,
+} from "./middleware/validation";
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -61,15 +65,22 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   // WhatsApp routes with validation
-  app.post("/api/v1/whatsapp/send", {
-    preHandler: [
-      rateLimitByUser(30, 60000), // 30 requests per minute per user
-      validateBody(whatsappMessageSchema)
-    ]
-  }, async (request, reply) => {
-    // Body is validated by middleware, implementation will use WhatsApp manager
-    return reply.send({ success: true, message: "Message queued for sending" });
-  });
+  app.post(
+    "/api/v1/whatsapp/send",
+    {
+      preHandler: [
+        rateLimitByUser(30, 60000), // 30 requests per minute per user
+        validateBody(whatsappMessageSchema),
+      ],
+    },
+    async (request, reply) => {
+      // Body is validated by middleware, implementation will use WhatsApp manager
+      return reply.send({
+        success: true,
+        message: "Message queued for sending",
+      });
+    },
+  );
 
   app.get("/api/v1/whatsapp/status", async () => {
     return {

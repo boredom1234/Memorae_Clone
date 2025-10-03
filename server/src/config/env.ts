@@ -31,7 +31,7 @@ function validateEnv() {
     process.env.CEREBRAS_API_KEY,
   ];
 
-  const hasAiProvider = aiProviders.some(key => key && key.trim() !== "");
+  const hasAiProvider = aiProviders.some((key) => key && key.trim() !== "");
   if (!hasAiProvider) {
     errors.push("At least one AI provider API key must be configured");
   }
@@ -55,7 +55,9 @@ function validateEnv() {
 
   const requiredKey = providerKeyMap[aiProvider];
   if (requiredKey && !process.env[requiredKey]) {
-    errors.push(`AI provider "${aiProvider}" requires ${requiredKey} to be set`);
+    errors.push(
+      `AI provider "${aiProvider}" requires ${requiredKey} to be set`,
+    );
   }
 
   // Validate port
@@ -66,8 +68,10 @@ function validateEnv() {
 
   if (errors.length > 0) {
     console.error("❌ Environment validation failed:");
-    errors.forEach(error => console.error(`  - ${error}`));
-    console.error("\nPlease check your .env file and ensure all required variables are set.");
+    errors.forEach((error) => console.error(`  - ${error}`));
+    console.error(
+      "\nPlease check your .env file and ensure all required variables are set.",
+    );
     process.exit(1);
   }
 

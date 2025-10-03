@@ -54,41 +54,53 @@ export class WhatsAppService {
     filterMode: number,
     isFromMe: boolean,
     isSelfChat: boolean,
-    chatPartner: string
+    chatPartner: string,
   ): { accept: boolean; reason: string } {
     switch (filterMode) {
       case 1: // Only messages from others (not self)
         if (isFromMe) {
-          return { accept: false, reason: "Ignoring message sent by me (mode 1)" };
-        }
-        if (isSelfChat) {
-          return { accept: false, reason: "Ignoring self-chat message (mode 1)" };
-        }
-        if (!this.isNumberAllowed(chatPartner)) {
-          return { 
-            accept: false, 
-            reason: `Ignoring message from non-allowed number: ${chatPartner} (mode 1)` 
+          return {
+            accept: false,
+            reason: "Ignoring message sent by me (mode 1)",
           };
         }
-        return { accept: true, reason: `Accepting message from ${chatPartner} (mode 1)` };
+        if (isSelfChat) {
+          return {
+            accept: false,
+            reason: "Ignoring self-chat message (mode 1)",
+          };
+        }
+        if (!this.isNumberAllowed(chatPartner)) {
+          return {
+            accept: false,
+            reason: `Ignoring message from non-allowed number: ${chatPartner} (mode 1)`,
+          };
+        }
+        return {
+          accept: true,
+          reason: `Accepting message from ${chatPartner} (mode 1)`,
+        };
 
       case 2: // Only self-chat messages
         if (!isSelfChat) {
-          return { 
-            accept: false, 
-            reason: `Ignoring message - not self-chat (mode 2). Chat partner: ${chatPartner}` 
+          return {
+            accept: false,
+            reason: `Ignoring message - not self-chat (mode 2). Chat partner: ${chatPartner}`,
           };
         }
         return { accept: true, reason: "Accepting self-chat message (mode 2)" };
 
       case 3: // All messages (with restrictions)
         if (isFromMe && !isSelfChat) {
-          return { accept: false, reason: "Ignoring message sent by me to others (mode 3)" };
+          return {
+            accept: false,
+            reason: "Ignoring message sent by me to others (mode 3)",
+          };
         }
         if (!isSelfChat && !this.isNumberAllowed(chatPartner)) {
-          return { 
-            accept: false, 
-            reason: `Ignoring message from non-allowed number: ${chatPartner} (mode 3)` 
+          return {
+            accept: false,
+            reason: `Ignoring message from non-allowed number: ${chatPartner} (mode 3)`,
           };
         }
         return { accept: true, reason: "Accepting message (mode 3)" };
@@ -150,7 +162,7 @@ export class WhatsAppService {
         filterMode,
         isFromMe,
         isSelfChat,
-        chatPartner
+        chatPartner,
       );
 
       if (!shouldProcessMessage.accept) {
