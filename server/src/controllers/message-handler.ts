@@ -9,6 +9,7 @@ import {
 import pino from "pino";
 import { formatInZone } from "../utils/time-utils";
 import { validateAIInput } from "../middleware/validation";
+import { config } from "../config/env";
 
 export class MessageController {
   private logger = pino({ level: "info" });
@@ -283,6 +284,17 @@ export class MessageController {
 
       this.logger.info(`Processing message from ${fromName}`);
 
+      // Defense-in-depth: enforce message filter mode here as well to avoid
+      // accidental processing (and user creation) if upper layer misses it.
+      const filterMode = config.whatsapp.messageFilterMode;
+      const isSelfChat = (context as any).isSelfChat === true;
+      if (filterMode === 2 && !isSelfChat) {
+        this.logger.info(
+          `Ignoring message due to filter mode 2 (Only self). from=${context.from}`,
+        );
+        return null;
+      }
+
       // Ensure user exists in database
       const { user, isNew } = await this.ensureUser(context);
 
@@ -392,7 +404,7 @@ export class MessageController {
         userId,
         messages: [],
         lastActivity: new Date(),
-        maxMessages: 7, // Keep last 7 messages for context
+        maxMessages: 20, // Keep last 20 messages for better context retention
       });
     }
 

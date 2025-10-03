@@ -275,19 +275,15 @@ export class AIService {
         // Debug: Log tool names to verify they're being passed
         this.logger.info(`Tools available: ${Object.keys(tools).join(", ")}`);
 
-        // Convert conversation history to AI SDK format
+        // Convert conversation history to AI SDK format. The latest user message
+        // is already included by the caller in conversationHistory, so DO NOT
+        // append it again here to avoid duplication and confused context.
         const messages = conversationHistory.map((msg) => ({
           role: msg.role,
           content: msg.content,
         }));
 
-        // Add current message
-        messages.push({
-          role: "user" as const,
-          content: message,
-        });
-
-        const result = await generateText({
+        let result = await generateText({
           model: modelConfig.instance,
           messages,
           system: `You are a helpful AI assistant for a reminder and task management system.
@@ -419,6 +415,35 @@ Current user ID: ${userId}`,
           `AI processed message with ${modelConfig.provider} - ${result.toolCalls.length} tool calls`,
         );
 
+        // If the model failed to call tools but the input likely requires
+        // data operations (lists/reminders/settings), retry with stricter
+        // instructions to use tools. This mitigates hallucinated answers.
+        if (
+          result.toolCalls.length === 0 &&
+          this.messageLikelyNeedsTools(message)
+        ) {
+          this.logger.warn(
+            `No tool calls detected for a likely tool-requiring message. Retrying with tools-required system prompt...`,
+          );
+
+          result = await generateText({
+            model: modelConfig.instance,
+            messages,
+            system: `You are a helpful AI assistant for a reminder and task management system.
+The user message below requires interacting with tools (reminders, lists, notes, or user settings).
+TOOLS_REQUIRED: You must use at least one tool. Do NOT fabricate data or answer from memory when the operation involves user data. If uncertain which tool to use, first call 'getUserSettings' or 'searchLists'/'searchReminders' to disambiguate, then proceed.
+
+Current user timezone: ${timezone}
+Current user ID: ${userId}`,
+            tools,
+            stopWhen: stepCountIs(5),
+          });
+
+          this.logger.info(
+            `Retry completed - tool calls: ${result.toolCalls.length}`,
+          );
+        }
+
         return {
           text: result.text,
           toolCalls: result.toolCalls,
@@ -442,5 +467,35 @@ Current user ID: ${userId}`,
     throw new Error(
       `AI service unavailable: ${lastError?.message || "All providers failed"}`,
     );
+  }
+
+  // Basic heuristic to detect when a message likely requires tools and not a
+  // free-form answer. This helps reduce hallucinations by forcing tool usage.
+  private messageLikelyNeedsTools(input: string): boolean {
+    const s = (input || "").toLowerCase();
+    const actionKeywords = [
+      "remind",
+      "reminder",
+      "set a reminder",
+      "create",
+      "add",
+      "put",
+      "include",
+      "list",
+      "show",
+      "what's on",
+      "what is on",
+      "delete",
+      "remove",
+      "complete",
+      "mark as",
+      "snooze",
+      "update",
+      "change",
+      "timezone",
+      "settings",
+      "notes",
+    ];
+    return actionKeywords.some((k) => s.includes(k));
   }
 }

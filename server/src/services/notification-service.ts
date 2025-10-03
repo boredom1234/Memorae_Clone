@@ -78,10 +78,7 @@ export class NotificationService {
     const jid = toWhatsAppJid(phone);
 
     // Ensure user exists
-    const { user } = await this.userService.findOrCreateUser(
-      jid,
-      phone,
-    );
+    const { user } = await this.userService.findOrCreateUser(jid, phone);
 
     // Determine user's timezone for scheduling
     let tz = "UTC";
@@ -157,7 +154,10 @@ export class NotificationService {
                 })
                 .eq("id", sharedId);
             } catch (e) {
-              this.logger.warn({ e }, "Failed to update shared_reminders status");
+              this.logger.warn(
+                { e },
+                "Failed to update shared_reminders status",
+              );
             }
           }
         }
@@ -202,8 +202,8 @@ export class NotificationService {
           row.status === "delivered"
             ? "sent"
             : row.status === "permanently_failed"
-            ? "failed"
-            : (row.status as any);
+              ? "failed"
+              : (row.status as any);
 
         let recipient: string | undefined;
         if (row.recipient_whatsapp_id) {

@@ -30,7 +30,6 @@ async function start() {
     const signals = ["SIGINT", "SIGTERM"];
     signals.forEach((signal) => {
       process.on(signal, async () => {
-
         if (whatsappManager) {
           await whatsappManager.shutdown();
         }

@@ -16,12 +16,20 @@ export async function registerNotificationRoutes(app: FastifyInstance) {
   app.post(
     "/api/v1/notifications/send-reminder-to-contact",
     {
-      preHandler: [rateLimitByUser(20, 60_000), validateBody(sendReminderToContactSchema)],
+      preHandler: [
+        rateLimitByUser(20, 60_000),
+        validateBody(sendReminderToContactSchema),
+      ],
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const userId = request.headers["x-user-id"] as string;
       if (!userId) {
-        return reply.status(400).send({ error: "MISSING_USER_ID", message: "x-user-id header is required" });
+        return reply
+          .status(400)
+          .send({
+            error: "MISSING_USER_ID",
+            message: "x-user-id header is required",
+          });
       }
       const body = request.body as any;
       const result = await service.sendReminderToContact({
@@ -40,7 +48,10 @@ export async function registerNotificationRoutes(app: FastifyInstance) {
   app.get(
     "/api/v1/notifications/history",
     {
-      preHandler: [rateLimitByUser(60, 60_000), validateQuery(getNotificationHistoryQuerySchema)],
+      preHandler: [
+        rateLimitByUser(60, 60_000),
+        validateQuery(getNotificationHistoryQuerySchema),
+      ],
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const query = request.query as any;
@@ -54,12 +65,20 @@ export async function registerNotificationRoutes(app: FastifyInstance) {
   app.post(
     "/api/v1/notifications/send-custom",
     {
-      preHandler: [rateLimitByUser(30, 60_000), validateBody(sendCustomMessageSchema)],
+      preHandler: [
+        rateLimitByUser(30, 60_000),
+        validateBody(sendCustomMessageSchema),
+      ],
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const userId = request.headers["x-user-id"] as string;
       if (!userId) {
-        return reply.status(400).send({ error: "MISSING_USER_ID", message: "x-user-id header is required" });
+        return reply
+          .status(400)
+          .send({
+            error: "MISSING_USER_ID",
+            message: "x-user-id header is required",
+          });
       }
       const body = request.body as any;
       const result = await service.sendCustomMessage(userId, body);

@@ -1044,13 +1044,25 @@ export class ToolsRegistry {
             .string()
             .regex(/^\+?[1-9]\d{1,14}$/)
             .describe('E.164 phone number, e.g. "+15551234567"'),
-          recipientName: z.string().optional().describe("Optional display name for recipient"),
-          reminderText: z.string().min(1).max(1000).describe("Reminder text to send"),
+          recipientName: z
+            .string()
+            .optional()
+            .describe("Optional display name for recipient"),
+          reminderText: z
+            .string()
+            .min(1)
+            .max(1000)
+            .describe("Reminder text to send"),
           reminderTime: z
             .string()
             .min(1)
-            .describe("ISO 8601 datetime or natural language time (e.g., 'tomorrow 10am')"),
-          fromUserName: z.string().optional().describe("Optional sender name to include"),
+            .describe(
+              "ISO 8601 datetime or natural language time (e.g., 'tomorrow 10am')",
+            ),
+          fromUserName: z
+            .string()
+            .optional()
+            .describe("Optional sender name to include"),
         }),
         execute: async (params) => {
           // Normalize time: if not valid ISO, parse using user's timezone
@@ -1095,7 +1107,10 @@ export class ToolsRegistry {
         description:
           'Retrieve previously sent notifications. Use when the user asks to see notification history. Example: "show my notification history".',
         inputSchema: z.object({
-          limit: z.number().optional().describe("Max results (default 20, max 100)"),
+          limit: z
+            .number()
+            .optional()
+            .describe("Max results (default 20, max 100)"),
           offset: z.number().optional().describe("Offset for pagination"),
           type: z
             .enum(["reminder", "shared", "all"])
@@ -1116,7 +1131,7 @@ export class ToolsRegistry {
 
       sendCustomMessage: tool({
         description:
-          'Send a custom WhatsApp message to the current user. Use when the assistant needs to push a formatted message back to the user.',
+          "Send a custom WhatsApp message to the current user. Use when the assistant needs to push a formatted message back to the user.",
         inputSchema: z.object({
           message: z.string().describe("Message text"),
           formatting: z.enum(["plain", "markdown"]).optional(),
