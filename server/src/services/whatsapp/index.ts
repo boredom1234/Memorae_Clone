@@ -177,6 +177,9 @@ export class WhatsAppService {
 
       this.logger.info(`📩 Message from ${context.fromName}: ${context.text}`);
 
+      // Propagate isSelfChat info downstream for defense-in-depth
+      (context as any).isSelfChat = isSelfChat;
+
       // Mark as read
       if (this.sender && context.messageId) {
         await this.sender.markAsRead(context.from, context.messageId);

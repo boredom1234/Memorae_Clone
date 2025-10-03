@@ -3,6 +3,7 @@ import { ReminderService } from "./reminder-service";
 import { ListService } from "./list-service";
 import { UtilityService } from "./utility-service";
 import { NotesService } from "./notes-service";
+import { NotificationService } from "./notification-service";
 import { AppError } from "../utils/errors";
 import { logError, logInfo } from "../utils/logger";
 import { tool } from "ai";
@@ -15,6 +16,7 @@ export class ToolsRegistry {
   private listService: ListService;
   private utilityService: UtilityService;
   private notesService: NotesService;
+  private notificationService: NotificationService;
 
   constructor() {
     this.userService = new UserService();
@@ -22,6 +24,7 @@ export class ToolsRegistry {
     this.listService = new ListService();
     this.utilityService = new UtilityService();
     this.notesService = new NotesService();
+    this.notificationService = new NotificationService();
   }
 
   // Get all available tools with their schemas
@@ -800,7 +803,7 @@ export class ToolsRegistry {
 
       getUserSettings: tool({
         description:
-          'Retrieve the user\'s current configuration settings including timezone, language, notification preferences, and quiet hours. Use this when the user wants to view or check their current settings. Trigger phrases: "my settings", "what are my settings", "show settings", "my preferences", "what\'s my timezone", "my configuration". Examples: "what are my settings?", "what\'s my timezone?", "show my preferences", "what\'s my current language?", "display my notification settings".',
+          'Retrieve the user\'s profile and configuration settings including name, timezone, language, notification preferences, and quiet hours. Use this when the user wants to view or check their personal information or settings. Trigger phrases: "my settings", "what are my settings", "show settings", "my preferences", "what\'s my timezone", "what\'s my name", "who am I", "what\'s my phone number", "what\'s my configuration". Examples: "what are my settings?", "what\'s my timezone?", "show my preferences", "what\'s my current language?", "display my notification settings", "what\'s my name?".',
         inputSchema: z.object({}),
         execute: async () => {
           return await this.userService.getUserSettings(userId);
@@ -1029,6 +1032,119 @@ export class ToolsRegistry {
             userId,
             searchResult.notes[0].id,
           );
+        },
+      }),
+
+      // ---------------- Notification & Communication ----------------
+      sendReminderToContact: tool({
+        description:
+          'Send a reminder to a specific contact number at a specific time. Use when the user asks to remind someone else. Example: "remind +15551234567 to pay rent tomorrow 10am".',
+        inputSchema: z.object({
+          recipientNumber: z
+            .string()
+            .regex(/^\+?[1-9]\d{1,14}$/)
+            .describe('E.164 phone number, e.g. "+15551234567"'),
+          recipientName: z
+            .string()
+            .optional()
+            .describe("Optional display name for recipient"),
+          reminderText: z
+            .string()
+            .min(1)
+            .max(1000)
+            .describe("Reminder text to send"),
+          reminderTime: z
+            .string()
+            .min(1)
+            .describe(
+              "ISO 8601 datetime or natural language time (e.g., 'tomorrow 10am')",
+            ),
+          fromUserName: z
+            .string()
+            .optional()
+            .describe("Optional sender name to include"),
+        }),
+        execute: async (params) => {
+          // Normalize time: if not valid ISO, parse using user's timezone
+          const settings = await this.userService.getUserSettings(userId);
+          const tz = settings?.timezone || "UTC";
+          let iso = params.reminderTime;
+          const asDate = new Date(iso);
+          if (isNaN(asDate.getTime())) {
+            const parsed = await this.utilityService.parseNaturalLanguageDate({
+              text: params.reminderTime,
+              timezone: tz,
+            });
+            if (!parsed.success || parsed.extractedDates.length === 0) {
+              throw new Error("Could not parse reminder time");
+            }
+            iso = parsed.extractedDates[0].parsedDate;
+          }
+
+          // Ensure future time; if within past 24h, roll forward 24h
+          let whenMs = new Date(iso).getTime();
+          const nowMs = Date.now();
+          if (whenMs <= nowMs && nowMs - whenMs < 24 * 60 * 60 * 1000) {
+            whenMs += 24 * 60 * 60 * 1000;
+            iso = new Date(whenMs).toISOString();
+          }
+          if (whenMs <= nowMs) {
+            throw new Error("Reminder time must be in the future");
+          }
+
+          return await this.notificationService.sendReminderToContact({
+            senderUserId: userId,
+            recipientNumber: params.recipientNumber,
+            recipientName: params.recipientName,
+            reminderText: params.reminderText,
+            reminderTime: iso,
+            fromUserName: params.fromUserName,
+          });
+        },
+      }),
+
+      getNotificationHistory: tool({
+        description:
+          'Retrieve previously sent notifications. Use when the user asks to see notification history. Example: "show my notification history".',
+        inputSchema: z.object({
+          limit: z
+            .number()
+            .optional()
+            .describe("Max results (default 20, max 100)"),
+          offset: z.number().optional().describe("Offset for pagination"),
+          type: z
+            .enum(["reminder", "shared", "all"])
+            .optional()
+            .describe("Filter by type"),
+        }),
+        execute: async (params) => {
+          const limit = Math.min(Math.max(params.limit ?? 20, 1), 100);
+          const offset = Math.max(params.offset ?? 0, 0);
+          return await this.notificationService.getNotificationHistory({
+            userId,
+            limit,
+            offset,
+            type: params.type,
+          });
+        },
+      }),
+
+      sendCustomMessage: tool({
+        description:
+          "Send a custom WhatsApp message to the current user. Use when the assistant needs to push a formatted message back to the user.",
+        inputSchema: z.object({
+          message: z.string().describe("Message text"),
+          formatting: z.enum(["plain", "markdown"]).optional(),
+          buttons: z
+            .array(z.object({ id: z.string(), label: z.string() }))
+            .optional(),
+        }),
+        execute: async (params) => {
+          return await this.notificationService.sendCustomMessage(userId, {
+            message: params.message,
+            formatting: params.formatting,
+            buttons: params.buttons,
+          });
         },
       }),
     };

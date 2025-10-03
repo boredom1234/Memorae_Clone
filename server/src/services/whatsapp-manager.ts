@@ -249,6 +249,14 @@ export class WhatsAppManager {
             status: "sent",
             sent_at: new Date().toISOString(),
           });
+          // Update shared_reminders if exists
+          try {
+            await this.supabase
+              .from("shared_reminders")
+              .update({ status: "sent", sent_at: new Date().toISOString() })
+              .eq("reminder_id", reminder.id)
+              .eq("recipient_whatsapp_id", user.whatsapp_id);
+          } catch {}
           this.logger.info(
             {
               reminderId: reminder.id,
@@ -267,6 +275,14 @@ export class WhatsAppManager {
             error_message: "Failed to send via WhatsApp",
             retry_count: 0,
           });
+          // Mark shared reminder as failed if exists
+          try {
+            await this.supabase
+              .from("shared_reminders")
+              .update({ status: "failed" })
+              .eq("reminder_id", reminder.id)
+              .eq("recipient_whatsapp_id", user.whatsapp_id);
+          } catch {}
           this.logger.error(
             {
               reminderId: reminder.id,
@@ -382,9 +398,29 @@ export class WhatsAppManager {
         this.logger.info(
           `Successfully retried notification ${notification.id}`,
         );
+        // Update shared_reminders if tied to a reminder
+        try {
+          if (notification.reminder_id && notification.recipient_whatsapp_id) {
+            await this.supabase
+              .from("shared_reminders")
+              .update({ status: "sent", sent_at: new Date().toISOString() })
+              .eq("reminder_id", notification.reminder_id)
+              .eq("recipient_whatsapp_id", notification.recipient_whatsapp_id);
+          }
+        } catch {}
         return true;
       } else {
         this.logger.warn(`Failed to retry notification ${notification.id}`);
+        // Optionally mark as failed
+        try {
+          if (notification.reminder_id && notification.recipient_whatsapp_id) {
+            await this.supabase
+              .from("shared_reminders")
+              .update({ status: "failed" })
+              .eq("reminder_id", notification.reminder_id)
+              .eq("recipient_whatsapp_id", notification.recipient_whatsapp_id);
+          }
+        } catch {}
         return false;
       }
     } catch (error) {

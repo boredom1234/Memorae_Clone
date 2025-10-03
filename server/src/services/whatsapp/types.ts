@@ -14,6 +14,9 @@ export interface MessageContext {
     messageId: string;
     text?: string;
   };
+  // Propagated by WhatsAppService after filtering to avoid accidental
+  // processing (e.g., creating users) in downstream layers.
+  isSelfChat?: boolean;
 }
 
 export interface WhatsAppMessage {

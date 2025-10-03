@@ -9,6 +9,8 @@ import {
   whatsappMessageSchema,
   rateLimitByUser,
 } from "./middleware/validation";
+import { registerNotificationRoutes } from "./controllers/notification-controller";
+import { getWhatsAppManager } from "./services/runtime";
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -73,7 +75,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         validateBody(whatsappMessageSchema),
       ],
     },
-    async (request, reply) => {
+    async (_request, reply) => {
       // Body is validated by middleware, implementation will use WhatsApp manager
       return reply.send({
         success: true,
@@ -83,11 +85,17 @@ export async function buildApp(): Promise<FastifyInstance> {
   );
 
   app.get("/api/v1/whatsapp/status", async () => {
+    const manager = getWhatsAppManager();
+    const connected = manager ? manager.isConnected() : false;
     return {
-      connected: false, // Will be updated with actual status
+      connected,
       timestamp: new Date().toISOString(),
+      schedulerRunning: manager ? manager.isSchedulerRunning() : false,
     };
   });
+
+  // Register Notification & Communication routes
+  await registerNotificationRoutes(app);
 
   // Global error handler
   app.setErrorHandler(globalErrorHandler);
