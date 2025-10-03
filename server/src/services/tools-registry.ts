@@ -800,7 +800,7 @@ export class ToolsRegistry {
 
       getUserSettings: tool({
         description:
-          'Retrieve the user\'s current configuration settings including timezone, language, notification preferences, and quiet hours. Use this when the user wants to view or check their current settings. Trigger phrases: "my settings", "what are my settings", "show settings", "my preferences", "what\'s my timezone", "my configuration". Examples: "what are my settings?", "what\'s my timezone?", "show my preferences", "what\'s my current language?", "display my notification settings".',
+          'Retrieve the user\'s profile and configuration settings including name, timezone, language, notification preferences, and quiet hours. Use this when the user wants to view or check their personal information or settings. Trigger phrases: "my settings", "what are my settings", "show settings", "my preferences", "what\'s my timezone", "what\'s my name", "who am I", "what\'s my phone number", "what\'s my configuration". Examples: "what are my settings?", "what\'s my timezone?", "show my preferences", "what\'s my current language?", "display my notification settings", "what\'s my name?".',
         inputSchema: z.object({}),
         execute: async () => {
           return await this.userService.getUserSettings(userId);

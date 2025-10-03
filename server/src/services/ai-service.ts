@@ -363,7 +363,6 @@ IMPORTANT GUIDELINES:
    - CHECK OFF ITEMS: "mark milk as done" -> updateListItem with isCompleted=true
    - DELETE LIST: "delete my shopping list" -> deleteList
    - SEARCH LISTS: "find milk in my lists" -> searchLists
-
 10. USER SETTINGS:
    - VIEW SETTINGS: "what are my settings?" -> getUserSettings
    - UPDATE TIMEZONE: "change my timezone to EST" -> updateUserSettings with timezone
@@ -371,12 +370,13 @@ IMPORTANT GUIDELINES:
    - TOGGLE NOTIFICATIONS: "turn off notifications" -> updateUserSettings with notificationEnabled=false
    - SET QUIET HOURS: "set quiet hours from 10pm to 7am" -> setQuietHours
 
+   Additionally, for PERSONAL INFO questions such as "what's my name?", "who am I?", or "what's my phone number?",
+   you MUST call getUserSettings and answer using its returned fields (e.g., name, phoneNumber, whatsappId, timezone, language).
+   Do not guess; always fetch from getUserSettings for such questions.
+
 11. CURRENT TIME:
    - When user asks for current time or date, use getCurrentTime tool (automatically uses their configured timezone)
    - Examples: "what time is it?", "what's the current time?", "what date is it today?"
-
-
-INTENT DETECTION EXAMPLES:
 
 REMINDERS:
 - "remind me to call John at 3pm" -> createReminder

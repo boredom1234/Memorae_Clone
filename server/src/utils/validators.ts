@@ -263,6 +263,7 @@ export const searchListsSchema = z.object({
 // User settings validation schemas
 export const updateUserSettingsSchema = z.object({
   userId: uuidSchema,
+  name: z.string().min(1).max(255).optional(),
   timezone: z.string().optional(),
   language: z.string().length(2).optional(),
   defaultReminderTime: z

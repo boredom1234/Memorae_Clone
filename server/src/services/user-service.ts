@@ -16,7 +16,7 @@ export class UserService {
     whatsappId: string,
     phoneNumber: string,
     name?: string,
-  ): Promise<User> {
+  ): Promise<{ user: User; isNew: boolean }> {
     // Check if user exists
     const { data: existingUser } = await this.supabase
       .from("users")
@@ -30,8 +30,7 @@ export class UserService {
         .from("users")
         .update({ last_active_at: new Date().toISOString() })
         .eq("id", existingUser.id);
-
-      return existingUser;
+      return { user: existingUser, isNew: false };
     }
 
     // Create new user
@@ -48,7 +47,7 @@ export class UserService {
       .single();
 
     if (error) throw error;
-    return newUser;
+    return { user: newUser, isNew: true };
   }
 
   async getUserByWhatsAppId(whatsappId: string): Promise<User | null> {
@@ -64,6 +63,7 @@ export class UserService {
   async updateUserSettings(
     userId: string,
     settings: {
+      name?: string;
       timezone?: string;
       language?: string;
       defaultReminderTime?: string;
@@ -95,6 +95,7 @@ export class UserService {
 
       const updateData: any = {};
 
+      if (settings.name) updateData.name = settings.name;
       if (settings.timezone) updateData.timezone = settings.timezone;
       if (settings.language) updateData.language = settings.language;
       if (settings.defaultReminderTime)
@@ -171,12 +172,22 @@ export class UserService {
       logPerformance("getUserSettings", Date.now() - startTime);
 
       return {
+        id: user.id,
+        name: user.name,
+        phoneNumber: user.phone_number,
+        whatsappId: user.whatsapp_id,
         timezone: user.timezone,
         language: user.language,
         defaultReminderTime: user.default_reminder_time,
         notificationPreferences: {
           enabled: user.notification_enabled,
           advanceNotice: user.advance_notice_minutes,
+        },
+        quietHours: {
+          enabled: user.quiet_hours_enabled,
+          startTime: user.quiet_hours_start,
+          endTime: user.quiet_hours_end,
+          days: user.quiet_hours_days,
         },
         calendarConnections,
       };
