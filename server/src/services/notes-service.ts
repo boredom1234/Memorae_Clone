@@ -184,9 +184,16 @@ export class NotesService {
 
       // Add search conditions
       if (params.query) {
-        // Use simple ilike search for now - more reliable than fts in Supabase
-        const searchQuery = params.query.trim();
-        query = query.or(`content.ilike.%${searchQuery}%,title.ilike.%${searchQuery}%`);
+        // Tokenize the query and build a broad OR filter across tokens for title/content
+        const raw = params.query.trim().toLowerCase();
+        const tokens = raw.split(/[^a-z0-9]+/g).filter(Boolean);
+
+        if (tokens.length > 0) {
+          const orFilters = tokens
+            .map((t) => `content.ilike.%${t}%,title.ilike.%${t}%`)
+            .join(',');
+          query = query.or(orFilters);
+        }
       }
 
       if (params.category) {
@@ -220,17 +227,79 @@ export class NotesService {
         throw new AppError("Failed to search notes", 500, "SEARCH_NOTES_ERROR");
       }
 
-      const notes = data?.map((note: any) => this.mapDatabaseNote(note)) || [];
+      // Helper: build tokens without stopwords and without punctuation
+      const buildTokens = (q: string) => {
+        const stop = new Set([
+          'a','an','the','is','was','were','am','i','my','me','do','did','does','where','what','when','which','who','whom','this','that','these','those','to','for','on','in','at','about','with','and','or','but','from','by','of','it','you','your','yours','be','have','has','had','will','would','can','could','should','as'
+        ]);
+        return q
+          .toLowerCase()
+          .split(/[^a-z0-9]+/g)
+          .filter(Boolean)
+          .filter((t) => !stop.has(t))
+          .map((t) => t.replace(/[^a-z0-9]/g, ''));
+      };
+
+      // Post-filter for stricter AND semantics and punctuation-insensitive matching
+      let originalData = data || [];
+
+      // If DB returned nothing, fetch a recent batch and try fuzzy match in-memory
+      if ((!originalData || originalData.length === 0) && params.query) {
+        const fallbackQuery = getSupabaseClient()
+          .from('user_notes')
+          .select('*')
+          .eq('user_id', params.userId)
+          .eq('is_archived', false)
+          .order('is_pinned', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(200);
+        const { data: fallbackData, error: fbErr } = await fallbackQuery;
+        if (!fbErr && fallbackData) {
+          originalData = fallbackData;
+        }
+      }
+
+      let filteredData = originalData;
+
+      if (params.query) {
+        const tokens = buildTokens(params.query);
+
+        if (tokens.length > 0) {
+          filteredData = originalData.filter((note: any) => {
+            const combined = `${note.title || ''} ${note.content || ''} ${Array.isArray(note.tags) ? note.tags.join(' ') : ''}`;
+            const stripped = combined.toLowerCase().replace(/[^a-z0-9]/g, '');
+            return tokens.every((t) => stripped.includes(t));
+          });
+
+          // If still nothing, relax to OR semantics
+          if (filteredData.length === 0) {
+            filteredData = originalData.filter((note: any) => {
+              const combined = `${note.title || ''} ${note.content || ''} ${Array.isArray(note.tags) ? note.tags.join(' ') : ''}`;
+              const stripped = combined.toLowerCase().replace(/[^a-z0-9]/g, '');
+              return tokens.some((t) => stripped.includes(t));
+            });
+          }
+        }
+      }
+
+      const totalFull = filteredData.length;
+
+      // Apply offset/limit after filtering
+      const offset = params.offset || 0;
+      const limit = params.limit || Math.min(10, totalFull || 10);
+      const paged = filteredData.slice(offset, offset + limit);
+
+      const notes = paged.map((note: any) => this.mapDatabaseNote(note));
 
       logInfo("Notes search completed", { 
         userId: params.userId, 
         resultCount: notes.length,
-        total: count || 0
+        total: totalFull
       });
 
       return {
         notes,
-        total: count || 0
+        total: totalFull
       };
     } catch (error) {
       logError("Error in searchNotes", error, params);

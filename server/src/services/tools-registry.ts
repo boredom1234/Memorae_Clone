@@ -364,7 +364,7 @@ export class ToolsRegistry {
       createReminderSchema,
       "createReminderSchema",
     );
-    logInfo("createReminder JSON Schema:", {
+    logInfo("JSON Schema:", {
       jsonSchema: JSON.stringify(jsonSchema, null, 2),
     });
 
