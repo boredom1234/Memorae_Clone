@@ -254,3 +254,44 @@ export function validateAIInput(text: string): string {
 
   return cleaned;
 }
+
+// ---------------- Notification & Communication Schemas ----------------
+export const sendReminderToContactSchema = z.object({
+  recipientNumber: z
+    .string()
+    .min(1, "Recipient number is required")
+    .refine(validatePhoneNumber, "Invalid phone number format"),
+  reminderText: z
+    .string()
+    .min(1, "Reminder text is required")
+    .max(1000, "Reminder text too long")
+    .transform(sanitizeInput),
+  reminderTime: z
+    .string()
+    .refine(validateDateTime, "Invalid datetime format (ISO 8601 required)"),
+  recipientName: z.string().max(100).transform(sanitizeInput).optional(),
+  fromUserName: z.string().max(100).transform(sanitizeInput).optional(),
+});
+
+export const getNotificationHistoryQuerySchema = z.object({
+  limit: z.number().int().min(1).max(100).optional(),
+  offset: z.number().int().min(0).optional(),
+  type: z.enum(["reminder", "shared", "all"]).optional(),
+});
+
+export const sendCustomMessageSchema = z.object({
+  message: z
+    .string()
+    .min(1, "Message is required")
+    .max(4000, "Message too long")
+    .transform(sanitizeInput),
+  formatting: z.enum(["plain", "markdown"]).optional(),
+  buttons: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(64).transform(sanitizeInput),
+        label: z.string().min(1).max(100).transform(sanitizeInput),
+      }),
+    )
+    .optional(),
+});

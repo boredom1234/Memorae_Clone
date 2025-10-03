@@ -135,7 +135,7 @@ CREATE TABLE public.user_notes (
   user_id uuid NOT NULL,
   title character varying,
   content text NOT NULL,
-  tags ARRAY,
+  tags ARRAY DEFAULT '{}'::text[],
   category character varying DEFAULT 'general'::character varying,
   is_pinned boolean DEFAULT false,
   is_archived boolean DEFAULT false,
