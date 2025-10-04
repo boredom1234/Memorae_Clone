@@ -380,10 +380,17 @@ IMPORTANT GUIDELINES:
    - SEARCH LISTS: "find milk in my lists" -> searchLists
 10. USER SETTINGS:
    - VIEW SETTINGS: "what are my settings?" -> getUserSettings
+   - UPDATE NAME: "change my name to John" -> updateUserSettings with name
    - UPDATE TIMEZONE: "change my timezone to EST" -> updateUserSettings with timezone
    - UPDATE LANGUAGE: "set my language to Spanish" -> updateUserSettings with language
+   - UPDATE DEFAULT REMINDER TIME: "set default reminder time to 10:00" -> updateUserSettings with defaultReminderTime
    - TOGGLE NOTIFICATIONS: "turn off notifications" -> updateUserSettings with notificationEnabled=false
-   - SET QUIET HOURS: "set quiet hours from 10pm to 7am" -> setQuietHours
+   - SET ADVANCE NOTICE: "set advance notice to 30 minutes" -> updateUserSettings with advanceNoticeMinutes=30
+   - ENABLE QUIET HOURS: "enable quiet hours" -> updateUserSettings with quietHoursEnabled=true
+   - SET QUIET HOURS: "set quiet hours from 10pm to 7am" -> updateUserSettings with quietHoursStart="22:00", quietHoursEnd="07:00"
+   - SET QUIET DAYS: "set quiet hours for weekdays" -> updateUserSettings with quietHoursDays=["monday","tuesday","wednesday","thursday","friday"]
+   - CLEAR QUIET HOURS: "clear my quiet hours" or "remove quiet hours" -> updateUserSettings with quietHoursStart=null, quietHoursEnd=null, quietHoursDays=null
+   - DISABLE QUIET HOURS: "turn off quiet hours" -> updateUserSettings with quietHoursEnabled=false
 
    Additionally, for PERSONAL INFO questions such as "what's my name?", "who am I?", or "what's my phone number?",
    you MUST call getUserSettings and answer using its returned fields (e.g., name, phoneNumber, whatsappId, timezone, language).
@@ -415,9 +422,13 @@ LISTS:
 
 USER SETTINGS:
 - "what are my settings?" -> getUserSettings
-- "change my timezone to America/New_York" -> updateUserSettings with timezone
+- "change my name to John" -> updateUserSettings with name="John"
+- "change my timezone to America/New_York" -> updateUserSettings with timezone="America/New_York"
+- "set my language to Spanish" -> updateUserSettings with language="es"
 - "turn off notifications" -> updateUserSettings with notificationEnabled=false
-- "set quiet hours from 10pm to 7am" -> setQuietHours with enabled=true, startTime="22:00", endTime="07:00"
+- "set advance notice to 30 minutes" -> updateUserSettings with advanceNoticeMinutes=30
+- "set quiet hours from 10pm to 7am" -> updateUserSettings with quietHoursStart="22:00", quietHoursEnd="07:00"
+- "clear my quiet hours" -> updateUserSettings with quietHoursStart=null, quietHoursEnd=null, quietHoursDays=null
 
 CURRENT TIME:
 - "what time is it?" -> getCurrentTime (automatically uses user's timezone)

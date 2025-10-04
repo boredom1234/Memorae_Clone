@@ -67,6 +67,13 @@ export class UserService {
       timezone?: string;
       language?: string;
       defaultReminderTime?: string;
+      notificationEnabled?: boolean;
+      advanceNoticeMinutes?: number;
+      quietHoursEnabled?: boolean;
+      quietHoursStart?: string | null;
+      quietHoursEnd?: string | null;
+      quietHoursDays?: string[] | null;
+      // Legacy support
       notificationPreferences?: {
         enabled: boolean;
         advanceNotice?: number;
@@ -95,11 +102,30 @@ export class UserService {
 
       const updateData: any = {};
 
-      if (settings.name) updateData.name = settings.name;
-      if (settings.timezone) updateData.timezone = settings.timezone;
-      if (settings.language) updateData.language = settings.language;
-      if (settings.defaultReminderTime)
+      // Basic settings
+      if (settings.name !== undefined) updateData.name = settings.name;
+      if (settings.timezone !== undefined) updateData.timezone = settings.timezone;
+      if (settings.language !== undefined) updateData.language = settings.language;
+      if (settings.defaultReminderTime !== undefined)
         updateData.default_reminder_time = settings.defaultReminderTime;
+      
+      // Notification settings
+      if (settings.notificationEnabled !== undefined)
+        updateData.notification_enabled = settings.notificationEnabled;
+      if (settings.advanceNoticeMinutes !== undefined)
+        updateData.advance_notice_minutes = settings.advanceNoticeMinutes;
+      
+      // Quiet hours settings (support null to clear)
+      if (settings.quietHoursEnabled !== undefined)
+        updateData.quiet_hours_enabled = settings.quietHoursEnabled;
+      if (settings.quietHoursStart !== undefined)
+        updateData.quiet_hours_start = settings.quietHoursStart;
+      if (settings.quietHoursEnd !== undefined)
+        updateData.quiet_hours_end = settings.quietHoursEnd;
+      if (settings.quietHoursDays !== undefined)
+        updateData.quiet_hours_days = settings.quietHoursDays;
+      
+      // Legacy notification preferences support
       if (settings.notificationPreferences) {
         updateData.notification_enabled =
           settings.notificationPreferences.enabled;
@@ -108,6 +134,7 @@ export class UserService {
             settings.notificationPreferences.advanceNotice;
         }
       }
+      
       updateData.updated_at = new Date().toISOString();
 
       const { error } = await this.supabase

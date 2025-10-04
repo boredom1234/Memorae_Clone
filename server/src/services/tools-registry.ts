@@ -1111,36 +1111,65 @@ export class ToolsRegistry {
 
       updateUserSettings: tool({
         description:
-          'Modify user configuration settings such as timezone, language, or notification preferences. Use this when the user wants to change, update, or configure their settings. Trigger phrases: "change", "set", "update", "configure", "switch", "turn on/off". Examples: "change my timezone to EST", "set my language to Spanish", "turn off notifications", "update my timezone to Asia/Kolkata", "switch language to French", "enable notifications".',
+          'Modify user configuration settings including name, timezone, language, notification preferences, quiet hours, and more. Use this when the user wants to change, update, or configure their settings. To clear quiet hours, set quietHoursStart, quietHoursEnd, or quietHoursDays to null. Trigger phrases: "change", "set", "update", "configure", "switch", "turn on/off", "clear", "remove". Examples: "change my name to John", "change my timezone to EST", "set my language to Spanish", "turn off notifications", "set advance notice to 30 minutes", "clear my quiet hours", "remove quiet hours days".',
         inputSchema: z.object({
+          name: z
+            .string()
+            .min(1)
+            .max(255)
+            .optional()
+            .describe("User's display name"),
           timezone: z
             .string()
             .optional()
             .describe(
-              'Timezone (e.g., "America/New_York", "UTC", "Asia/Tokyo")',
+              'Timezone (e.g., "America/New_York", "UTC", "Asia/Kolkata")',
             ),
           language: z
             .string()
+            .length(2)
             .optional()
             .describe('Language code (e.g., "en", "es", "fr")'),
+          defaultReminderTime: z
+            .string()
+            .regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
+            .optional()
+            .describe('Default reminder time in HH:MM format (e.g., "09:00")'),
           notificationEnabled: z
             .boolean()
             .optional()
             .describe("Enable or disable notifications"),
+          advanceNoticeMinutes: z
+            .number()
+            .int()
+            .min(0)
+            .max(1440)
+            .optional()
+            .describe("Advance notice in minutes (0-1440)"),
+          quietHoursEnabled: z
+            .boolean()
+            .optional()
+            .describe("Enable or disable quiet hours"),
+          quietHoursStart: z
+            .string()
+            .regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
+            .nullable()
+            .optional()
+            .describe('Quiet hours start time in HH:MM (e.g., "22:00"). Set to null to clear.'),
+          quietHoursEnd: z
+            .string()
+            .regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
+            .nullable()
+            .optional()
+            .describe('Quiet hours end time in HH:MM (e.g., "07:00"). Set to null to clear.'),
+          quietHoursDays: z
+            .array(z.enum(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]))
+            .nullable()
+            .optional()
+            .describe('Days for quiet hours (e.g., ["monday", "tuesday"]). Set to null to clear.'),
         }),
         execute: dedupe("updateUserSettings", async (params) => {
-          const updateParams: any = {};
-          if (params.timezone) updateParams.timezone = params.timezone;
-          if (params.language) updateParams.language = params.language;
-          if (params.notificationEnabled !== undefined) {
-            updateParams.notificationPreferences = {
-              enabled: params.notificationEnabled,
-            };
-          }
-          return await this.userService.updateUserSettings(
-            userId,
-            updateParams,
-          );
+          return await this.userService.updateUserSettings(userId, params);
         }),
       }),
 
