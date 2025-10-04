@@ -270,6 +270,34 @@ export const updateUserSettingsSchema = z.object({
     .string()
     .regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)")
     .optional(),
+  notificationEnabled: z.boolean().optional(),
+  advanceNoticeMinutes: z.number().int().min(0).max(1440).optional(),
+  quietHoursEnabled: z.boolean().optional(),
+  quietHoursStart: z
+    .string()
+    .regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)")
+    .nullable()
+    .optional(),
+  quietHoursEnd: z
+    .string()
+    .regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)")
+    .nullable()
+    .optional(),
+  quietHoursDays: z
+    .array(
+      z.enum([
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+      ]),
+    )
+    .nullable()
+    .optional(),
+  // Legacy support
   notificationPreferences: z
     .object({
       enabled: z.boolean(),

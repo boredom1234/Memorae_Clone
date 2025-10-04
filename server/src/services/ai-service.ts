@@ -251,11 +251,16 @@ export class AIService {
     text: string;
     toolCalls: any[];
     toolResults: any[];
+    toolsRequiredButMissing?: boolean;
+    _toolsExecuted?: boolean;
   }> {
     if (!this.defaultModel && this.fallbackModels.length === 0) {
       this.logger.error("No AI models configured");
       throw new Error("AI service not available - no models configured");
     }
+
+    // Capture a stable 'now' for this turn to avoid time drift between retries
+    const nowIso = new Date().toISOString();
 
     // Try primary model first, then fallbacks
     const modelsToTry = [
@@ -304,12 +309,26 @@ IMPORTANT: You have access to conversation history. Use it to understand context
 For example, if a user previously asked "Delete my reminder" and you responded with a list of reminders,
 and now they say "1", you should understand they want to delete the first reminder from that list.
 
+DISAMBIGUATION & CONFIRMATION FLOWS:
+- When multiple items match a search, present a numbered list and ask the user to select by number.
+- For destructive actions (delete, especially recurring reminders), ask for confirmation before proceeding.
+- If a tool returns needsSelection or needsConfirmation, present the options clearly to the user and wait for their response.
+
+ERROR HANDLING:
+- If a tool returns { success: false, error: true, message: "..." }, the operation FAILED.
+- You MUST inform the user about the failure and explain the error message in a friendly way.
+- Common errors:
+  - "Maximum 50 items at once" → Tell user to split into smaller batches
+  - "Validation failed" → Explain what validation failed and how to fix it
+  - "Not found" → Confirm the item doesn't exist
+- NEVER claim success when a tool returns an error response.
+
 IMPORTANT GUIDELINES:
 
 1. CREATING REMINDERS:
    - Use the field name "reminderTime" (NOT "time") for the ISO 8601 datetime
    - For relative times like "in 30 seconds" or "in 5 minutes", calculate the absolute ISO 8601 datetime from the current time
-   - Current time (UTC): ${new Date().toISOString()}
+   - Current time (UTC): ${nowIso}
    - IMPORTANT: The system automatically uses the user's configured timezone (${timezone}) for all time operations. Users don't need to specify their timezone.
    - When users say times like "3pm", "tomorrow at 9am", interpret these in their local timezone
    - Example: If user says "remind me in 30 seconds", calculate 30 seconds from now and use that ISO datetime
@@ -361,10 +380,17 @@ IMPORTANT GUIDELINES:
    - SEARCH LISTS: "find milk in my lists" -> searchLists
 10. USER SETTINGS:
    - VIEW SETTINGS: "what are my settings?" -> getUserSettings
+   - UPDATE NAME: "change my name to John" -> updateUserSettings with name
    - UPDATE TIMEZONE: "change my timezone to EST" -> updateUserSettings with timezone
    - UPDATE LANGUAGE: "set my language to Spanish" -> updateUserSettings with language
+   - UPDATE DEFAULT REMINDER TIME: "set default reminder time to 10:00" -> updateUserSettings with defaultReminderTime
    - TOGGLE NOTIFICATIONS: "turn off notifications" -> updateUserSettings with notificationEnabled=false
-   - SET QUIET HOURS: "set quiet hours from 10pm to 7am" -> setQuietHours
+   - SET ADVANCE NOTICE: "set advance notice to 30 minutes" -> updateUserSettings with advanceNoticeMinutes=30
+   - ENABLE QUIET HOURS: "enable quiet hours" -> updateUserSettings with quietHoursEnabled=true
+   - SET QUIET HOURS: "set quiet hours from 10pm to 7am" -> updateUserSettings with quietHoursStart="22:00", quietHoursEnd="07:00"
+   - SET QUIET DAYS: "set quiet hours for weekdays" -> updateUserSettings with quietHoursDays=["monday","tuesday","wednesday","thursday","friday"]
+   - CLEAR QUIET HOURS: "clear my quiet hours" or "remove quiet hours" -> updateUserSettings with quietHoursStart=null, quietHoursEnd=null, quietHoursDays=null
+   - DISABLE QUIET HOURS: "turn off quiet hours" -> updateUserSettings with quietHoursEnabled=false
 
    Additionally, for PERSONAL INFO questions such as "what's my name?", "who am I?", or "what's my phone number?",
    you MUST call getUserSettings and answer using its returned fields (e.g., name, phoneNumber, whatsappId, timezone, language).
@@ -396,9 +422,13 @@ LISTS:
 
 USER SETTINGS:
 - "what are my settings?" -> getUserSettings
-- "change my timezone to America/New_York" -> updateUserSettings with timezone
+- "change my name to John" -> updateUserSettings with name="John"
+- "change my timezone to America/New_York" -> updateUserSettings with timezone="America/New_York"
+- "set my language to Spanish" -> updateUserSettings with language="es"
 - "turn off notifications" -> updateUserSettings with notificationEnabled=false
-- "set quiet hours from 10pm to 7am" -> setQuietHours with enabled=true, startTime="22:00", endTime="07:00"
+- "set advance notice to 30 minutes" -> updateUserSettings with advanceNoticeMinutes=30
+- "set quiet hours from 10pm to 7am" -> updateUserSettings with quietHoursStart="22:00", quietHoursEnd="07:00"
+- "clear my quiet hours" -> updateUserSettings with quietHoursStart=null, quietHoursEnd=null, quietHoursDays=null
 
 CURRENT TIME:
 - "what time is it?" -> getCurrentTime (automatically uses user's timezone)
@@ -408,20 +438,31 @@ CURRENT TIME:
 Current user timezone: ${timezone}
 Current user ID: ${userId}`,
           tools,
-          stopWhen: stepCountIs(5), // Allow up to 5 multi-step tool calls
+          stopWhen: stepCountIs(7), // Allow up to 7 multi-step tool calls for complex flows
         });
 
+        // Check if tools were actually executed by examining the stats
+        const toolStats = (tools as any).__stats;
+        const toolsActuallyExecuted = toolStats?.executed === true;
+
         this.logger.info(
-          `AI processed message with ${modelConfig.provider} - ${result.toolCalls.length} tool calls`,
+          `AI processed message with ${modelConfig.provider} - ${result.toolCalls.length} tool calls, tools executed: ${toolsActuallyExecuted}`,
         );
 
-        // If the model failed to call tools but the input likely requires
-        // data operations (lists/reminders/settings), retry with stricter
-        // instructions to use tools. This mitigates hallucinated answers.
-        if (
-          result.toolCalls.length === 0 &&
-          this.messageLikelyNeedsTools(message)
-        ) {
+        if (toolsActuallyExecuted && toolStats.names) {
+          this.logger.info(`Tools executed: ${toolStats.names.join(", ")}`);
+        }
+
+        // If no tools appear to have been used AND the input likely requires tools,
+        // retry with stricter instructions. Some providers may execute tools but
+        // not populate toolCalls; in that case, also check toolResults or execution stats.
+        const toolsUsed =
+          (Array.isArray(result.toolCalls) && result.toolCalls.length > 0) ||
+          (Array.isArray(result.toolResults) &&
+            result.toolResults.length > 0) ||
+          toolsActuallyExecuted;
+
+        if (!toolsUsed && this.messageLikelyNeedsTools(message)) {
           this.logger.warn(
             `No tool calls detected for a likely tool-requiring message. Retrying with tools-required system prompt...`,
           );
@@ -440,14 +481,45 @@ Current user ID: ${userId}`,
           });
 
           this.logger.info(
-            `Retry completed - tool calls: ${result.toolCalls.length}`,
+            `Retry completed - tool calls: ${result.toolCalls.length}, tool results: ${Array.isArray(result.toolResults) ? result.toolResults.length : 0}`,
           );
+
+          // Check if tools were executed in retry
+          const retryToolStats = (tools as any).__stats;
+          const retryToolsExecuted = retryToolStats?.executed === true;
+
+          // Check if tools are still missing after retry for action intents
+          const stillNoTools =
+            (!Array.isArray(result.toolCalls) ||
+              result.toolCalls.length === 0) &&
+            (!Array.isArray(result.toolResults) ||
+              result.toolResults.length === 0) &&
+            !retryToolsExecuted;
+
+          if (stillNoTools) {
+            this.logger.warn(
+              `Tools required but missing even after retry. Flagging response.`,
+            );
+            return {
+              text: result.text,
+              toolCalls: result.toolCalls,
+              toolResults: result.toolResults,
+              toolsRequiredButMissing: true,
+            };
+          }
         }
+
+        // Final check: were tools actually executed even if arrays are empty?
+        const finalToolStats = (tools as any).__stats;
+        const finalToolsExecuted = finalToolStats?.executed === true;
 
         return {
           text: result.text,
           toolCalls: result.toolCalls,
           toolResults: result.toolResults,
+          toolsRequiredButMissing: false,
+          // Pass through execution stats for downstream use
+          _toolsExecuted: finalToolsExecuted,
         };
       } catch (error: any) {
         lastError = error;
@@ -469,32 +541,57 @@ Current user ID: ${userId}`,
     );
   }
 
-  // Basic heuristic to detect when a message likely requires tools and not a
-  // free-form answer. This helps reduce hallucinations by forcing tool usage.
+  // Broadened heuristic to detect when a message likely requires tools
+  // Includes personal info/settings queries and more action verbs
   private messageLikelyNeedsTools(input: string): boolean {
     const s = (input || "").toLowerCase();
     const actionKeywords = [
+      // Reminder actions
       "remind",
       "reminder",
       "set a reminder",
+      "schedule",
+      "snooze",
+      "postpone",
+      "delay",
+      // CRUD operations
       "create",
       "add",
       "put",
       "include",
+      "update",
+      "change",
+      "modify",
+      "edit",
+      "delete",
+      "remove",
+      "cancel",
+      "complete",
+      "mark as",
+      "done",
+      "finished",
+      // Query operations
       "list",
       "show",
       "what's on",
       "what is on",
-      "delete",
-      "remove",
-      "complete",
-      "mark as",
-      "snooze",
-      "update",
-      "change",
-      "timezone",
-      "settings",
-      "notes",
+      "find",
+      "search",
+      "upcoming",
+      // Personal info/settings
+      "my name",
+      "who am i",
+      "my phone",
+      "my timezone",
+      "my language",
+      "my settings",
+      "quiet hours",
+      "notification",
+      // Notes
+      "note",
+      "remember",
+      "save",
+      "store",
     ];
     return actionKeywords.some((k) => s.includes(k));
   }

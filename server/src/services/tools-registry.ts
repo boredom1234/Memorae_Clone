@@ -341,8 +341,15 @@ export class ToolsRegistry {
       title: z.string().describe("The reminder title/description"),
       reminderTime: z
         .string()
+        .optional()
         .describe(
-          'ISO 8601 datetime string when the reminder should trigger. For relative times like "in 30 seconds", calculate the absolute time from now. If the user specifies a time that has already passed today (e.g., "3pm" when it\'s already 4pm), assume they mean the next occurrence (tomorrow at 3pm).',
+          "ISO 8601 datetime string when the reminder should trigger. Optional if naturalTimeText is provided.",
+        ),
+      naturalTimeText: z
+        .string()
+        .optional()
+        .describe(
+          'Natural language time description (e.g., "tomorrow at 3pm", "in 30 minutes", "next Monday 9am"). Server will parse this using user timezone.',
         ),
       isRecurring: z
         .boolean()
@@ -371,26 +378,158 @@ export class ToolsRegistry {
       jsonSchema: JSON.stringify(jsonSchema, null, 2),
     });
 
-    return {
+    // Per-request de-duplication for identical tool calls
+    const resultCache = new Map<string, any>();
+    const pendingCache = new Map<string, Promise<any>>();
+    // Per-request execution stats
+    const stats: any = {
+      executed: false,
+      names: [] as string[],
+      counts: {} as Record<string, number>,
+    };
+    const normalize = (value: any): any => {
+      if (Array.isArray(value)) return value.map(normalize);
+      if (value && typeof value === "object") {
+        const out: any = {};
+        for (const k of Object.keys(value).sort()) out[k] = normalize(value[k]);
+        return out;
+      }
+      return value;
+    };
+    const canonicalizeForKey = (name: string, params: any) => {
+      const p = normalize(params || {});
+      try {
+        if (name === "createReminder" && p) {
+          if (typeof p.title === "string") {
+            p.title = p.title.trim().toLowerCase();
+          }
+          if (p.reminderTime) {
+            const d = new Date(p.reminderTime);
+            if (!isNaN(d.getTime())) {
+              const bucket = Math.floor(d.getTime() / 60000) * 60000; // floor to minute
+              p.reminderTime = new Date(bucket).toISOString();
+            }
+          }
+        }
+      } catch {}
+      return p;
+    };
+    const buildKey = (name: string, params: any) =>
+      `${name}:${JSON.stringify(canonicalizeForKey(name, params))}`;
+    const dedupe = <T>(name: string, fn: (params: any) => Promise<T>) => {
+      return async (params: any): Promise<T> => {
+        const key = buildKey(name, params);
+        // mark stats on attempt; concrete execution may reuse cached
+        stats.executed = true;
+        stats.names.push(name);
+        stats.counts[name] = (stats.counts[name] || 0) + 1;
+        if (resultCache.has(key)) {
+          logInfo(`Dedup hit for tool: ${name}`);
+          return resultCache.get(key) as T;
+        }
+        if (pendingCache.has(key)) {
+          logInfo(`Dedup pending hit for tool: ${name}`);
+          return (await pendingCache.get(key)!) as T;
+        }
+        const p = (async () => {
+          try {
+            const res = await fn(params);
+            resultCache.set(key, res);
+            return res;
+          } catch (error: any) {
+            // Return error as structured response so AI can see it
+            const errorResponse = {
+              success: false,
+              error: true,
+              message: error.message || "Operation failed",
+              errorCode: error.code || "UNKNOWN_ERROR",
+              details: error.statusCode
+                ? `Status: ${error.statusCode}`
+                : undefined,
+            } as any;
+
+            logError(`Tool ${name} failed`, error, { params });
+
+            // Cache the error response to prevent retries
+            resultCache.set(key, errorResponse);
+            return errorResponse;
+          } finally {
+            pendingCache.delete(key);
+          }
+        })();
+        pendingCache.set(key, p);
+        return (await p) as T;
+      };
+    };
+
+    const toolsObj = {
       createReminder: tool({
         description:
           'Create a new reminder for the user at a specific date and time. Use this when the user wants to be reminded about something in the future. Trigger phrases: "remind me", "set a reminder", "don\'t let me forget", "alert me", "notify me when", "schedule a reminder". For one-time reminders, set isRecurring=false. For recurring reminders (daily, weekly, monthly, etc.), set isRecurring=true and provide recurrenceRule. Examples: "remind me to call mom tomorrow at 3pm", "set a daily reminder to take medicine at 9am", "remind me every Monday at 10am for team meeting".',
         inputSchema: createReminderSchema,
-        execute: async (params) => {
+        execute: dedupe("createReminder", async (params) => {
           // Fetch user's timezone
           const settings = await this.userService.getUserSettings(userId);
           const tz = settings?.timezone || "UTC";
+
+          // Server-side time parsing (single source of truth)
+          let finalTime = params.reminderTime;
+
+          // If naturalTimeText is provided or reminderTime is invalid, parse it
+          if (params.naturalTimeText || !finalTime) {
+            const textToParse =
+              params.naturalTimeText || params.reminderTime || "";
+            const parsed = this.utilityService.parseNaturalLanguageDate({
+              text: textToParse,
+              timezone: tz,
+            });
+
+            if (parsed.success && parsed.extractedDates.length > 0) {
+              // Pick best date (highest confidence, soonest future)
+              const bestDate = this.utilityService.pickBestDate(
+                parsed.extractedDates,
+              );
+              if (bestDate) {
+                finalTime = bestDate;
+              }
+            }
+          }
+
+          // Validate we have a time
+          if (!finalTime) {
+            throw new Error(
+              "Could not determine reminder time. Please specify a valid date/time.",
+            );
+          }
+
+          // Ensure future time
+          const parsedDate = new Date(finalTime);
+          if (isNaN(parsedDate.getTime())) {
+            throw new Error("Invalid reminder time format.");
+          }
+
+          if (parsedDate.getTime() <= Date.now()) {
+            // Roll forward to tomorrow at same time
+            finalTime = this.utilityService.ensureFuture(finalTime);
+          }
+
+          // Normalize title
+          const normalizedTitle = params.title.trim().replace(/\s+/g, " ");
+          if (!normalizedTitle) {
+            throw new Error("Reminder title cannot be empty.");
+          }
+
           return await this.reminderService.createReminder({
             userId,
-            title: params.title,
-            reminderTime: params.reminderTime,
+            title: normalizedTitle,
+            reminderTime: finalTime,
             timezone: tz,
             isRecurring: params.isRecurring ?? false,
             recurrenceRule: params.recurrenceRule,
             notes: params.notes,
             priority: params.priority,
           });
-        },
+        }),
       }),
 
       updateReminder: tool({
@@ -400,37 +539,99 @@ export class ToolsRegistry {
           searchQuery: z.string().describe("Text to search for the reminder"),
           title: z.string().optional().describe("New title for the reminder"),
           reminderTime: z.string().optional().describe("New ISO 8601 datetime"),
+          naturalTimeText: z
+            .string()
+            .optional()
+            .describe("Natural language time for update"),
           priority: z
             .enum(["low", "medium", "high"])
             .optional()
             .describe("New priority"),
         }),
-        execute: async (params) => {
-          // Search for the reminder first
+        execute: dedupe("updateReminder", async (params) => {
+          // Fetch user's timezone
+          const settings = await this.userService.getUserSettings(userId);
+          const tz = settings?.timezone || "UTC";
+
+          // Search for the reminder - allow up to 5 results for disambiguation
           const searchResult = await this.reminderService.searchReminders({
             userId,
             query: params.searchQuery,
-            limit: 1,
+            limit: 5,
           });
 
           if (searchResult.results.length === 0) {
-            throw new Error("Could not find that reminder");
+            throw new Error(
+              "Could not find any reminders matching that description.",
+            );
           }
 
-          // Fetch user's timezone for time-related updates
-          const settings = await this.userService.getUserSettings(userId);
-          const tz = settings?.timezone || "UTC";
+          // Disambiguation: if multiple results, return them for user selection
+          if (searchResult.results.length > 1) {
+            return {
+              needsSelection: true,
+              message: "I found multiple reminders. Which one did you mean?",
+              candidates: searchResult.results.map((r: any, idx: number) => ({
+                id: r.id,
+                number: idx + 1,
+                title: r.title,
+                time: r.reminderTime,
+                type: "reminder",
+              })),
+            };
+          }
+
+          // Server-side time parsing if needed
+          let finalTime = params.reminderTime;
+          if (
+            params.naturalTimeText ||
+            (params.reminderTime &&
+              isNaN(new Date(params.reminderTime).getTime()))
+          ) {
+            const textToParse =
+              params.naturalTimeText || params.reminderTime || "";
+            const parsed = this.utilityService.parseNaturalLanguageDate({
+              text: textToParse,
+              timezone: tz,
+            });
+
+            if (parsed.success && parsed.extractedDates.length > 0) {
+              finalTime =
+                this.utilityService.pickBestDate(parsed.extractedDates) ||
+                finalTime;
+            }
+          }
+
+          // Ensure future time if updating time
+          if (finalTime) {
+            const parsedDate = new Date(finalTime);
+            if (parsedDate.getTime() <= Date.now()) {
+              finalTime = this.utilityService.ensureFuture(finalTime);
+            }
+          }
+
+          // Normalize title if provided
+          const normalizedTitle = params.title
+            ? params.title.trim().replace(/\s+/g, " ")
+            : undefined;
+
+          // Check for meaningful update
+          if (!normalizedTitle && !finalTime && !params.priority) {
+            throw new Error(
+              "Please specify what you want to update (title, time, or priority).",
+            );
+          }
 
           // Update the reminder
           return await this.reminderService.updateReminder({
             userId,
             reminderId: searchResult.results[0].id,
-            title: params.title,
-            reminderTime: params.reminderTime,
+            title: normalizedTitle,
+            reminderTime: finalTime,
             timezone: tz,
             priority: params.priority,
           });
-        },
+        }),
       }),
 
       deleteReminder: tool({
@@ -441,22 +642,54 @@ export class ToolsRegistry {
             .string()
             .describe("Text to search for the reminder to delete"),
         }),
-        execute: async (params) => {
+        execute: dedupe("deleteReminder", async (params) => {
+          // Search with limit for disambiguation
           const searchResult = await this.reminderService.searchReminders({
             userId,
             query: params.searchQuery,
-            limit: 1,
+            limit: 5,
           });
 
           if (searchResult.results.length === 0) {
-            throw new Error("Could not find that reminder");
+            throw new Error(
+              "Could not find any reminders matching that description.",
+            );
+          }
+
+          // Disambiguation: if multiple results, return them for user selection
+          if (searchResult.results.length > 1) {
+            return {
+              needsSelection: true,
+              message:
+                "I found multiple reminders. Which one do you want to delete?",
+              candidates: searchResult.results.map((r: any, idx: number) => ({
+                id: r.id,
+                number: idx + 1,
+                title: r.title,
+                time: r.reminderTime,
+                type: "reminder",
+              })),
+            };
+          }
+
+          const reminder = searchResult.results[0];
+
+          // Confirmation for recurring reminders
+          if (reminder.isRecurring) {
+            return {
+              needsConfirmation: true,
+              message: `This is a recurring reminder ("${reminder.title}"). Are you sure you want to delete it? Reply 'yes' to confirm.`,
+              action: "deleteReminder",
+              targetId: reminder.id,
+              summary: `Delete recurring reminder: ${reminder.title}`,
+            };
           }
 
           return await this.reminderService.deleteReminder({
             userId,
-            reminderId: searchResult.results[0].id,
+            reminderId: reminder.id,
           });
-        },
+        }),
       }),
 
       listReminders: tool({
@@ -472,14 +705,14 @@ export class ToolsRegistry {
             .optional()
             .describe("Maximum number of reminders to return"),
         }),
-        execute: async (params) => {
+        execute: dedupe("listReminders", async (params) => {
           return await this.reminderService.listReminders({
             userId,
             status: params.status || "pending",
             limit: params.limit || 10,
             sortBy: "time",
           });
-        },
+        }),
       }),
 
       completeReminder: tool({
@@ -490,7 +723,7 @@ export class ToolsRegistry {
             .string()
             .describe("Text to search for the reminder to complete"),
         }),
-        execute: async (params) => {
+        execute: dedupe("completeReminder", async (params) => {
           const searchResult = await this.reminderService.searchReminders({
             userId,
             query: params.searchQuery,
@@ -505,7 +738,7 @@ export class ToolsRegistry {
             userId,
             reminderId: searchResult.results[0].id,
           });
-        },
+        }),
       }),
 
       createList: tool({
@@ -522,37 +755,96 @@ export class ToolsRegistry {
             .optional()
             .describe("Initial items to add"),
         }),
-        execute: async (params) => {
+        execute: dedupe("createList", async (params) => {
           return await this.listService.createList({
             userId,
             ...params,
           });
-        },
+        }),
       }),
 
       addItemToList: tool({
         description:
-          'Add one or more items to an existing list. If the list doesn\'t exist, it will be created automatically. Use this when the user wants to add, put, or append items to a list. Trigger phrases: "add to", "put on", "add [item] to [list]", "include in". Examples: "add milk to my shopping list", "add buy groceries to my todo list", "put eggs and bread on the shopping list", "add workout to my daily tasks", "include meeting notes in my work list".',
+          'Add one or more items to an existing list. If the list doesn\'t exist, it will be created automatically. Use this when the user wants to add, put, or append items to a list. Maximum 50 items per call - if user provides more, split into multiple calls. Trigger phrases: "add to", "put on", "add [item] to [list]", "include in". Examples: "add milk to my shopping list", "add buy groceries to my todo list", "put eggs and bread on the shopping list", "add workout to my daily tasks", "include meeting notes in my work list".',
         inputSchema: z.object({
           listName: z.string().describe("Name of the list"),
-          items: z.array(z.string()).describe("Items to add to the list"),
+          items: z
+            .array(z.string())
+            .describe("Items to add to the list (max 50)"),
         }),
-        execute: async (params) => {
+        execute: dedupe("addItemToList", async (params) => {
+          // Handle batch splitting automatically if more than 50 items
+          if (params.items.length > 50) {
+            const batches = [];
+            for (let i = 0; i < params.items.length; i += 50) {
+              batches.push(params.items.slice(i, i + 50));
+            }
+
+            let totalAdded = 0;
+            let errors = [];
+
+            for (let i = 0; i < batches.length; i++) {
+              try {
+                const result = await this.listService.addItemToList({
+                  userId,
+                  listName: params.listName,
+                  items: batches[i],
+                });
+                totalAdded += result.addedCount || batches[i].length;
+              } catch (error: any) {
+                // If first batch and list doesn't exist, try creating it
+                if (i === 0 && error.code === "LIST_NOT_FOUND") {
+                  try {
+                    const createResult = await this.listService.createList({
+                      userId,
+                      name: params.listName,
+                      items: batches[i],
+                    });
+                    totalAdded += batches[i].length;
+                  } catch (createError: any) {
+                    errors.push(`Batch ${i + 1}: ${createError.message}`);
+                  }
+                } else {
+                  errors.push(`Batch ${i + 1}: ${error.message}`);
+                }
+              }
+            }
+
+            return {
+              success: errors.length === 0,
+              addedCount: totalAdded,
+              totalItems: params.items.length,
+              batches: batches.length,
+              message:
+                errors.length > 0
+                  ? `Added ${totalAdded} of ${params.items.length} items. Errors: ${errors.join("; ")}`
+                  : `Successfully added all ${totalAdded} items in ${batches.length} batches.`,
+              errors: errors.length > 0 ? errors : undefined,
+            };
+          }
+
+          // Normal flow for <= 50 items
           try {
             return await this.listService.addItemToList({
               userId,
               listName: params.listName,
               items: params.items,
             });
-          } catch (error) {
+          } catch (error: any) {
             // List doesn't exist, create it
-            return await this.listService.createList({
-              userId,
-              name: params.listName,
-              items: params.items,
-            });
+            if (
+              error.code === "LIST_NOT_FOUND" ||
+              error.message?.includes("not found")
+            ) {
+              return await this.listService.createList({
+                userId,
+                name: params.listName,
+                items: params.items,
+              });
+            }
+            throw error;
           }
-        },
+        }),
       }),
 
       getLists: tool({
@@ -564,13 +856,13 @@ export class ToolsRegistry {
             .optional()
             .describe("Whether to include list items"),
         }),
-        execute: async (params) => {
+        execute: dedupe("getLists", async (params) => {
           return await this.listService.getLists({
             userId,
             includeItems: params.includeItems ?? true,
             limit: 20,
           });
-        },
+        }),
       }),
 
       searchReminders: tool({
@@ -584,13 +876,13 @@ export class ToolsRegistry {
             .optional()
             .describe("Whether to include completed reminders"),
         }),
-        execute: async (params) => {
+        execute: dedupe("searchReminders", async (params) => {
           return await this.reminderService.searchReminders({
             userId,
             query: params.query,
             limit: params.limit || 10,
           });
-        },
+        }),
       }),
 
       snoozeReminder: tool({
@@ -602,32 +894,87 @@ export class ToolsRegistry {
             .describe("Text to search for the reminder to snooze"),
           snoozeUntil: z
             .string()
+            .optional()
             .describe(
-              'ISO 8601 datetime when the reminder should trigger after snoozing. For relative times like "in 10 minutes", calculate the absolute time from now.',
+              "ISO 8601 datetime when the reminder should trigger after snoozing",
+            ),
+          naturalTimeText: z
+            .string()
+            .optional()
+            .describe(
+              'Natural language time (e.g., "in 10 minutes", "tomorrow 3pm")',
             ),
         }),
-        execute: async (params) => {
+        execute: dedupe("snoozeReminder", async (params) => {
+          // Fetch user's timezone
+          const settings = await this.userService.getUserSettings(userId);
+          const tz = settings?.timezone || "UTC";
+
+          // Search with disambiguation
           const searchResult = await this.reminderService.searchReminders({
             userId,
             query: params.searchQuery,
-            limit: 1,
+            limit: 5,
           });
 
           if (searchResult.results.length === 0) {
-            throw new Error("Could not find that reminder");
+            throw new Error(
+              "Could not find any reminders matching that description.",
+            );
           }
 
-          // Fetch user's timezone for snooze time calculation
-          const settings = await this.userService.getUserSettings(userId);
-          const tz = settings?.timezone || "UTC";
+          // Disambiguation
+          if (searchResult.results.length > 1) {
+            return {
+              needsSelection: true,
+              message:
+                "I found multiple reminders. Which one do you want to snooze?",
+              candidates: searchResult.results.map((r: any, idx: number) => ({
+                id: r.id,
+                number: idx + 1,
+                title: r.title,
+                time: r.reminderTime,
+                type: "reminder",
+              })),
+            };
+          }
+
+          // Server-side time parsing
+          let finalTime = params.snoozeUntil;
+          if (params.naturalTimeText || !finalTime) {
+            const textToParse =
+              params.naturalTimeText || params.snoozeUntil || "";
+            const parsed = this.utilityService.parseNaturalLanguageDate({
+              text: textToParse,
+              timezone: tz,
+            });
+
+            if (parsed.success && parsed.extractedDates.length > 0) {
+              finalTime =
+                this.utilityService.pickBestDate(parsed.extractedDates) ||
+                finalTime;
+            }
+          }
+
+          if (!finalTime) {
+            throw new Error(
+              "Please specify when to snooze until (e.g., 'in 10 minutes', 'tomorrow 3pm').",
+            );
+          }
+
+          // Ensure future time
+          const parsedDate = new Date(finalTime);
+          if (parsedDate.getTime() <= Date.now()) {
+            throw new Error("Snooze time must be in the future.");
+          }
 
           return await this.reminderService.snoozeReminder({
             userId,
             reminderId: searchResult.results[0].id,
-            snoozeUntil: params.snoozeUntil,
+            snoozeUntil: finalTime,
             timezone: tz,
           });
-        },
+        }),
       }),
 
       getUpcomingReminders: tool({
@@ -642,13 +989,13 @@ export class ToolsRegistry {
             .optional()
             .describe("Maximum number of reminders to return"),
         }),
-        execute: async (params) => {
+        execute: dedupe("getUpcomingReminders", async (params) => {
           return await this.reminderService.getUpcomingReminders({
             userId,
             timeframe: params.timeframe,
             limit: params.limit || 10,
           });
-        },
+        }),
       }),
 
       batchCreateReminders: tool({
@@ -678,12 +1025,12 @@ export class ToolsRegistry {
             )
             .describe("Array of reminders to create"),
         }),
-        execute: async (params) => {
+        execute: dedupe("batchCreateReminders", async (params) => {
           return await this.reminderService.batchCreateReminders({
             userId,
             reminders: params.reminders,
           });
-        },
+        }),
       }),
 
       getListItems: tool({
@@ -696,13 +1043,13 @@ export class ToolsRegistry {
             .optional()
             .describe("Whether to include completed items"),
         }),
-        execute: async (params) => {
+        execute: dedupe("getListItems", async (params) => {
           return await this.listService.getListItems({
             userId,
             listName: params.listName,
             includeCompleted: params.includeCompleted ?? false,
           });
-        },
+        }),
       }),
 
       removeItemFromList: tool({
@@ -714,13 +1061,13 @@ export class ToolsRegistry {
             .string()
             .describe("Text to search for in items to remove"),
         }),
-        execute: async (params) => {
+        execute: dedupe("removeItemFromList", async (params) => {
           return await this.listService.removeItemFromList({
             userId,
             listName: params.listName,
             itemText: params.itemText,
           });
-        },
+        }),
       }),
 
       updateListItem: tool({
@@ -740,7 +1087,7 @@ export class ToolsRegistry {
             .optional()
             .describe("New content for the item"),
         }),
-        execute: async (params) => {
+        execute: dedupe("updateListItem", async (params) => {
           // First, search for the item
           const listItems = await this.listService.getListItems({
             userId,
@@ -763,7 +1110,7 @@ export class ToolsRegistry {
             isCompleted: params.isCompleted,
             newContent: params.newContent,
           });
-        },
+        }),
       }),
 
       deleteList: tool({
@@ -772,12 +1119,12 @@ export class ToolsRegistry {
         inputSchema: z.object({
           listName: z.string().describe("Name of the list to delete"),
         }),
-        execute: async (params) => {
+        execute: dedupe("deleteList", async (params) => {
           return await this.listService.deleteList({
             userId,
             listName: params.listName,
           });
-        },
+        }),
       }),
 
       searchLists: tool({
@@ -791,58 +1138,103 @@ export class ToolsRegistry {
             .describe("Where to search"),
           limit: z.number().optional().describe("Maximum results"),
         }),
-        execute: async (params) => {
+        execute: dedupe("searchLists", async (params) => {
           return await this.listService.searchLists({
             userId,
             query: params.query,
             searchIn: params.searchIn || "both",
             limit: params.limit || 20,
           });
-        },
+        }),
       }),
 
       getUserSettings: tool({
         description:
           'Retrieve the user\'s profile and configuration settings including name, timezone, language, notification preferences, and quiet hours. Use this when the user wants to view or check their personal information or settings. Trigger phrases: "my settings", "what are my settings", "show settings", "my preferences", "what\'s my timezone", "what\'s my name", "who am I", "what\'s my phone number", "what\'s my configuration". Examples: "what are my settings?", "what\'s my timezone?", "show my preferences", "what\'s my current language?", "display my notification settings", "what\'s my name?".',
         inputSchema: z.object({}),
-        execute: async () => {
+        execute: dedupe("getUserSettings", async () => {
           return await this.userService.getUserSettings(userId);
-        },
+        }),
       }),
 
       updateUserSettings: tool({
         description:
-          'Modify user configuration settings such as timezone, language, or notification preferences. Use this when the user wants to change, update, or configure their settings. Trigger phrases: "change", "set", "update", "configure", "switch", "turn on/off". Examples: "change my timezone to EST", "set my language to Spanish", "turn off notifications", "update my timezone to Asia/Kolkata", "switch language to French", "enable notifications".',
+          'Modify user configuration settings including name, timezone, language, notification preferences, quiet hours, and more. Use this when the user wants to change, update, or configure their settings. To clear quiet hours, set quietHoursStart, quietHoursEnd, or quietHoursDays to null. Trigger phrases: "change", "set", "update", "configure", "switch", "turn on/off", "clear", "remove". Examples: "change my name to John", "change my timezone to EST", "set my language to Spanish", "turn off notifications", "set advance notice to 30 minutes", "clear my quiet hours", "remove quiet hours days".',
         inputSchema: z.object({
+          name: z
+            .string()
+            .min(1)
+            .max(255)
+            .optional()
+            .describe("User's display name"),
           timezone: z
             .string()
             .optional()
             .describe(
-              'Timezone (e.g., "America/New_York", "UTC", "Asia/Tokyo")',
+              'Timezone (e.g., "America/New_York", "UTC", "Asia/Kolkata")',
             ),
           language: z
             .string()
+            .length(2)
             .optional()
             .describe('Language code (e.g., "en", "es", "fr")'),
+          defaultReminderTime: z
+            .string()
+            .regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
+            .optional()
+            .describe('Default reminder time in HH:MM format (e.g., "09:00")'),
           notificationEnabled: z
             .boolean()
             .optional()
             .describe("Enable or disable notifications"),
+          advanceNoticeMinutes: z
+            .number()
+            .int()
+            .min(0)
+            .max(1440)
+            .optional()
+            .describe("Advance notice in minutes (0-1440)"),
+          quietHoursEnabled: z
+            .boolean()
+            .optional()
+            .describe("Enable or disable quiet hours"),
+          quietHoursStart: z
+            .string()
+            .regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
+            .nullable()
+            .optional()
+            .describe(
+              'Quiet hours start time in HH:MM (e.g., "22:00"). Set to null to clear.',
+            ),
+          quietHoursEnd: z
+            .string()
+            .regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)
+            .nullable()
+            .optional()
+            .describe(
+              'Quiet hours end time in HH:MM (e.g., "07:00"). Set to null to clear.',
+            ),
+          quietHoursDays: z
+            .array(
+              z.enum([
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday",
+                "sunday",
+              ]),
+            )
+            .nullable()
+            .optional()
+            .describe(
+              'Days for quiet hours (e.g., ["monday", "tuesday"]). Set to null to clear.',
+            ),
         }),
-        execute: async (params) => {
-          const updateParams: any = {};
-          if (params.timezone) updateParams.timezone = params.timezone;
-          if (params.language) updateParams.language = params.language;
-          if (params.notificationEnabled !== undefined) {
-            updateParams.notificationPreferences = {
-              enabled: params.notificationEnabled,
-            };
-          }
-          return await this.userService.updateUserSettings(
-            userId,
-            updateParams,
-          );
-        },
+        execute: dedupe("updateUserSettings", async (params) => {
+          return await this.userService.updateUserSettings(userId, params);
+        }),
       }),
 
       setQuietHours: tool({
@@ -863,7 +1255,7 @@ export class ToolsRegistry {
             .optional()
             .describe('Days of week (e.g., ["monday", "tuesday"])'),
         }),
-        execute: async (params) => {
+        execute: dedupe("setQuietHours", async (params) => {
           return await this.userService.setQuietHours(
             userId,
             params.enabled,
@@ -871,14 +1263,14 @@ export class ToolsRegistry {
             params.endTime || "07:00",
             params.days,
           );
-        },
+        }),
       }),
 
       getCurrentTime: tool({
         description:
           'Get the current date and time in the user\'s timezone. Use this when the user asks for the current time, date, or "what time is it now?". Trigger phrases: "what time is it", "current time", "what\'s the time", "time now", "what date is it", "today\'s date". Examples: "what time is it?", "what\'s the current time?", "what date is it today?".',
         inputSchema: z.object({}),
-        execute: async () => {
+        execute: dedupe("getCurrentTime", async () => {
           // Fetch user's timezone automatically
           const settings = await this.userService.getUserSettings(userId);
           const tz = settings?.timezone || "UTC";
@@ -886,7 +1278,7 @@ export class ToolsRegistry {
           return await this.utilityService.getCurrentTime({
             timezone: tz,
           });
-        },
+        }),
       }),
 
       // Notes/Memory Management
@@ -908,7 +1300,7 @@ export class ToolsRegistry {
             .describe("Optional tags for organization"),
           isPinned: z.boolean().optional().describe("Mark as important/pinned"),
         }),
-        execute: async (params) => {
+        execute: dedupe("createNote", async (params) => {
           return await this.notesService.createNote({
             userId,
             content: params.content,
@@ -917,7 +1309,7 @@ export class ToolsRegistry {
             tags: params.tags,
             isPinned: params.isPinned || false,
           });
-        },
+        }),
       }),
 
       searchNotes: tool({
@@ -929,7 +1321,7 @@ export class ToolsRegistry {
           tags: z.array(z.string()).optional().describe("Filter by tags"),
           limit: z.number().optional().describe("Maximum results to return"),
         }),
-        execute: async (params) => {
+        execute: dedupe("searchNotes", async (params) => {
           return await this.notesService.searchNotes({
             userId,
             query: params.query,
@@ -938,7 +1330,7 @@ export class ToolsRegistry {
             limit: Math.min(params.limit || 5, 10), // Cap at 10 for performance
             includeArchived: false,
           });
-        },
+        }),
       }),
 
       listNotes: tool({
@@ -953,7 +1345,7 @@ export class ToolsRegistry {
             .describe("Show only pinned/important notes"),
           limit: z.number().optional().describe("Maximum results to return"),
         }),
-        execute: async (params) => {
+        execute: dedupe("listNotes", async (params) => {
           return await this.notesService.listNotes({
             userId,
             category: params.category,
@@ -964,7 +1356,7 @@ export class ToolsRegistry {
             sortBy: "created",
             sortOrder: "desc",
           });
-        },
+        }),
       }),
 
       updateNote: tool({
@@ -980,7 +1372,7 @@ export class ToolsRegistry {
           tags: z.array(z.string()).optional().describe("New tags"),
           isPinned: z.boolean().optional().describe("Mark as pinned/unpinned"),
         }),
-        execute: async (params) => {
+        execute: dedupe("updateNote", async (params) => {
           // First search for the note
           const searchResult = await this.notesService.searchNotes({
             userId,
@@ -1003,7 +1395,7 @@ export class ToolsRegistry {
             tags: params.tags,
             isPinned: params.isPinned,
           });
-        },
+        }),
       }),
 
       deleteNote: tool({
@@ -1014,7 +1406,7 @@ export class ToolsRegistry {
             .string()
             .describe("Text to search for the note to delete"),
         }),
-        execute: async (params) => {
+        execute: dedupe("deleteNote", async (params) => {
           // First search for the note
           const searchResult = await this.notesService.searchNotes({
             userId,
@@ -1032,7 +1424,7 @@ export class ToolsRegistry {
             userId,
             searchResult.notes[0].id,
           );
-        },
+        }),
       }),
 
       // ---------------- Notification & Communication ----------------
@@ -1064,7 +1456,7 @@ export class ToolsRegistry {
             .optional()
             .describe("Optional sender name to include"),
         }),
-        execute: async (params) => {
+        execute: dedupe("sendReminderToContact", async (params) => {
           // Normalize time: if not valid ISO, parse using user's timezone
           const settings = await this.userService.getUserSettings(userId);
           const tz = settings?.timezone || "UTC";
@@ -1100,7 +1492,7 @@ export class ToolsRegistry {
             reminderTime: iso,
             fromUserName: params.fromUserName,
           });
-        },
+        }),
       }),
 
       getNotificationHistory: tool({
@@ -1117,7 +1509,7 @@ export class ToolsRegistry {
             .optional()
             .describe("Filter by type"),
         }),
-        execute: async (params) => {
+        execute: dedupe("getNotificationHistory", async (params) => {
           const limit = Math.min(Math.max(params.limit ?? 20, 1), 100);
           const offset = Math.max(params.offset ?? 0, 0);
           return await this.notificationService.getNotificationHistory({
@@ -1126,7 +1518,7 @@ export class ToolsRegistry {
             offset,
             type: params.type,
           });
-        },
+        }),
       }),
 
       sendCustomMessage: tool({
@@ -1139,14 +1531,100 @@ export class ToolsRegistry {
             .array(z.object({ id: z.string(), label: z.string() }))
             .optional(),
         }),
-        execute: async (params) => {
+        execute: dedupe("sendCustomMessage", async (params) => {
           return await this.notificationService.sendCustomMessage(userId, {
             message: params.message,
             formatting: params.formatting,
             buttons: params.buttons,
           });
-        },
+        }),
       }),
     };
+    (toolsObj as any).__stats = stats;
+    return toolsObj;
+  }
+
+  /**
+   * Get a restricted subset of tools based on detected intent
+   * This prevents the model from hallucinating or using wrong tools
+   */
+  getAISDKToolsSubset(userId: string, intent: string): any {
+    const allTools = this.getAISDKTools(userId);
+
+    // Intent-to-tools mapping
+    const intentToolMap: Record<string, string[]> = {
+      createReminder: [
+        "createReminder",
+        "parseNaturalLanguageDate",
+        "getUserSettings",
+      ],
+      updateReminder: [
+        "updateReminder",
+        "searchReminders",
+        "parseNaturalLanguageDate",
+        "getUserSettings",
+      ],
+      deleteReminder: ["deleteReminder", "searchReminders", "getUserSettings"],
+      completeReminder: [
+        "completeReminder",
+        "searchReminders",
+        "getUserSettings",
+      ],
+      snoozeReminder: [
+        "snoozeReminder",
+        "searchReminders",
+        "parseNaturalLanguageDate",
+        "getUserSettings",
+      ],
+      listReminders: ["listReminders", "getUserSettings"],
+      searchReminders: ["searchReminders", "getUserSettings"],
+      getUpcomingReminders: ["getUpcomingReminders", "getUserSettings"],
+      batchCreateReminders: [
+        "batchCreateReminders",
+        "parseNaturalLanguageDate",
+        "getUserSettings",
+      ],
+
+      createList: ["createList", "getUserSettings"],
+      addItemToList: ["addItemToList", "getLists", "getUserSettings"],
+      getLists: ["getLists", "getUserSettings"],
+      getListItems: ["getListItems", "getLists", "getUserSettings"],
+      deleteList: ["deleteList", "getLists", "getUserSettings"],
+      searchLists: ["searchLists", "getUserSettings"],
+      updateListItem: ["updateListItem", "getListItems", "getUserSettings"],
+      removeItemFromList: [
+        "removeItemFromList",
+        "getListItems",
+        "getUserSettings",
+      ],
+
+      getUserSettings: ["getUserSettings"],
+      updateUserSettings: ["updateUserSettings", "getUserSettings"],
+      setQuietHours: ["setQuietHours", "getUserSettings"],
+
+      createNote: ["createNote", "getUserSettings"],
+      searchNotes: ["searchNotes", "getUserSettings"],
+      listNotes: ["listNotes", "getUserSettings"],
+      updateNote: ["updateNote", "searchNotes", "getUserSettings"],
+      deleteNote: ["deleteNote", "searchNotes", "getUserSettings"],
+
+      getCurrentTime: ["getCurrentTime", "getUserSettings"],
+    };
+
+    const allowedToolNames = intentToolMap[intent];
+    if (!allowedToolNames) {
+      // Unknown intent - return all tools
+      return allTools;
+    }
+
+    // Build subset
+    const subset: any = {};
+    for (const toolName of allowedToolNames) {
+      if (allTools[toolName]) {
+        subset[toolName] = allTools[toolName];
+      }
+    }
+
+    return subset;
   }
 }
