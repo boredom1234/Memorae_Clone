@@ -96,6 +96,7 @@ export class UtilityService {
       priorities?: string[];
       names?: string[];
     };
+    isActionIntent: boolean;
   } {
     const startTime = Date.now();
 
@@ -114,6 +115,7 @@ export class UtilityService {
       let intent = "unknown";
       let confidence = 0.5;
       const entities: any = {};
+      let isActionIntent = false;
 
       // Reminder creation patterns
       if (
@@ -124,6 +126,46 @@ export class UtilityService {
       ) {
         intent = "createReminder";
         confidence = 0.9;
+        isActionIntent = true;
+      }
+      // Update/modify patterns
+      else if (
+        message.includes("update") ||
+        message.includes("change") ||
+        message.includes("modify") ||
+        message.includes("reschedule")
+      ) {
+        intent = "updateReminder";
+        confidence = 0.85;
+        isActionIntent = true;
+      }
+      // Delete/remove patterns
+      else if (
+        message.includes("delete") ||
+        message.includes("remove") ||
+        message.includes("cancel")
+      ) {
+        if (message.includes("reminder")) {
+          intent = "deleteReminder";
+          confidence = 0.9;
+        } else if (message.includes("list")) {
+          intent = "deleteList";
+          confidence = 0.85;
+        } else {
+          intent = "deleteReminder";
+          confidence = 0.7;
+        }
+        isActionIntent = true;
+      }
+      // Snooze patterns
+      else if (
+        message.includes("snooze") ||
+        message.includes("postpone") ||
+        message.includes("delay")
+      ) {
+        intent = "snoozeReminder";
+        confidence = 0.9;
+        isActionIntent = true;
       }
       // List management patterns
       else if (
@@ -134,6 +176,21 @@ export class UtilityService {
       ) {
         intent = "addItemToList";
         confidence = 0.85;
+        isActionIntent = true;
+      }
+      // Personal info/settings queries
+      else if (
+        message.includes("my name") ||
+        message.includes("who am i") ||
+        message.includes("my phone") ||
+        message.includes("my timezone") ||
+        message.includes("my language") ||
+        message.includes("my settings") ||
+        message.includes("quiet hours")
+      ) {
+        intent = "getUserSettings";
+        confidence = 0.9;
+        isActionIntent = false; // Query, not action
       }
       // Query patterns
       else if (
@@ -149,6 +206,7 @@ export class UtilityService {
           intent = "getLists";
           confidence = 0.8;
         }
+        isActionIntent = false; // Query, not action
       }
       // Completion patterns
       else if (
@@ -158,6 +216,7 @@ export class UtilityService {
       ) {
         intent = "completeReminder";
         confidence = 0.75;
+        isActionIntent = true;
       }
 
       // Extract dates with error handling
@@ -195,12 +254,14 @@ export class UtilityService {
       logPerformance("detectIntent", Date.now() - startTime, {
         intent,
         confidence,
+        isActionIntent,
       });
 
       return {
         intent,
         confidence,
         entities,
+        isActionIntent,
       };
     } catch (error) {
       logError("Failed to detect intent", error, { message: params.message });
@@ -320,5 +381,58 @@ export class UtilityService {
       });
       throw handleServiceError(error, "getCurrentTime");
     }
+  }
+
+  /**
+   * Pick the best date from multiple extracted dates
+   * Prioritizes: highest confidence, soonest future date
+   */
+  pickBestDate(extractedDates: Array<{
+    originalText: string;
+    parsedDate: string;
+    confidence: number;
+    type: "absolute" | "relative";
+  }>): string | null {
+    if (!extractedDates || extractedDates.length === 0) {
+      return null;
+    }
+
+    const now = Date.now();
+    // Filter to future dates only
+    const futureDates = extractedDates.filter(
+      (d) => new Date(d.parsedDate).getTime() > now,
+    );
+
+    if (futureDates.length === 0) {
+      return null;
+    }
+
+    // Sort by confidence (desc), then by time (asc - soonest first)
+    futureDates.sort((a, b) => {
+      const confDiff = b.confidence - a.confidence;
+      if (Math.abs(confDiff) > 0.1) return confDiff;
+      return new Date(a.parsedDate).getTime() - new Date(b.parsedDate).getTime();
+    });
+
+    return futureDates[0].parsedDate;
+  }
+
+  /**
+   * Ensure a date is in the future; if not, roll forward intelligently
+   */
+  ensureFuture(dateISO: string): string {
+    const parsed = new Date(dateISO);
+    const now = new Date();
+
+    if (parsed.getTime() > now.getTime()) {
+      return dateISO; // Already future
+    }
+
+    // If the time has passed today, assume user meant tomorrow
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(parsed.getHours(), parsed.getMinutes(), parsed.getSeconds(), 0);
+
+    return tomorrow.toISOString();
   }
 }

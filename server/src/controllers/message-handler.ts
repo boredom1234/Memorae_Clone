@@ -469,6 +469,36 @@ export class MessageController {
 
     // Get conversation context
     const conversationContext = this.getConversationContext(user.id);
+    
+    // Handle numeric selection for disambiguation
+    if (/^\d+$/.test(validatedText.trim())) {
+      const selection = parseInt(validatedText.trim(), 10);
+      if (conversationContext.candidateItems && conversationContext.candidateItems.length > 0) {
+        const selected = conversationContext.candidateItems.find(
+          (c) => c.id === String(selection) || conversationContext.candidateItems!.indexOf(c) === selection - 1,
+        );
+        if (selected) {
+          this.logger.info(`User selected item ${selection}: ${selected.title}`);
+          // Clear candidates and process the selection
+          conversationContext.candidateItems = undefined;
+          // The AI will handle the actual action based on context
+        }
+      }
+    }
+    
+    // Handle yes/no confirmation
+    const lowerText = validatedText.toLowerCase().trim();
+    if (conversationContext.needsConfirmation && /^(yes|y|confirm|ok)$/i.test(lowerText)) {
+      this.logger.info(`User confirmed action: ${conversationContext.needsConfirmation.action}`);
+      // Clear confirmation state - AI will proceed with the action
+      conversationContext.needsConfirmation = undefined;
+    } else if (conversationContext.needsConfirmation && /^(no|n|cancel|nope)$/i.test(lowerText)) {
+      this.logger.info(`User cancelled action: ${conversationContext.needsConfirmation.action}`);
+      conversationContext.needsConfirmation = undefined;
+      return {
+        text: "Okay, I've cancelled that action.",
+      };
+    }
 
     // Onboarding: if user is new or onboarding is in progress, handle it first
     if (isNew || conversationContext.onboarding) {
@@ -518,6 +548,90 @@ export class MessageController {
 
       this.logger.info(`AI response: ${result.text}`);
       this.logger.info(`Tool calls: ${result.toolCalls.length}`);
+      this.logger.info(`Tool results: ${result.toolResults?.length || 0}`);
+      
+      // Check for disambiguation or confirmation needs from tool results
+      const lastToolResult = result.toolResults && result.toolResults.length > 0
+        ? result.toolResults[result.toolResults.length - 1]
+        : null;
+      
+      if (lastToolResult?.needsSelection && lastToolResult.candidates) {
+        // Store candidates in context for numeric selection
+        conversationContext.candidateItems = lastToolResult.candidates.map((c: any) => ({
+          id: c.id,
+          title: c.title,
+          description: c.time,
+          type: c.type || "reminder",
+        }));
+        
+        // Format selection message
+        const selectionMessage = `${lastToolResult.message}\n\n${lastToolResult.candidates
+          .map((c: any, idx: number) => `${idx + 1}. ${c.title}${c.time ? ` - ${c.time}` : ""}`)
+          .join("\n")}\n\nReply with the number of your choice.`;
+        
+        this.addToConversationContext(user.id, {
+          role: "assistant",
+          content: selectionMessage,
+          timestamp: new Date(),
+        });
+        
+        return {
+          text: selectionMessage,
+          toolCalls: result.toolCalls,
+          toolResults: result.toolResults,
+          renderedText: selectionMessage,
+        };
+      }
+      
+      if (lastToolResult?.needsConfirmation) {
+        // Store confirmation state
+        conversationContext.needsConfirmation = {
+          action: lastToolResult.action,
+          summary: lastToolResult.summary,
+          targetId: lastToolResult.targetId,
+          timestamp: new Date(),
+        };
+        
+        const confirmMessage = lastToolResult.message;
+        
+        this.addToConversationContext(user.id, {
+          role: "assistant",
+          content: confirmMessage,
+          timestamp: new Date(),
+        });
+        
+        return {
+          text: confirmMessage,
+          toolCalls: result.toolCalls,
+          toolResults: result.toolResults,
+          renderedText: confirmMessage,
+        };
+      }
+      
+      // Gate action replies: if tools were required but missing, don't trust result.text
+      // BUT: if tools were actually executed (via stats), trust the response even if arrays are empty
+      const toolsWereExecuted = (result as any)._toolsExecuted === true;
+      
+      if (result.toolsRequiredButMissing && !toolsWereExecuted) {
+        this.logger.warn(
+          `Action intent detected but no tool results. Asking for clarification.`,
+        );
+        const clarificationMessage =
+          "I'm not sure I understood that correctly. Could you please rephrase or provide more details?";
+        
+        this.addToConversationContext(user.id, {
+          role: "assistant",
+          content: clarificationMessage,
+          timestamp: new Date(),
+        });
+        
+        return {
+          text: clarificationMessage,
+          toolCalls: result.toolCalls,
+          toolResults: result.toolResults,
+          renderedText: clarificationMessage,
+        };
+      }
 
       // Prefer rendering from tool results when available to avoid mismatch
       const renderedText =
