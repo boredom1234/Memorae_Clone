@@ -184,9 +184,7 @@ export class MediaAttachmentService {
 
       if (error) {
         this.logger.error({ error }, "Failed to get reminder attachments");
-        throw new Error(
-          `Failed to get reminder attachments: ${error.message}`,
-        );
+        throw new Error(`Failed to get reminder attachments: ${error.message}`);
       }
 
       return (data || []).map(this.mapToMediaAttachment);
@@ -284,9 +282,7 @@ export class MediaAttachmentService {
 
       if (error) {
         this.logger.error({ error }, "Failed to get unlinked attachments");
-        throw new Error(
-          `Failed to get unlinked attachments: ${error.message}`,
-        );
+        throw new Error(`Failed to get unlinked attachments: ${error.message}`);
       }
 
       return (data || []).map(this.mapToMediaAttachment);

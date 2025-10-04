@@ -9,9 +9,11 @@ import {
   ConversationContext,
 } from "../types/conversation";
 import pino from "pino";
-import { formatInZone } from "../utils/time-utils";
 import { validateAIInput } from "../middleware/validation";
 import { config } from "../config/env";
+import { OnboardingHandler } from "./handlers/onboarding-handler";
+import { ResponseFormatter } from "./handlers/response-formatter";
+import { MediaHandler } from "./handlers/media-handler";
 
 export class MessageController {
   private logger = pino({ level: "info" });
@@ -25,11 +27,26 @@ export class MessageController {
   private cacheCleanupInterval: NodeJS.Timeout;
   private contextCleanupInterval: NodeJS.Timeout;
 
+  // Handler modules
+  private onboardingHandler: OnboardingHandler;
+  private responseFormatter: ResponseFormatter;
+  private mediaHandler: MediaHandler;
+
   constructor() {
     this.tools = new ToolsRegistry();
     this.aiService = new AIService();
     this.ocrService = new OCRService();
     this.mediaService = new MediaAttachmentService();
+
+    // Initialize handler modules
+    this.onboardingHandler = new OnboardingHandler(this.tools.getUserService());
+    this.responseFormatter = new ResponseFormatter();
+    this.mediaHandler = new MediaHandler(
+      this.ocrService,
+      this.mediaService,
+      this.aiService,
+      this.tools,
+    );
 
     // Start cache cleanup - clean every 30 minutes
     this.cacheCleanupInterval = setInterval(
@@ -48,250 +65,13 @@ export class MessageController {
     );
   }
 
-  // ---------------- Onboarding Flow ----------------
-  private async handleOnboardingFlow(
-    context: MessageContext,
-    user: User,
-    userInput: string,
-  ): Promise<string | null> {
-    const ctx = this.getConversationContext(user.id);
-    const onboarding = (ctx.onboarding = ctx.onboarding || {
-      step: 0,
-      collected: {},
-    });
-
-    const userService = this.tools.getUserService();
-    const lower = (userInput || "").trim().toLowerCase();
-
-    // Helpers
-    const isYes = (s: string) => /^(y|yes|yeah|yup|true|1)$/i.test(s.trim());
-    const isNo = (s: string) => /^(n|no|nope|false|0)$/i.test(s.trim());
-    const timeRegex = /^([0-1]?\d|2[0-3]):[0-5]\d$/;
-    const parseDays = (s: string): string[] | null => {
-      const allDays = [
-        "monday",
-        "tuesday",
-        "wednesday",
-        "thursday",
-        "friday",
-        "saturday",
-        "sunday",
-      ];
-      const val = s.trim().toLowerCase();
-      if (val === "weekdays") return allDays.slice(0, 5);
-      if (val === "weekends") return ["saturday", "sunday"];
-      if (val === "all") return allDays;
-      const parts = val
-        .split(/[\s,]+/)
-        .map((p) => p.trim())
-        .filter(Boolean);
-      if (parts.length === 0) return [];
-      const valid = parts.filter((p) => allDays.includes(p));
-      return valid.length > 0 ? valid : null;
-    };
-
-    // Step machine
-    switch (onboarding.step) {
-      case 0: {
-        onboarding.step = 1;
-        return (
-          `👋 Hi ${context.fromName || user.phone_number}! Welcome to Memorae.\n\n` +
-          `I'll set up your preferences. You can type 'skip' to accept defaults.\n\n` +
-          `1) What's your name?`
-        );
-      }
-      case 1: {
-        if (lower !== "skip" && userInput.trim().length > 0) {
-          onboarding.collected.name = userInput.trim();
-          await userService.updateUserSettings(user.id, {
-            name: onboarding.collected.name,
-          });
-        }
-        onboarding.step = 2;
-        return (
-          `2) What's your timezone? (e.g., Asia/Kolkata, America/New_York)\n` +
-          `Type 'skip' to keep ${user.timezone || "UTC"}.`
-        );
-      }
-      case 2: {
-        if (lower !== "skip" && userInput.trim().length > 0) {
-          onboarding.collected.timezone = userInput.trim();
-          await userService.updateUserSettings(user.id, {
-            timezone: onboarding.collected.timezone,
-          });
-        }
-        onboarding.step = 3;
-        return (
-          `3) Default reminder time (24h HH:MM).\n` +
-          `For example, 09:00. Type 'skip' to keep ${
-            user.default_reminder_time || "09:00"
-          }.`
-        );
-      }
-      case 3: {
-        if (lower !== "skip") {
-          if (!timeRegex.test(userInput.trim())) {
-            return `Please provide time in HH:MM (24h), e.g., 09:00.`;
-          }
-          onboarding.collected.defaultReminderTime = userInput.trim();
-          await userService.updateUserSettings(user.id, {
-            defaultReminderTime: onboarding.collected.defaultReminderTime,
-          });
-        }
-        onboarding.step = 4;
-        return `4) Enable notifications? (yes/no)\nType 'yes' to receive reminder notifications.`;
-      }
-      case 4: {
-        const enableNotifs = isYes(userInput);
-        if (!isYes(userInput) && !isNo(userInput)) {
-          return `Please reply 'yes' or 'no' for notifications.`;
-        }
-        onboarding.collected.notificationEnabled = enableNotifs;
-        await userService.updateUserSettings(user.id, {
-          notificationPreferences: { enabled: enableNotifs },
-        });
-        onboarding.step = 5;
-        return (
-          `5) Advance notice before reminders in minutes (e.g., 15).\n` +
-          `Type 'skip' to keep ${user.advance_notice_minutes ?? 15}.`
-        );
-      }
-      case 5: {
-        if (lower !== "skip") {
-          const n = parseInt(userInput.trim(), 10);
-          if (isNaN(n) || n < 0 || n > 1440) {
-            return `Please enter a number of minutes between 0 and 1440, or 'skip'.`;
-          }
-          onboarding.collected.advanceNoticeMinutes = n;
-          await userService.updateUserSettings(user.id, {
-            notificationPreferences: {
-              enabled:
-                onboarding.collected.notificationEnabled ??
-                (user as any).notification_enabled ??
-                true,
-              advanceNotice: n,
-            },
-          });
-        }
-        onboarding.step = 6;
-        return `6) Set quiet hours (do-not-disturb)? (yes/no)`;
-      }
-      case 6: {
-        if (!isYes(userInput) && !isNo(userInput)) {
-          return `Please reply 'yes' or 'no' for quiet hours.`;
-        }
-        const enabled = isYes(userInput);
-        onboarding.collected.quietHoursEnabled = enabled;
-        if (!enabled) {
-          // Persist disabled
-          await userService.setQuietHours(user.id, false, "22:00", "07:00");
-          onboarding.step = 9;
-          return `7) Language preference? (2-letter, e.g., en, es, fr)\nType 'skip' to keep ${user.language || "en"}.`;
-        }
-        onboarding.step = 7;
-        return `7) Quiet hours start time (HH:MM), e.g., 22:00`;
-      }
-      case 7: {
-        if (!timeRegex.test(userInput.trim())) {
-          return `Please provide time in HH:MM (24h), e.g., 22:00.`;
-        }
-        onboarding.collected.quietHoursStart = userInput.trim();
-        onboarding.step = 8;
-        return `8) Quiet hours end time (HH:MM), e.g., 07:00`;
-      }
-      case 8: {
-        if (!timeRegex.test(userInput.trim())) {
-          return `Please provide time in HH:MM (24h), e.g., 07:00.`;
-        }
-        onboarding.collected.quietHoursEnd = userInput.trim();
-        onboarding.step = 8.5 as any; // intermediate for days
-        return `Optional: Quiet days (e.g., weekdays, weekends, all, or comma-separated days like monday,tuesday).\nType 'skip' to apply every day.`;
-      }
-      case 8.5 as any: {
-        let days: string[] | undefined;
-        if (lower !== "skip") {
-          const parsed = parseDays(userInput);
-          if (parsed === null) {
-            return `Please provide days as 'weekdays', 'weekends', 'all', or comma-separated day names (e.g., monday,tuesday), or 'skip'.`;
-          }
-          days = parsed;
-        }
-        await userService.setQuietHours(
-          user.id,
-          true,
-          onboarding.collected.quietHoursStart || "22:00",
-          onboarding.collected.quietHoursEnd || "07:00",
-          days,
-        );
-        onboarding.step = 9;
-        return `9) Language preference? (2-letter, e.g., en, es, fr)\nType 'skip' to keep ${user.language || "en"}.`;
-      }
-      case 9: {
-        if (lower !== "skip" && /^[a-z]{2}$/i.test(userInput.trim())) {
-          onboarding.collected.language = userInput.trim().toLowerCase();
-          await userService.updateUserSettings(user.id, {
-            language: onboarding.collected.language,
-          });
-        } else if (lower !== "skip") {
-          return `Please provide a 2-letter language code (e.g., en, es, fr), or 'skip'.`;
-        }
-
-        // Done
-        const summary = this.buildOnboardingSummary(onboarding);
-        ctx.onboarding = undefined;
-        // Mark user as no longer new in local cache
-        this.userNewCache.set(context.from, false);
-        return (
-          `✅ Setup complete! You're all set.\n\n` +
-          summary +
-          `\n\nYou can now ask me to create reminders, manage lists, or save notes. Try: "remind me to pay bills at 6pm"`
-        );
-      }
-      default:
-        return null;
-    }
-  }
-
-  private buildOnboardingSummary(
-    onb: NonNullable<ConversationContext["onboarding"]>,
-  ): string {
-    const c = onb.collected;
-    const lines = [
-      c.name ? `• Name: ${c.name}` : undefined,
-      c.timezone ? `• Timezone: ${c.timezone}` : undefined,
-      c.defaultReminderTime
-        ? `• Default reminder time: ${c.defaultReminderTime}`
-        : undefined,
-      c.notificationEnabled !== undefined
-        ? `• Notifications: ${c.notificationEnabled ? "enabled" : "disabled"}`
-        : undefined,
-      c.advanceNoticeMinutes !== undefined
-        ? `• Advance notice: ${c.advanceNoticeMinutes} min`
-        : undefined,
-      c.quietHoursEnabled !== undefined
-        ? `• Quiet hours: ${
-            c.quietHoursEnabled
-              ? `${c.quietHoursStart || "22:00"} - ${c.quietHoursEnd || "07:00"}${
-                  c.quietHoursDays && c.quietHoursDays.length
-                    ? ` (${c.quietHoursDays.join(", ")})`
-                    : ""
-                }`
-              : "disabled"
-          }`
-        : undefined,
-      c.language ? `• Language: ${c.language}` : undefined,
-    ].filter(Boolean);
-    return lines.length ? lines.join("\n") : "";
-  }
-
   async handleMessage(context: MessageContext): Promise<any> {
     try {
       const { fromName, messageType } = context;
 
       this.logger.info(`Processing message from ${fromName}`);
 
-      // Defense-in-depth: enforce message filter mode here as well to avoid
-      // accidental processing (and user creation) if upper layer misses it.
+      // Defense-in-depth: enforce message filter mode here as well
       const filterMode = config.whatsapp.messageFilterMode;
       const isSelfChat = (context as any).isSelfChat === true;
       if (filterMode === 2 && !isSelfChat) {
@@ -334,7 +114,7 @@ export class MessageController {
       return { user: cachedUser, isNew: cachedIsNew };
     }
 
-    // Extract phone number from WhatsApp ID (e.g., "919876543210@s.whatsapp.net" -> "+919876543210")
+    // Extract phone number from WhatsApp ID
     const phoneNumber = "+" + context.from.split("@")[0];
 
     // Find or create user
@@ -356,11 +136,10 @@ export class MessageController {
 
   /**
    * Clean up old entries from user cache
-   * Remove users not accessed in the last 2 hours
    */
   private cleanupUserCache(): void {
     const now = Date.now();
-    const maxAge = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
+    const maxAge = 2 * 60 * 60 * 1000; // 2 hours
     let cleanedCount = 0;
 
     for (const [key, user] of this.userCache.entries()) {
@@ -380,11 +159,10 @@ export class MessageController {
 
   /**
    * Clean up old conversation contexts
-   * Remove contexts not accessed in the last 1 hour
    */
   private cleanupConversationContexts(): void {
     const now = Date.now();
-    const maxAge = 60 * 60 * 1000; // 1 hour in milliseconds
+    const maxAge = 60 * 60 * 1000; // 1 hour
     let cleanedCount = 0;
 
     for (const [userId, context] of this.conversationContexts.entries()) {
@@ -410,7 +188,7 @@ export class MessageController {
         userId,
         messages: [],
         lastActivity: new Date(),
-        maxMessages: 20, // Keep last 20 messages for better context retention
+        maxMessages: 20,
       });
     }
 
@@ -429,7 +207,7 @@ export class MessageController {
     const context = this.getConversationContext(userId);
     context.messages.push(message);
 
-    // Keep only the last N messages to prevent memory bloat
+    // Keep only the last N messages
     if (context.messages.length > context.maxMessages) {
       context.messages = context.messages.slice(-context.maxMessages);
     }
@@ -492,9 +270,7 @@ export class MessageController {
           this.logger.info(
             `User selected item ${selection}: ${selected.title}`,
           );
-          // Clear candidates and process the selection
           conversationContext.candidateItems = undefined;
-          // The AI will handle the actual action based on context
         }
       }
     }
@@ -508,7 +284,6 @@ export class MessageController {
       this.logger.info(
         `User confirmed action: ${conversationContext.needsConfirmation.action}`,
       );
-      // Clear confirmation state - AI will proceed with the action
       conversationContext.needsConfirmation = undefined;
     } else if (
       conversationContext.needsConfirmation &&
@@ -523,16 +298,22 @@ export class MessageController {
       };
     }
 
-    // Onboarding: if user is new or onboarding is in progress, handle it first
+    // Onboarding: if user is new or onboarding is in progress
     if (isNew || conversationContext.onboarding) {
-      const onboardingResult = await this.handleOnboardingFlow(
-        context,
-        user,
-        validatedText,
-      );
+      const onboardingResult =
+        await this.onboardingHandler.handleOnboardingFlow(
+          context,
+          user,
+          validatedText,
+          conversationContext,
+        );
 
-      // If onboarding produced a response, return it immediately (skip AI)
+      // If onboarding produced a response, return it immediately
       if (onboardingResult) {
+        // Mark user as no longer new in local cache
+        if (conversationContext.onboarding === undefined) {
+          this.userNewCache.set(context.from, false);
+        }
         return { text: onboardingResult };
       }
     }
@@ -545,22 +326,15 @@ export class MessageController {
       messageId: context.messageId,
     });
 
-    // Get AI SDK compatible tools with dynamic filtering based on intent
-    // This reduces context size by 60-80% and improves accuracy
+    // Get relevant tools based on intent
     const tools = this.tools.getRelevantTools(user.id, validatedText);
 
-    // Debug: Log tool structure
     this.logger.info(`Tool keys: ${Object.keys(tools).join(", ")}`);
     this.logger.info(
       `Conversation history: ${conversationContext.messages.length} messages`,
     );
-    if (tools.createReminder) {
-      this.logger.info(
-        `createReminder tool exists: ${typeof tools.createReminder}`,
-      );
-    }
 
-    // Process message with AI tool calling and conversation history
+    // Process message with AI
     try {
       const result = await this.aiService.processMessageWithTools(
         validatedText,
@@ -574,14 +348,13 @@ export class MessageController {
       this.logger.info(`Tool calls: ${result.toolCalls.length}`);
       this.logger.info(`Tool results: ${result.toolResults?.length || 0}`);
 
-      // Check for disambiguation or confirmation needs from tool results
+      // Check for disambiguation or confirmation needs
       const lastToolResult =
         result.toolResults && result.toolResults.length > 0
           ? result.toolResults[result.toolResults.length - 1]
           : null;
 
       if (lastToolResult?.needsSelection && lastToolResult.candidates) {
-        // Store candidates in context for numeric selection
         conversationContext.candidateItems = lastToolResult.candidates.map(
           (c: any) => ({
             id: c.id,
@@ -591,7 +364,6 @@ export class MessageController {
           }),
         );
 
-        // Format selection message
         const selectionMessage = `${lastToolResult.message}\n\n${lastToolResult.candidates
           .map(
             (c: any, idx: number) =>
@@ -614,7 +386,6 @@ export class MessageController {
       }
 
       if (lastToolResult?.needsConfirmation) {
-        // Store confirmation state
         conversationContext.needsConfirmation = {
           action: lastToolResult.action,
           summary: lastToolResult.summary,
@@ -638,8 +409,7 @@ export class MessageController {
         };
       }
 
-      // Gate action replies: if tools were required but missing, don't trust result.text
-      // BUT: if tools were actually executed (via stats), trust the response even if arrays are empty
+      // Gate action replies
       const toolsWereExecuted = (result as any)._toolsExecuted === true;
 
       if (result.toolsRequiredButMissing && !toolsWereExecuted) {
@@ -663,18 +433,19 @@ export class MessageController {
         };
       }
 
-      // Prefer rendering from tool results when available to avoid mismatch
+      // Format response
       const renderedText =
         result.toolResults &&
         Array.isArray(result.toolResults) &&
         result.toolResults.length > 0
-          ? this.getResponseMessage(
+          ? this.responseFormatter.getResponseMessage(
               result.toolResults[result.toolResults.length - 1],
               user.timezone,
             )
-          : result.text || this.getResponseMessage(result, user.timezone);
+          : result.text ||
+            this.responseFormatter.getResponseMessage(result, user.timezone);
 
-      // Add assistant response to conversation context (use rendered text for consistency with user-visible message)
+      // Add assistant response to conversation context
       if (renderedText) {
         this.addToConversationContext(user.id, {
           role: "assistant",
@@ -683,7 +454,6 @@ export class MessageController {
         });
       }
 
-      // Return the AI's response text and tool results
       return {
         text: result.text,
         toolCalls: result.toolCalls,
@@ -700,474 +470,33 @@ export class MessageController {
     context: MessageContext,
     user: User,
   ): Promise<any> {
-    this.logger.info("Image message received with OCR support");
+    const conversationContext = this.getConversationContext(user.id);
 
-    // Check if OCR service is available
-    if (!this.ocrService.isAvailable()) {
-      return {
-        text: "📷 Image received, but OCR is not configured. Please set MISTRAL_API_KEY in your .env file to enable image text extraction.",
-      };
-    }
-
-    // Check if image buffer is available
-    if (!context.mediaBuffer) {
-      this.logger.error("Image buffer not available");
-      return {
-        text: "Sorry, I couldn't process the image. Please try sending it again.",
-      };
-    }
-
-    try {
-      const caption = context.text || "";
-      const mimeType = context.mimeType || "image/jpeg";
-
-      this.logger.info(
-        `Processing image: ${context.mediaBuffer.length} bytes, caption: "${caption}"`,
-      );
-
-      // If user provided instructions in caption, use them
-      let ocrResult;
-      if (caption && caption.trim().length > 0) {
-        // User wants to do something with the image content
-        this.logger.info(
-          `User provided instruction: "${caption}". Processing with context...`,
-        );
-
-        const processed = await this.ocrService.processImageWithInstruction(
-          context.mediaBuffer,
-          caption,
-          mimeType,
-        );
-
-        if (!processed.success) {
-          return {
-            text: `❌ Failed to process image: ${processed.error}`,
-          };
-        }
-
-        // Save media attachment with OCR results
-        let attachmentId: string | undefined;
-        try {
-          // Upload to Supabase Storage for permanent access
-          const fileUrl = await this.uploadImageToStorage(user.id, context.messageId, context.mediaBuffer, mimeType);
-
-          const attachment = await this.mediaService.saveAttachment({
-            userId: user.id,
-            mediaType: "image",
-            fileUrl: fileUrl,
-            mimeType: mimeType,
-            fileSize: context.mediaBuffer.length,
-            extractedText: processed.ocrText,
-            extractedData: {
-              caption: caption,
-              ocrEngine: "mistral-pixtral",
-              processedAt: new Date().toISOString(),
-              whatsappMessageId: context.messageId,
-            },
-          });
-          attachmentId = attachment.id;
-          this.logger.info(
-            `Media attachment saved: ${attachmentId} with OCR text`,
-          );
-        } catch (error: any) {
-          this.logger.error(
-            { error },
-            "Failed to save media attachment, continuing...",
-          );
-        }
-
-        // Now pass the OCR text + user instruction to the AI
-        const combinedPrompt = `I extracted the following text from an image:
-
---- IMAGE CONTENT ---
-${processed.ocrText}
-
---- USER REQUEST ---
-${caption}
-
-Please help the user with their request based on the image content.`;
-
-        // Get conversation context
-        const conversationContext = this.getConversationContext(user.id);
-
-        // Add the combined prompt to conversation
-        this.addToConversationContext(user.id, {
-          role: "user",
-          content: combinedPrompt,
-          timestamp: new Date(),
-          messageId: context.messageId,
+    return await this.mediaHandler.handleImageMessage(
+      context,
+      user,
+      conversationContext,
+      (userId, role, content, timestamp) => {
+        this.addToConversationContext(userId, {
+          role: role as "user" | "assistant",
+          content,
+          timestamp,
         });
-
-        // Get relevant tools based on the user's instruction
-        const tools = this.tools.getRelevantTools(user.id, caption);
-
-        // Process with AI
-        const aiResult = await this.aiService.processMessageWithTools(
-          combinedPrompt,
-          user.id,
-          user.timezone,
-          tools,
-          conversationContext.messages,
-        );
-
-        // Format response
-        const renderedText =
-          aiResult.toolResults &&
-          Array.isArray(aiResult.toolResults) &&
-          aiResult.toolResults.length > 0
-            ? this.getResponseMessage(
-                aiResult.toolResults[aiResult.toolResults.length - 1],
-                user.timezone,
-              )
-            : aiResult.text ||
-              this.getResponseMessage(aiResult, user.timezone);
-
-        // Link media attachment to created items
-        if (attachmentId && aiResult.toolResults) {
-          try {
-            // Find created reminders
-            const reminderResults = aiResult.toolResults.filter(
-              (r: any) =>
-                r.toolName === "createReminder" ||
-                r.toolName === "batchCreateReminders",
-            );
-
-            if (reminderResults.length > 0) {
-              const firstReminder = reminderResults[0];
-              const reminderId = firstReminder.result?.id;
-
-              if (reminderId) {
-                await this.mediaService.linkToItem({
-                  attachmentId,
-                  reminderId,
-                });
-                this.logger.info(
-                  `Linked media ${attachmentId} to reminder ${reminderId}`,
-                );
-              }
-            }
-
-            // Find list operations
-            const listResults = aiResult.toolResults.filter(
-              (r: any) =>
-                r.toolName === "addItemToList" || r.toolName === "createList",
-            );
-
-            if (listResults.length > 0) {
-              // Note: We'd need list item IDs from the results to link properly
-              this.logger.info(
-                `Media ${attachmentId} used for list operations`,
-              );
-            }
-          } catch (error: any) {
-            this.logger.error(
-              { error },
-              "Failed to link media attachment to items",
-            );
-          }
-        }
-
-        // Add AI response to context
-        if (renderedText) {
-          this.addToConversationContext(user.id, {
-            role: "assistant",
-            content: renderedText,
-            timestamp: new Date(),
-          });
-        }
-
-        return {
-          text: aiResult.text,
-          toolCalls: aiResult.toolCalls,
-          toolResults: aiResult.toolResults,
-          renderedText: renderedText || "Done!",
-        };
-      } else {
-        // No caption - just extract and return the text
-        this.logger.info("No caption provided. Performing simple OCR...");
-
-        ocrResult = await this.ocrService.extractTextFromImage(
-          context.mediaBuffer,
-          undefined,
-          mimeType,
-        );
-
-        if (!ocrResult.success) {
-          return {
-            text: `❌ Failed to extract text from image: ${ocrResult.error}`,
-          };
-        }
-
-        // Save media attachment with OCR results
-        try {
-          // Upload to Supabase Storage for permanent access
-          const fileUrl = await this.uploadImageToStorage(user.id, context.messageId, context.mediaBuffer, mimeType);
-
-          await this.mediaService.saveAttachment({
-            userId: user.id,
-            mediaType: "image",
-            fileUrl: fileUrl,
-            mimeType: mimeType,
-            fileSize: context.mediaBuffer.length,
-            extractedText: ocrResult.extractedText,
-            extractedData: {
-              ocrEngine: "mistral-pixtral",
-              confidence: ocrResult.confidence,
-              processedAt: new Date().toISOString(),
-              whatsappMessageId: context.messageId,
-            },
-          });
-          this.logger.info("Media attachment saved with OCR text");
-        } catch (error: any) {
-          this.logger.error(
-            { error },
-            "Failed to save media attachment, continuing...",
-          );
-        }
-
-        const response = `📄 **Text extracted from image:**\n\n${ocrResult.extractedText}\n\n💡 *Tip: Send an image with a caption to tell me what to do with it!*\nExamples:\n- "Create reminders from this list"\n- "Add these items to my shopping list"\n- "Remember this information"`;
-
-        return {
-          text: response,
-        };
-      }
-    } catch (error: any) {
-      this.logger.error({ error }, "Error processing image with OCR");
-      return {
-        text: `Sorry, I encountered an error while processing the image: ${error.message}`,
-      };
-    }
+      },
+      (result, timezone) =>
+        this.responseFormatter.getResponseMessage(result, timezone),
+    );
   }
 
   private async handleAudioMessage(
-    _context: MessageContext,
-    _user: User,
+    context: MessageContext,
+    user: User,
   ): Promise<any> {
-    this.logger.info("Audio message received");
-    throw new Error("Voice transcription is not yet implemented. Coming soon!");
+    return await this.mediaHandler.handleAudioMessage(context, user);
   }
 
-  /**
-   * Optional: Upload image to Supabase Storage
-   * Uncomment the method call in handleImageMessage to enable
-   * @unused - Method available for future use when image storage is needed
-   */
-  // @ts-expect-error - Method intentionally unused, available for future image storage feature
-  private async uploadImageToStorage(
-    userId: string,
-    messageId: string,
-    imageBuffer: Buffer,
-    mimeType: string,
-  ): Promise<string> {
-    try {
-      const extension = mimeType.split("/")[1] || "jpg";
-      const fileName = `${userId}/${Date.now()}_${messageId}.${extension}`;
-
-      // Upload to Supabase Storage
-      const { supabase } = await import("../lib/supabase");
-      
-      if (!supabase) {
-        throw new Error("Supabase client not initialized");
-      }
-
-      const { data, error } = await supabase.storage
-        .from("media") // Create this bucket in Supabase
-        .upload(fileName, imageBuffer, {
-          contentType: mimeType,
-          upsert: false,
-        });
-
-      if (error) {
-        this.logger.error({ error }, "Failed to upload image to storage");
-        throw error;
-      }
-
-      if (!data) {
-        throw new Error("No data returned from upload");
-      }
-
-      // Get public URL
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("media").getPublicUrl(data.path);
-
-      this.logger.info(`Image uploaded to storage: ${publicUrl}`);
-      return publicUrl;
-    } catch (error: any) {
-      this.logger.error({ error }, "Error uploading image to storage");
-      // Fallback to WhatsApp reference
-      return `whatsapp://upload-failed/${messageId}`;
-    }
-  }
-
-  // Public method to get response for WhatsApp
+  // Public method to get response for WhatsApp (for backward compatibility)
   getResponseMessage(result: any, timezone?: string): string {
-    if (!result) return "Done!";
-
-    // If result has text from AI, use that
-    if (result.text) {
-      return result.text;
-    }
-
-    if (result.message) return result.message;
-
-    // Format different result types
-    if (result.reminders) {
-      if (result.reminders.length === 0) {
-        return "No reminders found.";
-      }
-      return `📅 Your reminders:\n${result.reminders
-        .map((r: any, i: number) => {
-          const ts = timezone
-            ? formatInZone(r.reminderTime, timezone)
-            : new Date(r.reminderTime).toLocaleString();
-          return `${i + 1}. ${r.title} - ${ts}`;
-        })
-        .join("\n")}`;
-    }
-
-    if (result.results && Array.isArray(result.results)) {
-      // Search results
-      if (result.results.length === 0) {
-        return "No reminders found matching your search.";
-      }
-      return `🔍 Found ${result.total} reminder(s):\n${result.results
-        .map((r: any, i: number) => {
-          const ts = timezone
-            ? formatInZone(r.reminderTime, timezone)
-            : new Date(r.reminderTime).toLocaleString();
-          return `${i + 1}. ${r.title} - ${ts}`;
-        })
-        .join("\n")}`;
-    }
-
-    if (result.lists) {
-      if (result.lists.length === 0) {
-        return "No lists found.";
-      }
-      return `📝 Your lists:\n${result.lists
-        .map((l: any, i: number) => {
-          const itemsText = l.items
-            ? `\n${l.items
-                .map(
-                  (item: any) =>
-                    `   ${item.isCompleted ? "✅" : "⬜"} ${item.content}`,
-                )
-                .join("\n")}`
-            : "";
-          return `${i + 1}. ${l.name} (${l.itemCount} items)${itemsText}`;
-        })
-        .join("\n\n")}`;
-    }
-
-    // Handle list items response
-    if (result.items && Array.isArray(result.items)) {
-      if (result.items.length === 0) {
-        return `List "${result.listName || "Unknown"}" is empty.`;
-      }
-      return `📝 ${result.listName}:\n${result.items
-        .map(
-          (item: any, i: number) =>
-            `${i + 1}. ${item.isCompleted ? "✅" : "⬜"} ${item.content}`,
-        )
-        .join("\n")}`;
-    }
-
-    // Handle batch create results
-    if (result.created !== undefined && result.failed !== undefined) {
-      return `✅ Created ${result.created} reminder(s)${result.failed > 0 ? `, ${result.failed} failed` : ""}`;
-    }
-
-    // Handle added/removed count
-    if (result.addedCount !== undefined) {
-      return `✅ Added ${result.addedCount} item(s) to list`;
-    }
-
-    if (result.removedCount !== undefined) {
-      return `✅ Removed ${result.removedCount} item(s) from list`;
-    }
-
-    // Handle getCurrentTime response
-    if (result.formattedTime && result.timezone) {
-      return `🕐 Current time: ${result.formattedTime}`;
-    }
-
-    // Handle notes responses
-    if (result.notes && Array.isArray(result.notes)) {
-      if (result.notes.length === 0) {
-        return "No notes found.";
-      }
-
-      const totalText = result.total
-        ? ` (showing ${result.notes.length} of ${result.total})`
-        : "";
-      let response = `📝 Found ${result.notes.length} note(s)${totalText}:\n`;
-
-      const formattedNotes = result.notes
-        .map((note: any, i: number) => {
-          const title = note.title ? `**${note.title}**` : "";
-          const content =
-            note.content.length > 80
-              ? note.content.substring(0, 80) + "..."
-              : note.content;
-          const tags =
-            note.tags && note.tags.length > 0
-              ? ` #${note.tags.slice(0, 3).join(" #")}${note.tags.length > 3 ? "..." : ""}`
-              : "";
-          const pinned = note.isPinned ? "📌 " : "";
-          return `${i + 1}. ${pinned}${title}${title ? "\n   " : ""}${content}${tags}`;
-        })
-        .join("\n\n");
-
-      response += formattedNotes;
-
-      // Add helpful hints for large result sets
-      if (result.total && result.total > result.notes.length) {
-        response += `\n\n💡 *Tip: Use more specific search terms or categories to narrow results*`;
-      }
-
-      // Truncate if response is too long (WhatsApp limit ~4000 chars)
-      if (response.length > 3500) {
-        const truncatedNotes = result.notes.slice(
-          0,
-          Math.floor(result.notes.length * 0.7),
-        );
-        const newResponse = `📝 Found ${result.notes.length} note(s)${totalText} (showing first ${truncatedNotes.length}):\n`;
-        const truncatedFormatted = truncatedNotes
-          .map((note: any, i: number) => {
-            const title = note.title ? `**${note.title}**` : "";
-            const content =
-              note.content.length > 60
-                ? note.content.substring(0, 60) + "..."
-                : note.content;
-            const pinned = note.isPinned ? "📌 " : "";
-            return `${i + 1}. ${pinned}${title}${title ? "\n   " : ""}${content}`;
-          })
-          .join("\n\n");
-        response =
-          newResponse +
-          truncatedFormatted +
-          "\n\n💡 *Use more specific search to see all results*";
-      }
-
-      return response;
-    }
-
-    // Handle single note response (create/update)
-    if (result.content && result.id) {
-      const title = result.title ? `**${result.title}**` : "";
-      const tags =
-        result.tags && result.tags.length > 0
-          ? ` #${result.tags.join(" #")}`
-          : "";
-      return `✅ Note saved!\n${title}${title ? "\n" : ""}${result.content}${tags}`;
-    }
-
-    // Handle note deletion
-    if (result.success === true) {
-      return "✅ Note deleted successfully!";
-    }
-
-    return "Done!";
+    return this.responseFormatter.getResponseMessage(result, timezone);
   }
 }

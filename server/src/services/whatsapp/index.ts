@@ -196,11 +196,9 @@ export class WhatsAppService {
             // Extract MIME type from message
             const msg = message.message;
             if (msg?.imageMessage) {
-              context.mimeType =
-                msg.imageMessage.mimetype || "image/jpeg";
+              context.mimeType = msg.imageMessage.mimetype || "image/jpeg";
             } else if (msg?.videoMessage) {
-              context.mimeType =
-                msg.videoMessage.mimetype || "video/mp4";
+              context.mimeType = msg.videoMessage.mimetype || "video/mp4";
             } else if (msg?.documentMessage) {
               context.mimeType =
                 msg.documentMessage.mimetype || "application/pdf";
