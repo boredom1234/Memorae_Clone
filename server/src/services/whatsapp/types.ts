@@ -10,6 +10,8 @@ export interface MessageContext {
   groupId?: string;
   messageType: "text" | "image" | "audio" | "video" | "document" | "unknown";
   mediaUrl?: string;
+  mediaBuffer?: Buffer; // For image/document OCR processing
+  mimeType?: string; // MIME type of media (e.g., image/jpeg, image/png)
   quoted?: {
     messageId: string;
     text?: string;
