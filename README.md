@@ -1,79 +1,46 @@
-# Memorae Clone - WhatsApp AI Assistant
+# Memorae Clone (Server)
 
-A WhatsApp-based AI assistant for reminders, task management, and calendar integration.
+Fastify + TypeScript backend for a WhatsApp-based AI reminder/notification assistant.
 
-## Features
+## Quick Start
 
-- 🤖 AI-powered natural language processing
-- ⏰ Unlimited recurring reminders
-- 📝 Custom list management
-- 🎤 Voice note transcription
-- 📸 Image text extraction
-- 📅 Calendar synchronization (Google, Outlook, Apple)
-- 🔒 End-to-end encryption
+Run these inside `server/`:
 
-## Tech Stack
-
-- **Backend**: Node.js + Fastify + TypeScript
-- **Database**: Supabase (PostgreSQL)
-- **WhatsApp**: Baileys
-- **Job Scheduler**: BullMQ
-- **AI**: Vercel AI SDK, Groq Whisper, Mistral OCR
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18+
-- Redis (for BullMQ)
-- Supabase account
-
-### Installation
-
-1. Clone the repository
-2. Install dependencies:
-
-   ```bash
-   npm install
-   ```
-
-3. Copy `.env.example` to `.env` and fill in your credentials:
-
-   ```bash
-   cp .env.example .env
-   ```
-
-4. Start the development server:
-   ```bash
-   npm run dev
-   ```
-
-### Available Scripts
-
-- `npm run dev` - Start development server with hot reload
-- `npm run build` - Build for production
-- `npm start` - Start production server
-- `npm run lint` - Run ESLint
-
-## API Endpoints
-
-- `GET /health` - Health check
-- `GET /api/v1` - API information
-
-## Project Structure
-
+```bash
+npm install
+cp .env.example .env   # or copy manually on Windows
+npm run dev
 ```
-src/
-├── services/       # Business logic services
-│   ├── whatsapp/   # WhatsApp integration
-│   ├── ai/         # AI and NLP services
-│   ├── calendar/   # Calendar integrations
-│   └── scheduler/  # BullMQ job scheduler
-├── controllers/    # Request handlers
-├── models/         # Database schemas
-├── utils/          # Helper functions
-└── config/         # Configuration files
-```
+
+## Env (minimal)
+
+- `PORT`, `HOST`
+- `AI_PROVIDER` and the matching API key (e.g., `OPENAI_API_KEY`, `GROQ_API_KEY`)
+- `WHATSAPP_SESSION_PATH`
+- `WHATSAPP_ALLOWED_NUMBERS`
+
+See `server/.env.example` for all options.
+
+## Scripts (server/)
+
+- `npm run dev` – watch & run `src/index.ts`
+- `npm run build` – compile TypeScript
+- `npm start` – run built server
+- `npm run lint` – lint sources
+
+## API (overview)
+
+- `GET /health`
+- `GET /api/v1`
+- `POST /api/v1/whatsapp/send`
+- `GET /api/v1/whatsapp/status`
+- `POST /api/v1/notifications/send-reminder-to-contact`
+- `GET /api/v1/notifications/history`
+- `POST /api/v1/notifications/send-custom`
+
+## Tech
+
+- Fastify, TypeScript, Baileys (WhatsApp), Vercel AI SDK, Supabase client
 
 ## License
 

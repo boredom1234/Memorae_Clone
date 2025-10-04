@@ -257,6 +257,9 @@ export class AIService {
       throw new Error("AI service not available - no models configured");
     }
 
+    // Capture a stable 'now' for this turn to avoid time drift between retries
+    const nowIso = new Date().toISOString();
+
     // Try primary model first, then fallbacks
     const modelsToTry = [
       { provider: "primary", instance: this.defaultModel },
@@ -309,7 +312,7 @@ IMPORTANT GUIDELINES:
 1. CREATING REMINDERS:
    - Use the field name "reminderTime" (NOT "time") for the ISO 8601 datetime
    - For relative times like "in 30 seconds" or "in 5 minutes", calculate the absolute ISO 8601 datetime from the current time
-   - Current time (UTC): ${new Date().toISOString()}
+   - Current time (UTC): ${nowIso}
    - IMPORTANT: The system automatically uses the user's configured timezone (${timezone}) for all time operations. Users don't need to specify their timezone.
    - When users say times like "3pm", "tomorrow at 9am", interpret these in their local timezone
    - Example: If user says "remind me in 30 seconds", calculate 30 seconds from now and use that ISO datetime
@@ -415,13 +418,13 @@ Current user ID: ${userId}`,
           `AI processed message with ${modelConfig.provider} - ${result.toolCalls.length} tool calls`,
         );
 
-        // If the model failed to call tools but the input likely requires
-        // data operations (lists/reminders/settings), retry with stricter
-        // instructions to use tools. This mitigates hallucinated answers.
-        if (
-          result.toolCalls.length === 0 &&
-          this.messageLikelyNeedsTools(message)
-        ) {
+        // If no tools appear to have been used AND the input likely requires tools,
+        // retry with stricter instructions. Some providers may execute tools but
+        // not populate toolCalls; in that case, also check toolResults.
+        const toolsUsed =
+          (Array.isArray(result.toolCalls) && result.toolCalls.length > 0) ||
+          (Array.isArray(result.toolResults) && result.toolResults.length > 0);
+        if (!toolsUsed && this.messageLikelyNeedsTools(message)) {
           this.logger.warn(
             `No tool calls detected for a likely tool-requiring message. Retrying with tools-required system prompt...`,
           );
@@ -440,7 +443,7 @@ Current user ID: ${userId}`,
           });
 
           this.logger.info(
-            `Retry completed - tool calls: ${result.toolCalls.length}`,
+            `Retry completed - tool calls: ${result.toolCalls.length}, tool results: ${Array.isArray(result.toolResults) ? result.toolResults.length : 0}`,
           );
         }
 

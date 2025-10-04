@@ -51,6 +51,45 @@ export class ReminderService {
         title: params.title,
       });
 
+      // Idempotency: avoid duplicates created within a short time window for the same title
+      try {
+        const targetUTC = toUTC(validatedParams.reminderTime);
+        const target = DateTime.fromISO(targetUTC, { zone: "utc" });
+        const windowStart = target.minus({ minutes: 1 }).toISO();
+        const windowEnd = target.plus({ minutes: 1 }).toISO();
+
+        const { data: existing } = await this.supabase
+          .from("reminders")
+          .select("id, title, reminder_time, status")
+          .eq("user_id", validatedParams.userId)
+          .eq("status", "pending")
+          .gte("reminder_time", windowStart)
+          .lte("reminder_time", windowEnd);
+
+        const match = (existing || []).find(
+          (r: any) =>
+            String(r.title).trim().toLowerCase() ===
+            String(validatedParams.title).trim().toLowerCase(),
+        );
+
+        if (match) {
+          logInfo("Dedup: reusing existing reminder", {
+            userId: validatedParams.userId,
+            existingReminderId: match.id,
+          });
+          logPerformance("createReminder", Date.now() - startTime);
+          return {
+            success: true,
+            reminderId: match.id,
+            message: `Reminder "${params.title}" already exists around that time`,
+            scheduledFor: match.reminder_time,
+          };
+        }
+      } catch (e) {
+        // If idempotency check fails, proceed with creation
+        logInfo("Dedup check failed, proceeding with insert", { error: String(e) });
+      }
+
       const { data, error } = await this.supabase
         .from("reminders")
         .insert({

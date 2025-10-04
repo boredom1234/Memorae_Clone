@@ -519,11 +519,20 @@ export class MessageController {
       this.logger.info(`AI response: ${result.text}`);
       this.logger.info(`Tool calls: ${result.toolCalls.length}`);
 
-      // Add AI response to conversation context
-      if (result.text) {
+      // Prefer rendering from tool results when available to avoid mismatch
+      const renderedText =
+        result.toolResults && Array.isArray(result.toolResults) && result.toolResults.length > 0
+          ? this.getResponseMessage(
+              result.toolResults[result.toolResults.length - 1],
+              user.timezone,
+            )
+          : result.text || this.getResponseMessage(result, user.timezone);
+
+      // Add assistant response to conversation context (use rendered text for consistency with user-visible message)
+      if (renderedText) {
         this.addToConversationContext(user.id, {
           role: "assistant",
-          content: result.text,
+          content: renderedText,
           timestamp: new Date(),
         });
       }
@@ -533,7 +542,7 @@ export class MessageController {
         text: result.text,
         toolCalls: result.toolCalls,
         toolResults: result.toolResults,
-        renderedText: this.getResponseMessage(result, user.timezone),
+        renderedText: renderedText || "Done!",
       };
     } catch (error: any) {
       this.logger.error({ error }, `Failed to process message with AI`);
