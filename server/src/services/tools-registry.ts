@@ -4,6 +4,7 @@ import { ListService } from "./list-service";
 import { UtilityService } from "./utility-service";
 import { NotesService } from "./notes-service";
 import { NotificationService } from "./notification-service";
+import { MediaAttachmentService } from "./media-attachment-service";
 import { AppError } from "../utils/errors";
 import { logError, logInfo } from "../utils/logger";
 import { tool } from "ai";
@@ -17,6 +18,7 @@ export class ToolsRegistry {
   private utilityService: UtilityService;
   private notesService: NotesService;
   private notificationService: NotificationService;
+  private mediaService: MediaAttachmentService;
 
   constructor() {
     this.userService = new UserService();
@@ -25,6 +27,7 @@ export class ToolsRegistry {
     this.utilityService = new UtilityService();
     this.notesService = new NotesService();
     this.notificationService = new NotificationService();
+    this.mediaService = new MediaAttachmentService();
   }
 
   // Get all available tools with their schemas
@@ -1539,6 +1542,95 @@ export class ToolsRegistry {
           });
         }),
       }),
+
+      // ---------------- Media Attachments ----------------
+      getMediaHistory: tool({
+        description:
+          'Get user\'s image/media history with OCR text. Triggers: show images, my images, media history.',
+        inputSchema: z.object({
+          mediaType: z
+            .enum(["image", "audio", "video", "document"])
+            .optional()
+            .describe("Filter by media type"),
+          limit: z
+            .number()
+            .optional()
+            .describe("Max results (default 10, max 50)"),
+        }),
+        execute: dedupe("getMediaHistory", async (params) => {
+          const result = await this.mediaService.getUserAttachments(userId, {
+            mediaType: params.mediaType,
+            limit: Math.min(params.limit || 10, 50),
+          });
+
+          return {
+            success: true,
+            attachments: result.attachments.map((a) => ({
+              id: a.id,
+              type: a.mediaType,
+              extractedText: a.extractedText?.substring(0, 200), // Preview
+              createdAt: a.createdAt,
+              hasReminder: !!a.reminderId,
+              hasList: !!a.listItemId,
+            })),
+            total: result.total,
+            message: `Found ${result.total} media attachment(s)`,
+          };
+        }),
+      }),
+
+      searchMediaByText: tool({
+        description:
+          'Search through extracted text from images. Triggers: find in images, search images, what image.',
+        inputSchema: z.object({
+          query: z.string().describe("Text to search for in OCR results"),
+          limit: z.number().optional().describe("Max results (default 5)"),
+        }),
+        execute: dedupe("searchMediaByText", async (params) => {
+          const results = await this.mediaService.searchByText(
+            userId,
+            params.query,
+            {
+              limit: params.limit || 5,
+            },
+          );
+
+          if (results.length === 0) {
+            return {
+              success: true,
+              results: [],
+              message: `No images found containing "${params.query}"`,
+            };
+          }
+
+          return {
+            success: true,
+            results: results.map((r) => ({
+              id: r.id,
+              extractedText: r.extractedText,
+              createdAt: r.createdAt,
+              linkedToReminder: !!r.reminderId,
+              linkedToList: !!r.listItemId,
+            })),
+            message: `Found ${results.length} image(s) containing "${params.query}"`,
+          };
+        }),
+      }),
+
+      getMediaStats: tool({
+        description:
+          'Get statistics about user\'s media attachments. Triggers: media stats, how many images.',
+        inputSchema: z.object({}),
+        execute: dedupe("getMediaStats", async () => {
+          const stats = await this.mediaService.getAttachmentStats(userId);
+
+          return {
+            success: true,
+            ...stats,
+            message: `You have ${stats.total} media attachment(s): ${stats.withOCR} with OCR, ${stats.linked} linked to items`,
+          };
+        }),
+      }),
     };
     (toolsObj as any).__stats = stats;
     return toolsObj;
@@ -1623,16 +1715,28 @@ export class ToolsRegistry {
       intents.push("complete");
     }
 
-    // Notification/communication keywords
-    if (/\b(send to|remind someone|notify|tell|message)\b/.test(lower)) {
+    // Notification-related keywords
+    if (
+      /\b(notification|history|send reminder to|share reminder|notify someone)\b/.test(
+        lower,
+      )
+    ) {
       intents.push("notification");
+    }
+
+    // Media-related keywords
+    if (
+      /\b(image|images|photo|photos|picture|pictures|media|show my images|my images|find image|search image)\b/.test(
+        lower,
+      )
+    ) {
+      intents.push("media");
     }
 
     // Default to general if no specific intent detected
     if (intents.length === 0) {
       intents.push("general");
     }
-
     return intents;
   }
 
@@ -1677,6 +1781,9 @@ export class ToolsRegistry {
         "getNotificationHistory",
         "sendCustomMessage",
       ],
+
+      // Media attachments
+      media: ["getMediaHistory", "searchMediaByText", "getMediaStats"],
     };
   }
 
@@ -1787,6 +1894,10 @@ export class ToolsRegistry {
 
         case "notification":
           categories.notification.forEach((t) => selectedToolNames.add(t));
+          break;
+
+        case "media":
+          categories.media.forEach((t) => selectedToolNames.add(t));
           break;
 
         case "general":
