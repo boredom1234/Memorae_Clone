@@ -444,11 +444,11 @@ Current user ID: ${userId}`,
         // Check if tools were actually executed by examining the stats
         const toolStats = (tools as any).__stats;
         const toolsActuallyExecuted = toolStats?.executed === true;
-        
+
         this.logger.info(
           `AI processed message with ${modelConfig.provider} - ${result.toolCalls.length} tool calls, tools executed: ${toolsActuallyExecuted}`,
         );
-        
+
         if (toolsActuallyExecuted && toolStats.names) {
           this.logger.info(`Tools executed: ${toolStats.names.join(", ")}`);
         }
@@ -458,9 +458,10 @@ Current user ID: ${userId}`,
         // not populate toolCalls; in that case, also check toolResults or execution stats.
         const toolsUsed =
           (Array.isArray(result.toolCalls) && result.toolCalls.length > 0) ||
-          (Array.isArray(result.toolResults) && result.toolResults.length > 0) ||
+          (Array.isArray(result.toolResults) &&
+            result.toolResults.length > 0) ||
           toolsActuallyExecuted;
-        
+
         if (!toolsUsed && this.messageLikelyNeedsTools(message)) {
           this.logger.warn(
             `No tool calls detected for a likely tool-requiring message. Retrying with tools-required system prompt...`,
@@ -482,17 +483,19 @@ Current user ID: ${userId}`,
           this.logger.info(
             `Retry completed - tool calls: ${result.toolCalls.length}, tool results: ${Array.isArray(result.toolResults) ? result.toolResults.length : 0}`,
           );
-          
+
           // Check if tools were executed in retry
           const retryToolStats = (tools as any).__stats;
           const retryToolsExecuted = retryToolStats?.executed === true;
-          
+
           // Check if tools are still missing after retry for action intents
           const stillNoTools =
-            (!Array.isArray(result.toolCalls) || result.toolCalls.length === 0) &&
-            (!Array.isArray(result.toolResults) || result.toolResults.length === 0) &&
+            (!Array.isArray(result.toolCalls) ||
+              result.toolCalls.length === 0) &&
+            (!Array.isArray(result.toolResults) ||
+              result.toolResults.length === 0) &&
             !retryToolsExecuted;
-          
+
           if (stillNoTools) {
             this.logger.warn(
               `Tools required but missing even after retry. Flagging response.`,

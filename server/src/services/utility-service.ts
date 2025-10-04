@@ -387,12 +387,14 @@ export class UtilityService {
    * Pick the best date from multiple extracted dates
    * Prioritizes: highest confidence, soonest future date
    */
-  pickBestDate(extractedDates: Array<{
-    originalText: string;
-    parsedDate: string;
-    confidence: number;
-    type: "absolute" | "relative";
-  }>): string | null {
+  pickBestDate(
+    extractedDates: Array<{
+      originalText: string;
+      parsedDate: string;
+      confidence: number;
+      type: "absolute" | "relative";
+    }>,
+  ): string | null {
     if (!extractedDates || extractedDates.length === 0) {
       return null;
     }
@@ -411,7 +413,9 @@ export class UtilityService {
     futureDates.sort((a, b) => {
       const confDiff = b.confidence - a.confidence;
       if (Math.abs(confDiff) > 0.1) return confDiff;
-      return new Date(a.parsedDate).getTime() - new Date(b.parsedDate).getTime();
+      return (
+        new Date(a.parsedDate).getTime() - new Date(b.parsedDate).getTime()
+      );
     });
 
     return futureDates[0].parsedDate;
@@ -431,7 +435,12 @@ export class UtilityService {
     // If the time has passed today, assume user meant tomorrow
     const tomorrow = new Date(now);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(parsed.getHours(), parsed.getMinutes(), parsed.getSeconds(), 0);
+    tomorrow.setHours(
+      parsed.getHours(),
+      parsed.getMinutes(),
+      parsed.getSeconds(),
+      0,
+    );
 
     return tomorrow.toISOString();
   }

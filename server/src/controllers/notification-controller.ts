@@ -24,12 +24,10 @@ export async function registerNotificationRoutes(app: FastifyInstance) {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const userId = request.headers["x-user-id"] as string;
       if (!userId) {
-        return reply
-          .status(400)
-          .send({
-            error: "MISSING_USER_ID",
-            message: "x-user-id header is required",
-          });
+        return reply.status(400).send({
+          error: "MISSING_USER_ID",
+          message: "x-user-id header is required",
+        });
       }
       const body = request.body as any;
       const result = await service.sendReminderToContact({
@@ -73,12 +71,10 @@ export async function registerNotificationRoutes(app: FastifyInstance) {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const userId = request.headers["x-user-id"] as string;
       if (!userId) {
-        return reply
-          .status(400)
-          .send({
-            error: "MISSING_USER_ID",
-            message: "x-user-id header is required",
-          });
+        return reply.status(400).send({
+          error: "MISSING_USER_ID",
+          message: "x-user-id header is required",
+        });
       }
       const body = request.body as any;
       const result = await service.sendCustomMessage(userId, body);

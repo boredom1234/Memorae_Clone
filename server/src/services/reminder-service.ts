@@ -87,7 +87,9 @@ export class ReminderService {
         }
       } catch (e) {
         // If idempotency check fails, proceed with creation
-        logInfo("Dedup check failed, proceeding with insert", { error: String(e) });
+        logInfo("Dedup check failed, proceeding with insert", {
+          error: String(e),
+        });
       }
 
       const { data, error } = await this.supabase
