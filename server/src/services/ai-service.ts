@@ -457,6 +457,12 @@ MEDIA ATTACHMENTS (Images):
 - SEARCH IMAGES: "find images with receipt", "search my images for milk" -> searchMediaByText
 - IMAGE STATS: "how many images have I sent?", "my media stats" -> getMediaStats
 
+IMPORTANT: When users ask for images or search results:
+- The tools return fileUrl fields with actual image URLs
+- You MUST share these URLs with the user so they can view the images
+- Format: "Here's the image: [URL]" or include the URL in your response
+- These are real, clickable links to Supabase Storage
+
 When users send images with captions like "Make this list for me" or "Create reminders from this":
 1. The system extracts text from the image using OCR
 2. You receive the extracted text in the message

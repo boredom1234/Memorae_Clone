@@ -1568,13 +1568,14 @@ export class ToolsRegistry {
             attachments: result.attachments.map((a) => ({
               id: a.id,
               type: a.mediaType,
+              fileUrl: a.fileUrl, // Include the actual URL
               extractedText: a.extractedText?.substring(0, 200), // Preview
               createdAt: a.createdAt,
               hasReminder: !!a.reminderId,
               hasList: !!a.listItemId,
             })),
             total: result.total,
-            message: `Found ${result.total} media attachment(s)`,
+            message: `Found ${result.total} media attachment(s). You can view them at the URLs provided.`,
           };
         }),
       }),
@@ -1607,12 +1608,13 @@ export class ToolsRegistry {
             success: true,
             results: results.map((r) => ({
               id: r.id,
+              fileUrl: r.fileUrl, // Include the actual URL
               extractedText: r.extractedText,
               createdAt: r.createdAt,
               linkedToReminder: !!r.reminderId,
               linkedToList: !!r.listItemId,
             })),
-            message: `Found ${results.length} image(s) containing "${params.query}"`,
+            message: `Found ${results.length} image(s) containing "${params.query}". You can view them at the URLs provided.`,
           };
         }),
       }),

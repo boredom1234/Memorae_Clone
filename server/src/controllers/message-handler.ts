@@ -748,9 +748,13 @@ export class MessageController {
         // Save media attachment with OCR results
         let attachmentId: string | undefined;
         try {
+          // Upload to Supabase Storage for permanent access
+          const fileUrl = await this.uploadImageToStorage(user.id, context.messageId, context.mediaBuffer, mimeType);
+
           const attachment = await this.mediaService.saveAttachment({
             userId: user.id,
             mediaType: "image",
+            fileUrl: fileUrl,
             mimeType: mimeType,
             fileSize: context.mediaBuffer.length,
             extractedText: processed.ocrText,
@@ -758,6 +762,7 @@ export class MessageController {
               caption: caption,
               ocrEngine: "mistral-pixtral",
               processedAt: new Date().toISOString(),
+              whatsappMessageId: context.messageId,
             },
           });
           attachmentId = attachment.id;
@@ -895,9 +900,13 @@ Please help the user with their request based on the image content.`;
 
         // Save media attachment with OCR results
         try {
+          // Upload to Supabase Storage for permanent access
+          const fileUrl = await this.uploadImageToStorage(user.id, context.messageId, context.mediaBuffer, mimeType);
+
           await this.mediaService.saveAttachment({
             userId: user.id,
             mediaType: "image",
+            fileUrl: fileUrl,
             mimeType: mimeType,
             fileSize: context.mediaBuffer.length,
             extractedText: ocrResult.extractedText,
@@ -905,6 +914,7 @@ Please help the user with their request based on the image content.`;
               ocrEngine: "mistral-pixtral",
               confidence: ocrResult.confidence,
               processedAt: new Date().toISOString(),
+              whatsappMessageId: context.messageId,
             },
           });
           this.logger.info("Media attachment saved with OCR text");
@@ -935,6 +945,59 @@ Please help the user with their request based on the image content.`;
   ): Promise<any> {
     this.logger.info("Audio message received");
     throw new Error("Voice transcription is not yet implemented. Coming soon!");
+  }
+
+  /**
+   * Optional: Upload image to Supabase Storage
+   * Uncomment the method call in handleImageMessage to enable
+   * @unused - Method available for future use when image storage is needed
+   */
+  // @ts-expect-error - Method intentionally unused, available for future image storage feature
+  private async uploadImageToStorage(
+    userId: string,
+    messageId: string,
+    imageBuffer: Buffer,
+    mimeType: string,
+  ): Promise<string> {
+    try {
+      const extension = mimeType.split("/")[1] || "jpg";
+      const fileName = `${userId}/${Date.now()}_${messageId}.${extension}`;
+
+      // Upload to Supabase Storage
+      const { supabase } = await import("../lib/supabase");
+      
+      if (!supabase) {
+        throw new Error("Supabase client not initialized");
+      }
+
+      const { data, error } = await supabase.storage
+        .from("media") // Create this bucket in Supabase
+        .upload(fileName, imageBuffer, {
+          contentType: mimeType,
+          upsert: false,
+        });
+
+      if (error) {
+        this.logger.error({ error }, "Failed to upload image to storage");
+        throw error;
+      }
+
+      if (!data) {
+        throw new Error("No data returned from upload");
+      }
+
+      // Get public URL
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("media").getPublicUrl(data.path);
+
+      this.logger.info(`Image uploaded to storage: ${publicUrl}`);
+      return publicUrl;
+    } catch (error: any) {
+      this.logger.error({ error }, "Error uploading image to storage");
+      // Fallback to WhatsApp reference
+      return `whatsapp://upload-failed/${messageId}`;
+    }
   }
 
   // Public method to get response for WhatsApp
