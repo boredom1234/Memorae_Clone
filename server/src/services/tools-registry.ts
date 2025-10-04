@@ -4,6 +4,7 @@ import { ListService } from "./list-service";
 import { UtilityService } from "./utility-service";
 import { NotesService } from "./notes-service";
 import { NotificationService } from "./notification-service";
+import { MediaAttachmentService } from "./media-attachment-service";
 import { AppError } from "../utils/errors";
 import { logError, logInfo } from "../utils/logger";
 import { tool } from "ai";
@@ -17,6 +18,7 @@ export class ToolsRegistry {
   private utilityService: UtilityService;
   private notesService: NotesService;
   private notificationService: NotificationService;
+  private mediaService: MediaAttachmentService;
 
   constructor() {
     this.userService = new UserService();
@@ -25,6 +27,7 @@ export class ToolsRegistry {
     this.utilityService = new UtilityService();
     this.notesService = new NotesService();
     this.notificationService = new NotificationService();
+    this.mediaService = new MediaAttachmentService();
   }
 
   // Get all available tools with their schemas
@@ -465,7 +468,7 @@ export class ToolsRegistry {
     const toolsObj = {
       createReminder: tool({
         description:
-          'Create a new reminder for the user at a specific date and time. Use this when the user wants to be reminded about something in the future. Trigger phrases: "remind me", "set a reminder", "don\'t let me forget", "alert me", "notify me when", "schedule a reminder". For one-time reminders, set isRecurring=false. For recurring reminders (daily, weekly, monthly, etc.), set isRecurring=true and provide recurrenceRule. Examples: "remind me to call mom tomorrow at 3pm", "set a daily reminder to take medicine at 9am", "remind me every Monday at 10am for team meeting".',
+          'Create reminder at specific time. Supports one-time and recurring (daily/weekly/monthly). Triggers: remind, alert, schedule, notify.',
         inputSchema: createReminderSchema,
         execute: dedupe("createReminder", async (params) => {
           // Fetch user's timezone
@@ -534,7 +537,7 @@ export class ToolsRegistry {
 
       updateReminder: tool({
         description:
-          'Modify an existing reminder\'s time, title, notes, or priority. Use this when the user wants to change, edit, reschedule, or update a reminder they already created. Trigger phrases: "change", "update", "modify", "edit", "reschedule", "move", "shift". Examples: "change my dentist reminder to 4pm", "update the meeting reminder to tomorrow", "make the call reminder high priority", "move my workout reminder to 7am", "reschedule the interview to next week".',
+          'Modify existing reminder (time, title, priority). Triggers: change, update, edit, reschedule, move.',
         inputSchema: z.object({
           searchQuery: z.string().describe("Text to search for the reminder"),
           title: z.string().optional().describe("New title for the reminder"),
@@ -636,7 +639,7 @@ export class ToolsRegistry {
 
       deleteReminder: tool({
         description:
-          'Permanently delete or cancel a reminder. Use this when the user no longer needs a reminder and wants to remove it completely from the system. Trigger phrases: "delete", "remove", "cancel", "get rid of", "clear", "erase". Examples: "delete my dentist reminder", "cancel the meeting reminder", "remove the reminder about calling John", "get rid of all reminders for tomorrow", "clear my workout reminder".',
+          'Delete/cancel reminder permanently. Triggers: delete, remove, cancel, clear.',
         inputSchema: z.object({
           searchQuery: z
             .string()
@@ -694,7 +697,7 @@ export class ToolsRegistry {
 
       listReminders: tool({
         description:
-          'Display a list of the user\'s reminders with optional filtering by status (pending/completed/all), date range, and sorting. Use this when the user wants to view, see, or check their reminders without a specific search query. Trigger phrases: "list", "show", "display", "what reminders", "my reminders", "all reminders". Examples: "show me my reminders", "list all my pending reminders", "what reminders do I have?", "display completed reminders", "show me all reminders for next week".',
+          'List reminders with filters (status, date). Triggers: list, show, display, what reminders.',
         inputSchema: z.object({
           status: z
             .enum(["pending", "completed", "all"])
@@ -717,7 +720,7 @@ export class ToolsRegistry {
 
       completeReminder: tool({
         description:
-          'Mark a reminder as completed or done. Use this when the user has finished the task associated with a reminder and wants to mark it as complete. This does NOT delete the reminder, just changes its status to completed. Trigger phrases: "mark as done", "complete", "finished", "completed", "mark as complete", "done with", "I did". Examples: "mark the dentist reminder as done", "complete the meeting reminder", "I finished calling John", "done with my workout reminder", "completed the grocery shopping reminder".',
+          'Mark reminder as done (status only, not deleted). Triggers: complete, done, finished, mark as done.',
         inputSchema: z.object({
           searchQuery: z
             .string()
@@ -743,7 +746,7 @@ export class ToolsRegistry {
 
       createList: tool({
         description:
-          'Create a new named list (shopping list, todo list, task list, etc.). Use this when the user explicitly wants to create a new list container. Trigger phrases: "create a list", "make a list", "start a list", "new list". Examples: "create a shopping list", "make a list called groceries", "start a new todo list", "create a vacation packing list", "make a work tasks list".',
+          'Create new list (shopping, todo, tasks). Triggers: create list, make list, new list.',
         inputSchema: z.object({
           name: z.string().describe("Name of the list"),
           description: z
@@ -765,7 +768,7 @@ export class ToolsRegistry {
 
       addItemToList: tool({
         description:
-          'Add one or more items to an existing list. If the list doesn\'t exist, it will be created automatically. Use this when the user wants to add, put, or append items to a list. Maximum 50 items per call - if user provides more, split into multiple calls. Trigger phrases: "add to", "put on", "add [item] to [list]", "include in". Examples: "add milk to my shopping list", "add buy groceries to my todo list", "put eggs and bread on the shopping list", "add workout to my daily tasks", "include meeting notes in my work list".',
+          'Add items to list (auto-creates if missing, max 50/call). Triggers: add to, put on, include.',
         inputSchema: z.object({
           listName: z.string().describe("Name of the list"),
           items: z
@@ -849,7 +852,7 @@ export class ToolsRegistry {
 
       getLists: tool({
         description:
-          'Display all lists the user has created. Use this when the user wants to see an overview of all their lists (shopping lists, todo lists, etc.). Trigger phrases: "show my lists", "what lists", "all lists", "list my lists", "display lists". Examples: "show me my lists", "what lists do I have?", "list all my lists", "display all my lists", "what lists have I created?".',
+          'Show all user lists. Triggers: show lists, what lists, all lists.',
         inputSchema: z.object({
           includeItems: z
             .boolean()
@@ -867,7 +870,7 @@ export class ToolsRegistry {
 
       searchReminders: tool({
         description:
-          'Search and find reminders by keyword, title, or content. Use this when the user wants to find specific reminders using a search term or phrase. Trigger phrases: "find", "search", "look for", "where is", "do I have a reminder about". Examples: "find my dentist reminder", "search for reminders about John", "look for meeting reminders", "do I have a reminder about groceries?", "search for all work-related reminders".',
+          'Search reminders by keyword/title. Triggers: find, search, look for, where is.',
         inputSchema: z.object({
           query: z.string().describe("Search query"),
           limit: z.number().optional().describe("Maximum results"),
@@ -887,7 +890,7 @@ export class ToolsRegistry {
 
       snoozeReminder: tool({
         description:
-          'Postpone or delay a reminder to a later time or date. Use this when the user wants to temporarily push back a reminder without deleting it. The reminder will trigger again at the new time. Trigger phrases: "snooze", "postpone", "delay", "push back", "remind me later", "move it to". Examples: "snooze my alarm for 10 minutes", "postpone the meeting reminder to 3pm", "delay the dentist reminder until tomorrow", "remind me about this in 2 hours", "push back my workout to 7pm".',
+          'Postpone reminder to later time. Triggers: snooze, postpone, delay, push back, later.',
         inputSchema: z.object({
           searchQuery: z
             .string()
@@ -979,7 +982,7 @@ export class ToolsRegistry {
 
       getUpcomingReminders: tool({
         description:
-          'Retrieve reminders scheduled for a specific upcoming timeframe: today, tomorrow, this week, or this month. Use this when the user asks about future reminders within a defined time period. Trigger phrases: "what\'s coming up", "upcoming", "what do I have", "reminders for", "what\'s scheduled", "what\'s next". Examples: "what reminders do I have today?", "show me tomorrow\'s reminders", "what\'s coming up this week?", "reminders for this month", "what do I have scheduled today?".',
+          'Get reminders for timeframe (today/tomorrow/week/month). Triggers: upcoming, what\'s coming, scheduled.',
         inputSchema: z.object({
           timeframe: z
             .enum(["today", "tomorrow", "week", "month"])
@@ -1000,7 +1003,7 @@ export class ToolsRegistry {
 
       batchCreateReminders: tool({
         description:
-          'Create multiple reminders in a single operation. Use this when the user provides a list of multiple tasks or events they want to be reminded about. This is more efficient than creating reminders one by one. Trigger phrases: "remind me to [list of things]", "set reminders for", "create reminders for", "I need reminders for". Examples: "remind me to call mom, buy groceries, and pay bills", "set reminders for my meetings tomorrow at 10am, 2pm, and 4pm", "create reminders for all my tasks: workout, study, cook dinner".',
+          'Create multiple reminders at once. Triggers: remind me to [list], set reminders for.',
         inputSchema: z.object({
           reminders: z
             .array(
@@ -1035,7 +1038,7 @@ export class ToolsRegistry {
 
       getListItems: tool({
         description:
-          'Display all items within a specific named list. Use this when the user wants to see the contents or items of a particular list. Trigger phrases: "show [list name]", "what\'s on", "what\'s in", "display [list]", "view [list]". Examples: "show me my shopping list", "what\'s on my todo list?", "display the groceries list", "what\'s in my work tasks?", "view my vacation packing list".',
+          'Show items in specific list. Triggers: show [list], what\'s on, what\'s in, view.',
         inputSchema: z.object({
           listName: z.string().describe("Name of the list to get items from"),
           includeCompleted: z
@@ -1054,7 +1057,7 @@ export class ToolsRegistry {
 
       removeItemFromList: tool({
         description:
-          'Delete or remove specific items from a list. Use this when the user wants to take items off a list (e.g., after buying them or completing them). Trigger phrases: "remove", "delete", "take off", "remove [item] from [list]", "delete [item]". Examples: "remove milk from my shopping list", "delete eggs from the groceries list", "take bread off the shopping list", "remove workout from my todo list", "delete completed items".',
+          'Remove items from list. Triggers: remove, delete, take off.',
         inputSchema: z.object({
           listName: z.string().describe("Name of the list"),
           itemText: z
@@ -1072,7 +1075,7 @@ export class ToolsRegistry {
 
       updateListItem: tool({
         description:
-          'Modify a list item: mark it as completed/uncompleted, change its content, or reorder it. Use this when the user wants to check off, update, or edit an item within a list. Trigger phrases: "mark as done", "check off", "complete", "mark as complete", "update [item]", "change [item]". Examples: "mark milk as done", "check off eggs from the list", "complete buy groceries", "mark workout as complete", "update meeting notes to include agenda".',
+          'Update list item (complete/edit/reorder). Triggers: mark as done, check off, update, change.',
         inputSchema: z.object({
           listName: z.string().describe("Name of the list containing the item"),
           itemText: z
@@ -1115,7 +1118,7 @@ export class ToolsRegistry {
 
       deleteList: tool({
         description:
-          'Permanently delete an entire list and all its items. Use this when the user wants to remove a complete list, not just individual items. Trigger phrases: "delete [list]", "remove [list]", "get rid of [list]", "clear [list]". Examples: "delete my shopping list", "remove the groceries list", "get rid of my todo list", "delete the vacation packing list", "clear my work tasks list".',
+          'Delete entire list and items. Triggers: delete list, remove list, clear list.',
         inputSchema: z.object({
           listName: z.string().describe("Name of the list to delete"),
         }),
@@ -1129,7 +1132,7 @@ export class ToolsRegistry {
 
       searchLists: tool({
         description:
-          'Search across all lists and their items to find specific content. Use this when the user wants to locate a list or item but doesn\'t remember which list it\'s in. Trigger phrases: "find", "search", "where is", "look for", "do I have". Examples: "find milk in my lists", "search for eggs", "where is buy groceries?", "do I have bread on any list?", "look for workout in my lists".',
+          'Search all lists/items. Triggers: find, search, where is, look for.',
         inputSchema: z.object({
           query: z.string().describe("Search query"),
           searchIn: z
@@ -1150,7 +1153,7 @@ export class ToolsRegistry {
 
       getUserSettings: tool({
         description:
-          'Retrieve the user\'s profile and configuration settings including name, timezone, language, notification preferences, and quiet hours. Use this when the user wants to view or check their personal information or settings. Trigger phrases: "my settings", "what are my settings", "show settings", "my preferences", "what\'s my timezone", "what\'s my name", "who am I", "what\'s my phone number", "what\'s my configuration". Examples: "what are my settings?", "what\'s my timezone?", "show my preferences", "what\'s my current language?", "display my notification settings", "what\'s my name?".',
+          'Get user profile/settings (name, timezone, language, notifications). Triggers: my settings, who am I, my name.',
         inputSchema: z.object({}),
         execute: dedupe("getUserSettings", async () => {
           return await this.userService.getUserSettings(userId);
@@ -1159,7 +1162,7 @@ export class ToolsRegistry {
 
       updateUserSettings: tool({
         description:
-          'Modify user configuration settings including name, timezone, language, notification preferences, quiet hours, and more. Use this when the user wants to change, update, or configure their settings. To clear quiet hours, set quietHoursStart, quietHoursEnd, or quietHoursDays to null. Trigger phrases: "change", "set", "update", "configure", "switch", "turn on/off", "clear", "remove". Examples: "change my name to John", "change my timezone to EST", "set my language to Spanish", "turn off notifications", "set advance notice to 30 minutes", "clear my quiet hours", "remove quiet hours days".',
+          'Update settings (name, timezone, language, notifications, quiet hours). Triggers: change, set, update, configure.',
         inputSchema: z.object({
           name: z
             .string()
@@ -1239,7 +1242,7 @@ export class ToolsRegistry {
 
       setQuietHours: tool({
         description:
-          'Configure do-not-disturb time windows when the user doesn\'t want to receive reminder notifications. Use this when the user wants to set, enable, disable, or modify quiet hours. Trigger phrases: "quiet hours", "do not disturb", "don\'t disturb", "DND", "silent hours", "no notifications". Examples: "set quiet hours from 10pm to 7am", "don\'t disturb me between 11pm and 8am", "turn on quiet hours", "enable do not disturb from 9pm to 6am", "disable quiet hours", "set DND for weekends".',
+          'Set do-not-disturb windows. Triggers: quiet hours, do not disturb, DND, silent hours.',
         inputSchema: z.object({
           enabled: z.boolean().describe("Enable or disable quiet hours"),
           startTime: z
@@ -1268,7 +1271,7 @@ export class ToolsRegistry {
 
       getCurrentTime: tool({
         description:
-          'Get the current date and time in the user\'s timezone. Use this when the user asks for the current time, date, or "what time is it now?". Trigger phrases: "what time is it", "current time", "what\'s the time", "time now", "what date is it", "today\'s date". Examples: "what time is it?", "what\'s the current time?", "what date is it today?".',
+          'Get current time/date in user timezone. Triggers: what time, current time, what date.',
         inputSchema: z.object({}),
         execute: dedupe("getCurrentTime", async () => {
           // Fetch user's timezone automatically
@@ -1284,7 +1287,7 @@ export class ToolsRegistry {
       // Notes/Memory Management
       createNote: tool({
         description:
-          'Save and remember arbitrary information, facts, or notes for the user. Use this when the user wants to store information for later retrieval, such as personal details, important facts, project IDs, locations of items, or any other information they want to remember. Trigger phrases: "remember", "note", "save", "store", "keep track", "write down", "take a note". Examples: "remember that I kept my wallet in second shelf", "take a note of my Project ID: 22987AC", "note that my favorite restaurant is XYZ", "remember my car license plate is ABC123", "save this information for later".',
+          'Save information/facts for later. Triggers: remember, note, save, store, keep track.',
         inputSchema: z.object({
           content: z
             .string()
@@ -1314,7 +1317,7 @@ export class ToolsRegistry {
 
       searchNotes: tool({
         description:
-          'Search through saved notes and memories to find specific information. Use this when the user is looking for something they previously asked you to remember or when they want to find specific notes. Trigger phrases: "what did I", "find my note", "search", "look for", "do you remember", "what was", "where did I". Examples: "what did I say about my wallet?", "find my note about the project ID", "search for restaurant information", "do you remember where I kept my keys?", "what was my license plate number?".',
+          'Search saved notes/memories. Triggers: what did I, find note, do you remember, what was.',
         inputSchema: z.object({
           query: z.string().describe("Search query to find in notes"),
           category: z.string().optional().describe("Filter by category"),
@@ -1335,7 +1338,7 @@ export class ToolsRegistry {
 
       listNotes: tool({
         description:
-          'Display all saved notes and memories. Use this when the user wants to see all their stored information or get an overview of what they have saved. Trigger phrases: "show my notes", "list my memories", "what have I saved", "all my notes", "my stored information". Examples: "show me all my notes", "list everything I\'ve saved", "what information do I have stored?", "display all my memories".',
+          'Show all saved notes. Triggers: show notes, list memories, what have I saved.',
         inputSchema: z.object({
           category: z.string().optional().describe("Filter by category"),
           tags: z.array(z.string()).optional().describe("Filter by tags"),
@@ -1361,7 +1364,7 @@ export class ToolsRegistry {
 
       updateNote: tool({
         description:
-          'Update or modify an existing note/memory. Use this when the user wants to change, edit, or update information they previously saved. Trigger phrases: "update", "change", "modify", "edit", "correct". Examples: "update my project ID note", "change the wallet location", "modify my restaurant note", "edit that information", "correct my license plate number".',
+          'Modify existing note. Triggers: update, change, modify, edit, correct.',
         inputSchema: z.object({
           searchQuery: z
             .string()
@@ -1400,7 +1403,7 @@ export class ToolsRegistry {
 
       deleteNote: tool({
         description:
-          'Delete a saved note or memory permanently. Use this when the user no longer needs certain information and wants to remove it. Trigger phrases: "delete", "remove", "forget", "get rid of", "clear". Examples: "delete my wallet note", "remove the project ID information", "forget about the restaurant", "get rid of that note", "clear my license plate info".',
+          'Delete note permanently. Triggers: delete, remove, forget, clear.',
         inputSchema: z.object({
           searchQuery: z
             .string()
@@ -1430,7 +1433,7 @@ export class ToolsRegistry {
       // ---------------- Notification & Communication ----------------
       sendReminderToContact: tool({
         description:
-          'Send a reminder to a specific contact number at a specific time. Use when the user asks to remind someone else. Example: "remind +15551234567 to pay rent tomorrow 10am".',
+          'Send reminder to contact at specific time. Trigger: remind [number] to [task].',
         inputSchema: z.object({
           recipientNumber: z
             .string()
@@ -1497,7 +1500,7 @@ export class ToolsRegistry {
 
       getNotificationHistory: tool({
         description:
-          'Retrieve previously sent notifications. Use when the user asks to see notification history. Example: "show my notification history".',
+          'Get notification history. Trigger: show notification history.',
         inputSchema: z.object({
           limit: z
             .number()
@@ -1523,7 +1526,7 @@ export class ToolsRegistry {
 
       sendCustomMessage: tool({
         description:
-          "Send a custom WhatsApp message to the current user. Use when the assistant needs to push a formatted message back to the user.",
+          'Send custom formatted WhatsApp message to user.',
         inputSchema: z.object({
           message: z.string().describe("Message text"),
           formatting: z.enum(["plain", "markdown"]).optional(),
@@ -1539,14 +1542,403 @@ export class ToolsRegistry {
           });
         }),
       }),
+
+      // ---------------- Media Attachments ----------------
+      getMediaHistory: tool({
+        description:
+          'Get user\'s image/media history with OCR text. Triggers: show images, my images, media history.',
+        inputSchema: z.object({
+          mediaType: z
+            .enum(["image", "audio", "video", "document"])
+            .optional()
+            .describe("Filter by media type"),
+          limit: z
+            .number()
+            .optional()
+            .describe("Max results (default 10, max 50)"),
+        }),
+        execute: dedupe("getMediaHistory", async (params) => {
+          const result = await this.mediaService.getUserAttachments(userId, {
+            mediaType: params.mediaType,
+            limit: Math.min(params.limit || 10, 50),
+          });
+
+          return {
+            success: true,
+            attachments: result.attachments.map((a) => ({
+              id: a.id,
+              type: a.mediaType,
+              fileUrl: a.fileUrl, // Include the actual URL
+              extractedText: a.extractedText?.substring(0, 200), // Preview
+              createdAt: a.createdAt,
+              hasReminder: !!a.reminderId,
+              hasList: !!a.listItemId,
+            })),
+            total: result.total,
+            message: `Found ${result.total} media attachment(s). You can view them at the URLs provided.`,
+          };
+        }),
+      }),
+
+      searchMediaByText: tool({
+        description:
+          'Search through extracted text from images. Triggers: find in images, search images, what image.',
+        inputSchema: z.object({
+          query: z.string().describe("Text to search for in OCR results"),
+          limit: z.number().optional().describe("Max results (default 5)"),
+        }),
+        execute: dedupe("searchMediaByText", async (params) => {
+          const results = await this.mediaService.searchByText(
+            userId,
+            params.query,
+            {
+              limit: params.limit || 5,
+            },
+          );
+
+          if (results.length === 0) {
+            return {
+              success: true,
+              results: [],
+              message: `No images found containing "${params.query}"`,
+            };
+          }
+
+          return {
+            success: true,
+            results: results.map((r) => ({
+              id: r.id,
+              fileUrl: r.fileUrl, // Include the actual URL
+              extractedText: r.extractedText,
+              createdAt: r.createdAt,
+              linkedToReminder: !!r.reminderId,
+              linkedToList: !!r.listItemId,
+            })),
+            message: `Found ${results.length} image(s) containing "${params.query}". You can view them at the URLs provided.`,
+          };
+        }),
+      }),
+
+      getMediaStats: tool({
+        description:
+          'Get statistics about user\'s media attachments. Triggers: media stats, how many images.',
+        inputSchema: z.object({}),
+        execute: dedupe("getMediaStats", async () => {
+          const stats = await this.mediaService.getAttachmentStats(userId);
+
+          return {
+            success: true,
+            ...stats,
+            message: `You have ${stats.total} media attachment(s): ${stats.withOCR} with OCR, ${stats.linked} linked to items`,
+          };
+        }),
+      }),
     };
     (toolsObj as any).__stats = stats;
     return toolsObj;
   }
 
   /**
-   * Get a restricted subset of tools based on detected intent
-   * This prevents the model from hallucinating or using wrong tools
+   * STEP 1: Intent Detection Heuristic
+   * Quick keyword-based detection to categorize user intent
+   */
+  private detectIntent(message: string): string[] {
+    const lower = message.toLowerCase().trim();
+    const intents: string[] = [];
+
+    // Reminder-related keywords
+    if (
+      /\b(remind|reminder|alert|notify|schedule|set a reminder|don't forget|don't let me forget)\b/.test(
+        lower,
+      )
+    ) {
+      intents.push("reminder");
+    }
+
+    // List-related keywords
+    if (
+      /\b(list|shopping|groceries|todo|task|add to|put on|check off|mark as done)\b/.test(
+        lower,
+      )
+    ) {
+      intents.push("list");
+    }
+
+    // Note/memory keywords
+    if (
+      /\b(note|remember|save|store|keep track|write down|take a note|what did I|do you remember|where did I)\b/.test(
+        lower,
+      )
+    ) {
+      intents.push("note");
+    }
+
+    // Settings keywords
+    if (
+      /\b(setting|settings|timezone|language|quiet hours|notification|preference|configure|my name|who am i|my phone)\b/.test(
+        lower,
+      )
+    ) {
+      intents.push("settings");
+    }
+
+    // Time query keywords
+    if (/\b(what time|current time|what date|time now|today's date)\b/.test(lower)) {
+      intents.push("time");
+    }
+
+    // Update/modify keywords
+    if (
+      /\b(update|change|modify|edit|reschedule|move|shift)\b/.test(lower) &&
+      !intents.includes("settings")
+    ) {
+      if (intents.includes("reminder")) {
+        intents.push("update");
+      }
+    }
+
+    // Delete/remove keywords
+    if (/\b(delete|remove|cancel|clear|get rid of|forget)\b/.test(lower)) {
+      intents.push("delete");
+    }
+
+    // Search/find keywords
+    if (/\b(find|search|look for|where is|show|display|what's on)\b/.test(lower)) {
+      intents.push("search");
+    }
+
+    // Snooze/postpone keywords
+    if (/\b(snooze|postpone|delay|push back|later)\b/.test(lower)) {
+      intents.push("snooze");
+    }
+
+    // Complete/done keywords
+    if (/\b(complete|done|finished|mark as done|mark as complete)\b/.test(lower)) {
+      intents.push("complete");
+    }
+
+    // Notification-related keywords
+    if (
+      /\b(notification|history|send reminder to|share reminder|notify someone)\b/.test(
+        lower,
+      )
+    ) {
+      intents.push("notification");
+    }
+
+    // Media-related keywords
+    if (
+      /\b(image|images|photo|photos|picture|pictures|media|show my images|my images|find image|search image)\b/.test(
+        lower,
+      )
+    ) {
+      intents.push("media");
+    }
+
+    // Default to general if no specific intent detected
+    if (intents.length === 0) {
+      intents.push("general");
+    }
+    return intents;
+  }
+
+  /**
+   * STEP 2: Tool Category Mapping
+   * Organize tools into logical categories
+   */
+  private getToolCategories(): Record<string, string[]> {
+    return {
+      // Core utility tools (always included)
+      core: ["getCurrentTime", "getUserSettings"],
+
+      // Reminder management
+      reminder_create: ["createReminder", "batchCreateReminders"],
+      reminder_read: [
+        "listReminders",
+        "searchReminders",
+        "getUpcomingReminders",
+      ],
+      reminder_update: ["updateReminder", "snoozeReminder"],
+      reminder_delete: ["deleteReminder"],
+      reminder_complete: ["completeReminder"],
+
+      // List management
+      list_create: ["createList", "addItemToList"],
+      list_read: ["getLists", "getListItems", "searchLists"],
+      list_update: ["updateListItem"],
+      list_delete: ["deleteList", "removeItemFromList"],
+
+      // Notes/Memory
+      note_create: ["createNote"],
+      note_read: ["searchNotes", "listNotes"],
+      note_update: ["updateNote"],
+      note_delete: ["deleteNote"],
+
+      // User settings
+      settings: ["updateUserSettings", "setQuietHours"],
+
+      // Notifications
+      notification: [
+        "sendReminderToContact",
+        "getNotificationHistory",
+        "sendCustomMessage",
+      ],
+
+      // Media attachments
+      media: ["getMediaHistory", "searchMediaByText", "getMediaStats"],
+    };
+  }
+
+  /**
+   * STEP 3: Dynamic Tool Selection Based on Intent
+   * Returns only relevant tools for the detected intent
+   */
+  getRelevantTools(userId: string, message: string): any {
+    const intents = this.detectIntent(message);
+    const categories = this.getToolCategories();
+    const allTools = this.getAISDKTools(userId);
+
+    // Always include core tools
+    const selectedToolNames = new Set<string>(categories.core);
+
+    // Map intents to tool categories
+    for (const intent of intents) {
+      switch (intent) {
+        case "reminder":
+          // Include all reminder tools for general reminder intent
+          categories.reminder_create.forEach((t) => selectedToolNames.add(t));
+          categories.reminder_read.forEach((t) => selectedToolNames.add(t));
+          break;
+
+        case "update":
+          if (intents.includes("reminder")) {
+            categories.reminder_update.forEach((t) => selectedToolNames.add(t));
+            categories.reminder_read.forEach((t) => selectedToolNames.add(t));
+          }
+          if (intents.includes("list")) {
+            categories.list_update.forEach((t) => selectedToolNames.add(t));
+            categories.list_read.forEach((t) => selectedToolNames.add(t));
+          }
+          if (intents.includes("note")) {
+            categories.note_update.forEach((t) => selectedToolNames.add(t));
+            categories.note_read.forEach((t) => selectedToolNames.add(t));
+          }
+          break;
+
+        case "delete":
+          if (intents.includes("reminder")) {
+            categories.reminder_delete.forEach((t) => selectedToolNames.add(t));
+            categories.reminder_read.forEach((t) => selectedToolNames.add(t));
+          }
+          if (intents.includes("list")) {
+            categories.list_delete.forEach((t) => selectedToolNames.add(t));
+            categories.list_read.forEach((t) => selectedToolNames.add(t));
+          }
+          if (intents.includes("note")) {
+            categories.note_delete.forEach((t) => selectedToolNames.add(t));
+            categories.note_read.forEach((t) => selectedToolNames.add(t));
+          }
+          break;
+
+        case "search":
+          if (intents.includes("reminder")) {
+            categories.reminder_read.forEach((t) => selectedToolNames.add(t));
+          }
+          if (intents.includes("list")) {
+            categories.list_read.forEach((t) => selectedToolNames.add(t));
+          }
+          if (intents.includes("note")) {
+            categories.note_read.forEach((t) => selectedToolNames.add(t));
+          }
+          // If no specific category, include all search tools
+          if (
+            !intents.includes("reminder") &&
+            !intents.includes("list") &&
+            !intents.includes("note")
+          ) {
+            categories.reminder_read.forEach((t) => selectedToolNames.add(t));
+            categories.list_read.forEach((t) => selectedToolNames.add(t));
+            categories.note_read.forEach((t) => selectedToolNames.add(t));
+          }
+          break;
+
+        case "list":
+          categories.list_create.forEach((t) => selectedToolNames.add(t));
+          categories.list_read.forEach((t) => selectedToolNames.add(t));
+          break;
+
+        case "note":
+          categories.note_create.forEach((t) => selectedToolNames.add(t));
+          categories.note_read.forEach((t) => selectedToolNames.add(t));
+          break;
+
+        case "settings":
+          categories.settings.forEach((t) => selectedToolNames.add(t));
+          break;
+
+        case "time":
+          // Core already includes getCurrentTime
+          break;
+
+        case "snooze":
+          categories.reminder_update.forEach((t) => selectedToolNames.add(t));
+          categories.reminder_read.forEach((t) => selectedToolNames.add(t));
+          break;
+
+        case "complete":
+          categories.reminder_complete.forEach((t) => selectedToolNames.add(t));
+          categories.reminder_read.forEach((t) => selectedToolNames.add(t));
+          if (intents.includes("list")) {
+            categories.list_update.forEach((t) => selectedToolNames.add(t));
+            categories.list_read.forEach((t) => selectedToolNames.add(t));
+          }
+          break;
+
+        case "notification":
+          categories.notification.forEach((t) => selectedToolNames.add(t));
+          break;
+
+        case "media":
+          categories.media.forEach((t) => selectedToolNames.add(t));
+          break;
+
+        case "general":
+        default:
+          // For general/unknown intents, include most common tools
+          categories.reminder_create.forEach((t) => selectedToolNames.add(t));
+          categories.reminder_read.forEach((t) => selectedToolNames.add(t));
+          categories.list_create.forEach((t) => selectedToolNames.add(t));
+          categories.list_read.forEach((t) => selectedToolNames.add(t));
+          categories.note_read.forEach((t) => selectedToolNames.add(t));
+          break;
+      }
+    }
+
+    // Build filtered tools object
+    const filteredTools: any = {};
+    for (const toolName of selectedToolNames) {
+      if (allTools[toolName]) {
+        filteredTools[toolName] = allTools[toolName];
+      }
+    }
+
+    // Copy stats reference
+    if ((allTools as any).__stats) {
+      (filteredTools as any).__stats = (allTools as any).__stats;
+    }
+
+    logInfo(
+      `Intent detection: ${intents.join(", ")} | Selected ${selectedToolNames.size} tools from ${Object.keys(allTools).length} total`,
+      { intents, toolCount: selectedToolNames.size },
+    );
+
+    return filteredTools;
+  }
+
+  /**
+   * LEGACY: Get a restricted subset of tools based on detected intent
+   * Kept for backward compatibility
+   * @deprecated Use getRelevantTools instead
    */
   getAISDKToolsSubset(userId: string, intent: string): any {
     const allTools = this.getAISDKTools(userId);

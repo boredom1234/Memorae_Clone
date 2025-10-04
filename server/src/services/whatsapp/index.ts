@@ -180,6 +180,42 @@ export class WhatsAppService {
       // Propagate isSelfChat info downstream for defense-in-depth
       (context as any).isSelfChat = isSelfChat;
 
+      // Download media if it's an image, video, or document
+      if (
+        context.messageType === "image" ||
+        context.messageType === "video" ||
+        context.messageType === "document"
+      ) {
+        this.logger.info(
+          `Downloading ${context.messageType} media for message ${context.messageId}`,
+        );
+        try {
+          const mediaBuffer = await this.downloadMedia(message);
+          if (mediaBuffer) {
+            context.mediaBuffer = mediaBuffer;
+            // Extract MIME type from message
+            const msg = message.message;
+            if (msg?.imageMessage) {
+              context.mimeType =
+                msg.imageMessage.mimetype || "image/jpeg";
+            } else if (msg?.videoMessage) {
+              context.mimeType =
+                msg.videoMessage.mimetype || "video/mp4";
+            } else if (msg?.documentMessage) {
+              context.mimeType =
+                msg.documentMessage.mimetype || "application/pdf";
+            }
+            this.logger.info(
+              `Media downloaded: ${mediaBuffer.length} bytes, MIME: ${context.mimeType}`,
+            );
+          } else {
+            this.logger.warn("Failed to download media");
+          }
+        } catch (error) {
+          this.logger.error({ error }, "Error downloading media");
+        }
+      }
+
       // Mark as read
       if (this.sender && context.messageId) {
         await this.sender.markAsRead(context.from, context.messageId);

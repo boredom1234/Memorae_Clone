@@ -41,6 +41,20 @@ See `server/.env.example` for all options.
 ## Tech
 
 - Fastify, TypeScript, Baileys (WhatsApp), Vercel AI SDK, Supabase client
+- Mistral AI Pixtral (OCR/Vision)
+
+## Features
+
+### 📸 Image OCR Support
+Send images via WhatsApp to extract text using Mistral AI's vision model:
+- **Simple extraction**: Send image without caption to extract all text
+- **Smart processing**: Send image with caption (e.g., "Create reminders from this list") to process extracted content
+- **Supported formats**: JPEG, PNG, WebP, GIF, BMP
+- **Use cases**: Shopping lists, to-do items, receipts, business cards, meeting notes
+
+See [OCR_FEATURE.md](./OCR_FEATURE.md) for detailed documentation.
+
+**Setup**: Add `MISTRAL_API_KEY` to your `.env` file.
 
 ## AI Tool-Calling Architecture
 
