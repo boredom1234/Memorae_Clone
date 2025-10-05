@@ -1,8 +1,9 @@
 // Database Types
 export interface User {
   id: string;
-  whatsapp_id: string;
-  phone_number: string;
+  whatsapp_id?: string | null;
+  telegram_id?: string | null;
+  phone_number?: string | null;
   name?: string;
   timezone: string;
   language: string;

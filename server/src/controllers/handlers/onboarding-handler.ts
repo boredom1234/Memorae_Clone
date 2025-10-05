@@ -76,6 +76,7 @@ export class OnboardingHandler {
             name: onboarding.collected.name,
           });
         }
+        // Skip phone number collection - security risk without verification
         onboarding.step = 2;
         return (
           `2) What's your timezone? (e.g., Asia/Kolkata, America/New_York)\n` +

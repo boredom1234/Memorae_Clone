@@ -89,7 +89,8 @@ CREATE TABLE public.notification_history (
   reminder_id uuid,
   list_id uuid,
   recipient_whatsapp_id character varying,
-  status character varying DEFAULT 'pending'::character varying CHECK (status::text = ANY (ARRAY['pending'::character varying, 'sent'::character varying, 'failed'::character varying, 'delivered'::character varying]::text[])),
+  recipient_telegram_id character varying,
+  status character varying DEFAULT 'pending'::character varying CHECK (status::text = ANY (ARRAY['pending'::character varying, 'sent'::character varying, 'failed'::character varying, 'delivered'::character varying, 'permanently_failed'::character varying]::text[])),
   error_message text,
   retry_count integer DEFAULT 0,
   sent_at timestamp with time zone,
@@ -149,8 +150,8 @@ CREATE TABLE public.user_notes (
 );
 CREATE TABLE public.users (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  whatsapp_id character varying NOT NULL UNIQUE,
-  phone_number character varying NOT NULL CHECK (phone_number::text ~ '^\+?[1-9]\d{1,14}$'::text),
+  whatsapp_id character varying UNIQUE,
+  phone_number character varying CHECK (phone_number::text ~ '^\+?[1-9]\d{1,14}$'::text),
   name character varying,
   timezone character varying DEFAULT 'UTC'::character varying,
   language character varying DEFAULT 'en'::character varying,
@@ -165,5 +166,6 @@ CREATE TABLE public.users (
   updated_at timestamp with time zone DEFAULT now(),
   last_active_at timestamp with time zone DEFAULT now(),
   notes_count integer DEFAULT 0,
+  telegram_id character varying UNIQUE,
   CONSTRAINT users_pkey PRIMARY KEY (id)
 );

@@ -8,7 +8,14 @@ export interface MessageContext {
   timestamp: number;
   isGroup: boolean;
   groupId?: string;
-  messageType: "text" | "image" | "audio" | "video" | "document" | "unknown";
+  messageType:
+    | "text"
+    | "image"
+    | "audio"
+    | "video"
+    | "document"
+    | "voice"
+    | "unknown";
   mediaUrl?: string;
   mediaBuffer?: Buffer; // For image/document OCR processing
   mimeType?: string; // MIME type of media (e.g., image/jpeg, image/png)

@@ -10,7 +10,6 @@ import {
 } from "../types/conversation";
 import pino from "pino";
 import { validateAIInput } from "../middleware/validation";
-import { config } from "../config/env";
 import { OnboardingHandler } from "./handlers/onboarding-handler";
 import { ResponseFormatter } from "./handlers/response-formatter";
 import { MediaHandler } from "./handlers/media-handler";
@@ -71,15 +70,8 @@ export class MessageController {
 
       this.logger.info(`Processing message from ${fromName}`);
 
-      // Defense-in-depth: enforce message filter mode here as well
-      const filterMode = config.whatsapp.messageFilterMode;
-      const isSelfChat = (context as any).isSelfChat === true;
-      if (filterMode === 2 && !isSelfChat) {
-        this.logger.info(
-          `Ignoring message due to filter mode 2 (Only self). from=${context.from}`,
-        );
-        return null;
-      }
+      // Platform-specific filtering should be done by the platform manager (WhatsAppManager/TelegramManager)
+      // This controller is platform-agnostic and handles messages from both platforms
 
       // Ensure user exists in database
       const { user, isNew } = await this.ensureUser(context);
@@ -91,6 +83,7 @@ export class MessageController {
         case "image":
           return await this.handleImageMessage(context, user);
         case "audio":
+        case "voice":
           return await this.handleAudioMessage(context, user);
         default:
           this.logger.info(`Unsupported message type: ${messageType}`);
@@ -114,16 +107,32 @@ export class MessageController {
       return { user: cachedUser, isNew: cachedIsNew };
     }
 
-    // Extract phone number from WhatsApp ID
-    const phoneNumber = "+" + context.from.split("@")[0];
-
-    // Find or create user
     const userService = this.tools.getUserService();
-    const { user, isNew } = await userService.findOrCreateUser(
-      context.from,
-      phoneNumber,
-      context.fromName,
-    );
+    let user: User;
+    let isNew: boolean;
+
+    // Detect platform based on context.from format
+    // WhatsApp: "919876543210@s.whatsapp.net" (contains @)
+    // Telegram: "123456789" (numeric string without @)
+    if (context.from.includes("@")) {
+      // WhatsApp user
+      const phoneNumber = "+" + context.from.split("@")[0];
+      const result = await userService.findOrCreateUser(
+        context.from,
+        phoneNumber,
+        context.fromName,
+      );
+      user = result.user;
+      isNew = result.isNew;
+    } else {
+      // Telegram user
+      const result = await userService.findOrCreateTelegramUser(
+        context.from,
+        context.fromName,
+      );
+      user = result.user;
+      isNew = result.isNew;
+    }
 
     // Cache the user with timestamp
     (user as any).lastAccessed = Date.now();

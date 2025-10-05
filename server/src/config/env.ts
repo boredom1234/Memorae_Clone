@@ -66,6 +66,24 @@ function validateEnv() {
     errors.push("PORT must be a valid number between 1 and 65535");
   }
 
+  // Validate messaging platform
+  const messagingPlatform = process.env.MESSAGING_PLATFORM || "both";
+  const validPlatforms = ["whatsapp", "telegram", "both"];
+  if (!validPlatforms.includes(messagingPlatform.toLowerCase())) {
+    errors.push(
+      `MESSAGING_PLATFORM must be one of: ${validPlatforms.join(", ")}`,
+    );
+  }
+
+  // Validate platform-specific requirements
+  if (messagingPlatform === "telegram" || messagingPlatform === "both") {
+    if (!process.env.TELEGRAM_BOT_TOKEN) {
+      errors.push(
+        "TELEGRAM_BOT_TOKEN is required when MESSAGING_PLATFORM is 'telegram' or 'both'",
+      );
+    }
+  }
+
   if (errors.length > 0) {
     console.error("❌ Environment validation failed:");
     errors.forEach((error) => console.error(`  - ${error}`));
@@ -86,6 +104,12 @@ export const config = {
     port: parseInt(process.env.PORT || "3000", 10),
     host: process.env.HOST || "0.0.0.0",
     nodeEnv: process.env.NODE_ENV || "development",
+  },
+  messaging: {
+    platform: (process.env.MESSAGING_PLATFORM || "both") as
+      | "whatsapp"
+      | "telegram"
+      | "both",
   },
   supabase: {
     url: process.env.SUPABASE_URL || "",
@@ -148,6 +172,14 @@ export const config = {
     ) as 1 | 2 | 3,
     allowedNumbers: process.env.WHATSAPP_ALLOWED_NUMBERS
       ? process.env.WHATSAPP_ALLOWED_NUMBERS.split(",").map((num) => num.trim())
+      : [],
+  },
+  telegram: {
+    botToken: process.env.TELEGRAM_BOT_TOKEN || "",
+    allowedUsers: process.env.TELEGRAM_ALLOWED_USERS
+      ? process.env.TELEGRAM_ALLOWED_USERS.split(",").map((id) =>
+          parseInt(id.trim(), 10),
+        )
       : [],
   },
 };
