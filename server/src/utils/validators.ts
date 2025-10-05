@@ -351,6 +351,7 @@ export const detectIntentSchema = z.object({
 
 export const suggestReminderTimeSchema = z.object({
   taskDescription: z.string().min(1).max(500),
+  timezone: timezoneSchema,
   userSchedule: z
     .array(
       z.object({

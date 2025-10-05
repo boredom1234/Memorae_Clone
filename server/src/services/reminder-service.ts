@@ -18,6 +18,7 @@ import {
   NotFoundError,
   ValidationError,
 } from "../utils/errors";
+import { formatInZone } from "../utils/time-utils";
 import { logInfo, logError, logAudit, logPerformance } from "../utils/logger";
 import { toUTC } from "../utils/time-utils";
 import { DateTime } from "luxon";
@@ -338,10 +339,19 @@ export class ReminderService {
         throw error;
       }
 
+      // Fetch user's timezone for formatting
+      const { data: userTzRow } = await this.supabase
+        .from("users")
+        .select("timezone")
+        .eq("id", validatedParams.userId)
+        .single();
+      const tz = userTzRow?.timezone || "UTC";
+
       const reminders = (data || []).map((r) => ({
         id: r.id,
         title: r.title,
         reminderTime: r.reminder_time,
+        reminderTimeFormatted: formatInZone(r.reminder_time, tz, "MMM d, yyyy 'at' h:mm a"),
         isRecurring: r.is_recurring,
         priority: r.priority,
         createdAt: r.created_at,
@@ -576,6 +586,7 @@ export class ReminderService {
           id: r.id,
           title: r.title,
           reminderTime: r.reminder_time,
+          reminderTimeFormatted: formatInZone(r.reminder_time, tz, "MMM d, yyyy 'at' h:mm a"),
           timeUntil,
         };
       });

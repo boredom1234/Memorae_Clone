@@ -1,5 +1,10 @@
 import * as chrono from "chrono-node";
-import { wallClockToUTCFromZone, formatInZone } from "../utils/time-utils";
+import {
+  wallClockToUTCFromZone,
+  formatInZone,
+  createFutureDateInZone,
+  ensureFutureInZone,
+} from "../utils/time-utils";
 import {
   validate,
   parseNaturalLanguageDateSchema,
@@ -271,6 +276,7 @@ export class UtilityService {
 
   suggestReminderTime(params: {
     taskDescription: string;
+    timezone: string;
     userSchedule?: Array<{ startTime: string; endTime: string }>;
   }): {
     suggestedTimes: Array<{
@@ -292,41 +298,55 @@ export class UtilityService {
         throw new ValidationError("Task description cannot be empty");
       }
 
-      const now = new Date();
+      if (!validatedParams.timezone) {
+        throw new ValidationError("Timezone is required");
+      }
+
       const suggestedTimes: Array<{
         time: string;
         reason: string;
         confidence: number;
       }> = [];
 
-      // Default suggestions
-      const tomorrow9am = new Date(now);
-      tomorrow9am.setDate(tomorrow9am.getDate() + 1);
-      tomorrow9am.setHours(9, 0, 0, 0);
+      // Default suggestions using user's timezone
+      const tomorrow9am = createFutureDateInZone(
+        validatedParams.timezone,
+        1,
+        9,
+        0,
+      );
 
       suggestedTimes.push({
-        time: tomorrow9am.toISOString(),
+        time: tomorrow9am,
         reason: "Tomorrow morning at 9 AM",
         confidence: 0.8,
       });
 
-      const todayEvening = new Date(now);
-      todayEvening.setHours(18, 0, 0, 0);
+      const todayEvening = createFutureDateInZone(
+        validatedParams.timezone,
+        0,
+        18,
+        0,
+      );
 
-      if (todayEvening > now) {
-        suggestedTimes.push({
-          time: todayEvening.toISOString(),
-          reason: "Today evening at 6 PM",
-          confidence: 0.7,
-        });
+      // Only suggest today evening if it's still in the future
+      try {
+        const eveningDate = new Date(todayEvening);
+        if (eveningDate > new Date()) {
+          suggestedTimes.push({
+            time: todayEvening,
+            reason: "Today evening at 6 PM",
+            confidence: 0.7,
+          });
+        }
+      } catch {
+        // Skip if date parsing fails
       }
 
-      const nextWeek = new Date(now);
-      nextWeek.setDate(nextWeek.getDate() + 7);
-      nextWeek.setHours(9, 0, 0, 0);
+      const nextWeek = createFutureDateInZone(validatedParams.timezone, 7, 9, 0);
 
       suggestedTimes.push({
-        time: nextWeek.toISOString(),
+        time: nextWeek,
         reason: "Next week at 9 AM",
         confidence: 0.6,
       });
@@ -423,25 +443,10 @@ export class UtilityService {
 
   /**
    * Ensure a date is in the future; if not, roll forward intelligently
+   * @param dateISO - ISO date string
+   * @param timezone - User's timezone
    */
-  ensureFuture(dateISO: string): string {
-    const parsed = new Date(dateISO);
-    const now = new Date();
-
-    if (parsed.getTime() > now.getTime()) {
-      return dateISO; // Already future
-    }
-
-    // If the time has passed today, assume user meant tomorrow
-    const tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(
-      parsed.getHours(),
-      parsed.getMinutes(),
-      parsed.getSeconds(),
-      0,
-    );
-
-    return tomorrow.toISOString();
+  ensureFuture(dateISO: string, timezone: string): string {
+    return ensureFutureInZone(dateISO, timezone);
   }
 }

@@ -124,7 +124,7 @@ export function createAISDKTools(
         }
 
         if (parsedDate.getTime() <= Date.now()) {
-          finalTime = utilityService.ensureFuture(finalTime);
+          finalTime = utilityService.ensureFuture(finalTime, tz);
         }
 
         const normalizedTitle = params.title.trim().replace(/\s+/g, " ");
@@ -213,7 +213,7 @@ export function createAISDKTools(
         if (finalTime) {
           const parsedDate = new Date(finalTime);
           if (parsedDate.getTime() <= Date.now()) {
-            finalTime = utilityService.ensureFuture(finalTime);
+            finalTime = utilityService.ensureFuture(finalTime, tz);
           }
         }
 

@@ -4,6 +4,7 @@ import { ReminderScheduler } from "./reminder-scheduler";
 import { NotificationRetryService } from "./notification-retry";
 import { config } from "../config/env";
 import { getSupabaseClient } from "../lib/supabase";
+import { isWithinQuietHours } from "../utils/time-utils";
 import pino from "pino";
 
 export class TelegramManager {
@@ -175,40 +176,16 @@ export class TelegramManager {
         if (!user.quiet_hours_enabled) return false;
         try {
           const tz = user.timezone || "UTC";
-          const localNow = new Date(
-            new Date().toLocaleString("en-US", { timeZone: tz }),
-          );
-          const dayNames = [
-            "sunday",
-            "monday",
-            "tuesday",
-            "wednesday",
-            "thursday",
-            "friday",
-            "saturday",
-          ];
-          if (
-            Array.isArray(user.quiet_hours_days) &&
-            user.quiet_hours_days.length > 0
-          ) {
-            const today = dayNames[localNow.getDay()];
-            if (!user.quiet_hours_days.includes(today)) return false;
-          }
           const start = user.quiet_hours_start || "22:00";
           const end = user.quiet_hours_end || "07:00";
-          const [sh, sm] = start.split(":").map((n: string) => parseInt(n, 10));
-          const [eh, em] = end.split(":").map((n: string) => parseInt(n, 10));
-          const startD = new Date(localNow);
-          startD.setHours(sh, sm, 0, 0);
-          const endD = new Date(localNow);
-          endD.setHours(eh, em, 0, 0);
-          if (startD <= endD) {
-            return localNow >= startD && localNow <= endD;
-          } else {
-            // overnight window
-            return localNow >= startD || localNow <= endD;
-          }
-        } catch {
+          return isWithinQuietHours(
+            tz,
+            start,
+            end,
+            user.quiet_hours_days as string[] | undefined,
+          );
+        } catch (e) {
+          this.logger.warn({ e }, "Quiet hours check failed");
           return false;
         }
       })();
