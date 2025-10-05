@@ -13,6 +13,7 @@ export interface MediaAttachment {
   extractedData?: any;
   reminderId?: string;
   listItemId?: string;
+  noteId?: string;
   createdAt: Date;
   processedAt?: Date;
 }
@@ -27,12 +28,14 @@ export interface CreateMediaAttachmentParams {
   extractedData?: any;
   reminderId?: string;
   listItemId?: string;
+  noteId?: string;
 }
 
 export interface LinkMediaParams {
   attachmentId: string;
   reminderId?: string;
   listItemId?: string;
+  noteId?: string;
 }
 
 export class MediaAttachmentService {
@@ -61,6 +64,7 @@ export class MediaAttachmentService {
           extracted_data: params.extractedData,
           reminder_id: params.reminderId,
           list_item_id: params.listItemId,
+          note_id: params.noteId,
           processed_at: params.extractedText ? new Date().toISOString() : null,
         })
         .select()
@@ -95,6 +99,10 @@ export class MediaAttachmentService {
         updates.list_item_id = params.listItemId;
       }
 
+      if (params.noteId) {
+        updates.note_id = params.noteId;
+      }
+
       if (Object.keys(updates).length === 0) {
         this.logger.warn("No linking parameters provided");
         return;
@@ -110,8 +118,13 @@ export class MediaAttachmentService {
         throw new Error(`Failed to link media attachment: ${error.message}`);
       }
 
+      const linkedTo = params.reminderId
+        ? "reminder"
+        : params.listItemId
+          ? "list item"
+          : "note";
       this.logger.info(
-        `Media attachment ${params.attachmentId} linked to ${params.reminderId ? "reminder" : "list item"}`,
+        `Media attachment ${params.attachmentId} linked to ${linkedTo}`,
       );
     } catch (error: any) {
       this.logger.error({ error }, "Error linking media attachment");
@@ -222,6 +235,29 @@ export class MediaAttachmentService {
   }
 
   /**
+   * Get media attachments linked to a specific note
+   */
+  async getAttachmentsByNote(noteId: string): Promise<MediaAttachment[]> {
+    try {
+      const { data, error } = await supabase
+        .from("media_attachments")
+        .select("*")
+        .eq("note_id", noteId)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        this.logger.error({ error }, "Failed to get note attachments");
+        throw new Error(`Failed to get note attachments: ${error.message}`);
+      }
+
+      return (data || []).map(this.mapToMediaAttachment);
+    } catch (error: any) {
+      this.logger.error({ error }, "Error getting note attachments");
+      throw error;
+    }
+  }
+
+  /**
    * Search media attachments by extracted text
    */
   async searchByText(
@@ -277,6 +313,7 @@ export class MediaAttachmentService {
         .eq("user_id", userId)
         .is("reminder_id", null)
         .is("list_item_id", null)
+        .is("note_id", null)
         .order("created_at", { ascending: false })
         .limit(limit);
 
@@ -326,7 +363,7 @@ export class MediaAttachmentService {
     try {
       const { data, error } = await supabase
         .from("media_attachments")
-        .select("media_type, extracted_text, reminder_id, list_item_id")
+        .select("media_type, extracted_text, reminder_id, list_item_id, note_id")
         .eq("user_id", userId);
 
       if (error) {
@@ -352,7 +389,7 @@ export class MediaAttachmentService {
         }
 
         // Count linked
-        if (item.reminder_id || item.list_item_id) {
+        if (item.reminder_id || item.list_item_id || item.note_id) {
           stats.linked++;
         }
       });
@@ -380,6 +417,7 @@ export class MediaAttachmentService {
       extractedData: data.extracted_data,
       reminderId: data.reminder_id,
       listItemId: data.list_item_id,
+      noteId: data.note_id,
       createdAt: new Date(data.created_at),
       processedAt: data.processed_at ? new Date(data.processed_at) : undefined,
     };

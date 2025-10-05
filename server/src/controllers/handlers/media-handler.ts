@@ -165,8 +165,16 @@ Please help the user with their request based on the image content.`;
             : aiResult.text || getResponseMessage(aiResult, user.timezone);
 
         // Link media attachment to created items
+        this.logger.info(
+          `Media linking check - attachmentId: ${attachmentId}, hasToolResults: ${!!aiResult.toolResults}, toolResultsLength: ${aiResult.toolResults?.length || 0}`,
+        );
+
         if (attachmentId && aiResult.toolResults) {
           try {
+            this.logger.info(
+              `Attempting to link media ${attachmentId}. Tool results count: ${aiResult.toolResults.length}`,
+            );
+
             // Find created reminders
             const reminderResults = aiResult.toolResults.filter(
               (r: any) =>
@@ -185,6 +193,37 @@ Please help the user with their request based on the image content.`;
                 });
                 this.logger.info(
                   `Linked media ${attachmentId} to reminder ${reminderId}`,
+                );
+              }
+            }
+
+            // Find created notes
+            const noteResults = aiResult.toolResults.filter(
+              (r: any) => r.toolName === "createNote",
+            );
+
+            this.logger.info(
+              `Found ${noteResults.length} note creation results`,
+            );
+
+            if (noteResults.length > 0) {
+              const firstNote = noteResults[0];
+              this.logger.info(
+                `Note result structure: ${JSON.stringify(firstNote)}`,
+              );
+              const noteId = firstNote.result?.id;
+
+              if (noteId) {
+                await this.mediaService.linkToItem({
+                  attachmentId,
+                  noteId,
+                });
+                this.logger.info(
+                  `Linked media ${attachmentId} to note ${noteId}`,
+                );
+              } else {
+                this.logger.warn(
+                  `Note created but no ID found in result. Result: ${JSON.stringify(firstNote.result)}`,
                 );
               }
             }

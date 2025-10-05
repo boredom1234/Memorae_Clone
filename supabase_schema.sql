@@ -74,10 +74,12 @@ CREATE TABLE public.media_attachments (
   list_item_id uuid,
   created_at timestamp with time zone DEFAULT now(),
   processed_at timestamp with time zone,
+  note_id uuid,
   CONSTRAINT media_attachments_pkey PRIMARY KEY (id),
   CONSTRAINT media_attachments_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT media_attachments_reminder_id_fkey FOREIGN KEY (reminder_id) REFERENCES public.reminders(id),
-  CONSTRAINT media_attachments_list_item_id_fkey FOREIGN KEY (list_item_id) REFERENCES public.list_items(id)
+  CONSTRAINT media_attachments_list_item_id_fkey FOREIGN KEY (list_item_id) REFERENCES public.list_items(id),
+  CONSTRAINT media_attachments_note_id_fkey FOREIGN KEY (note_id) REFERENCES public.user_notes(id)
 );
 CREATE TABLE public.notification_history (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -141,6 +143,7 @@ CREATE TABLE public.user_notes (
   is_archived boolean DEFAULT false,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
+  media_count integer DEFAULT 0,
   CONSTRAINT user_notes_pkey PRIMARY KEY (id),
   CONSTRAINT user_notes_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
