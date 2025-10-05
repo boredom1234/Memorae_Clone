@@ -2,10 +2,12 @@ import "dotenv/config";
 import { buildApp } from "./app";
 import { config } from "./config/env";
 import { WhatsAppManager } from "./services/whatsapp-manager";
-import { setWhatsAppManager } from "./services/runtime";
+import { TelegramManager } from "./services/telegram-manager";
+import { setWhatsAppManager, setTelegramManager } from "./services/runtime";
 
 async function start() {
   let whatsappManager: WhatsAppManager | null = null;
+  let telegramManager: TelegramManager | null = null;
 
   try {
     const app = await buildApp();
@@ -19,19 +21,39 @@ async function start() {
       `🚀 Server running at http://${config.server.host}:${config.server.port}`,
     );
 
-    // Initialize WhatsApp
-    app.log.info("\ud83d\udcf1 Initializing WhatsApp...");
-    whatsappManager = new WhatsAppManager();
-    await whatsappManager.initialize();
-    // Expose manager for other services
-    setWhatsAppManager(whatsappManager);
+    const platform = config.messaging.platform;
+    app.log.info(`📱 Messaging platform mode: ${platform}`);
+
+    // Initialize WhatsApp if enabled
+    if (platform === "whatsapp" || platform === "both") {
+      app.log.info("📱 Initializing WhatsApp...");
+      whatsappManager = new WhatsAppManager();
+      await whatsappManager.initialize();
+      setWhatsAppManager(whatsappManager);
+      app.log.info("✅ WhatsApp initialized");
+    }
+
+    // Initialize Telegram if enabled
+    if (platform === "telegram" || platform === "both") {
+      app.log.info("🤖 Initializing Telegram...");
+      telegramManager = new TelegramManager();
+      await telegramManager.initialize();
+      setTelegramManager(telegramManager);
+      app.log.info("✅ Telegram initialized");
+    }
 
     // Graceful shutdown
     const signals = ["SIGINT", "SIGTERM"];
     signals.forEach((signal) => {
       process.on(signal, async () => {
         if (whatsappManager) {
+          app.log.info("Shutting down WhatsApp...");
           await whatsappManager.shutdown();
+        }
+
+        if (telegramManager) {
+          app.log.info("Shutting down Telegram...");
+          await telegramManager.shutdown();
         }
 
         await app.close();
@@ -43,6 +65,10 @@ async function start() {
 
     if (whatsappManager) {
       await whatsappManager.shutdown();
+    }
+
+    if (telegramManager) {
+      await telegramManager.shutdown();
     }
 
     process.exit(1);

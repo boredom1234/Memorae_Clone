@@ -50,6 +50,70 @@ export class UserService {
     return { user: newUser, isNew: true };
   }
 
+  async findOrCreateTelegramUser(
+    telegramId: string,
+    name?: string,
+    phoneNumber?: string,
+  ): Promise<{ user: User; isNew: boolean }> {
+    // Check if user exists by telegram_id
+    const { data: existingUser } = await this.supabase
+      .from("users")
+      .select("*")
+      .eq("telegram_id", telegramId)
+      .single();
+
+    if (existingUser) {
+      // Update last_active_at
+      await this.supabase
+        .from("users")
+        .update({ last_active_at: new Date().toISOString() })
+        .eq("id", existingUser.id);
+      return { user: existingUser, isNew: false };
+    }
+
+    // If phone number is provided, check if a WhatsApp user exists with this phone
+    if (phoneNumber) {
+      const { data: whatsappUser } = await this.supabase
+        .from("users")
+        .select("*")
+        .eq("phone_number", phoneNumber)
+        .is("telegram_id", null)
+        .single();
+
+      if (whatsappUser) {
+        // Link Telegram to existing WhatsApp account
+        const { data: linkedUser, error: updateError } = await this.supabase
+          .from("users")
+          .update({
+            telegram_id: telegramId,
+            last_active_at: new Date().toISOString(),
+          })
+          .eq("id", whatsappUser.id)
+          .select()
+          .single();
+
+        if (updateError) throw updateError;
+        return { user: linkedUser, isNew: false };
+      }
+    }
+
+    // Create new user
+    const { data: newUser, error } = await this.supabase
+      .from("users")
+      .insert({
+        telegram_id: telegramId,
+        phone_number: phoneNumber || null,
+        name: name || `Telegram User ${telegramId}`,
+        timezone: "UTC",
+        language: "en",
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return { user: newUser, isNew: true };
+  }
+
   async getUserByWhatsAppId(whatsappId: string): Promise<User | null> {
     const { data } = await this.supabase
       .from("users")
@@ -58,6 +122,110 @@ export class UserService {
       .single();
 
     return data;
+  }
+
+  async getUserByTelegramId(telegramId: string): Promise<User | null> {
+    const { data } = await this.supabase
+      .from("users")
+      .select("*")
+      .eq("telegram_id", telegramId)
+      .single();
+
+    return data;
+  }
+
+  /**
+   * Link a Telegram account to an existing user (by phone number)
+   */
+  async linkTelegramToUser(
+    userId: string,
+    telegramId: string,
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      // Check if telegram_id is already linked to another user
+      const { data: existingTelegram } = await this.supabase
+        .from("users")
+        .select("id")
+        .eq("telegram_id", telegramId)
+        .single();
+
+      if (existingTelegram && existingTelegram.id !== userId) {
+        return {
+          success: false,
+          message: "This Telegram account is already linked to another user",
+        };
+      }
+
+      // Link the telegram_id to the user
+      const { error } = await this.supabase
+        .from("users")
+        .update({
+          telegram_id: telegramId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", userId);
+
+      if (error) throw error;
+
+      return {
+        success: true,
+        message: "Telegram account linked successfully",
+      };
+    } catch (error) {
+      logError("Failed to link Telegram account", error, {
+        userId,
+        telegramId,
+      });
+      throw handleServiceError(error, "linkTelegramToUser");
+    }
+  }
+
+  /**
+   * Link a WhatsApp account to an existing user
+   */
+  async linkWhatsAppToUser(
+    userId: string,
+    whatsappId: string,
+    phoneNumber: string,
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      // Check if whatsapp_id is already linked to another user
+      const { data: existingWhatsApp } = await this.supabase
+        .from("users")
+        .select("id")
+        .eq("whatsapp_id", whatsappId)
+        .single();
+
+      if (existingWhatsApp && existingWhatsApp.id !== userId) {
+        return {
+          success: false,
+          message: "This WhatsApp account is already linked to another user",
+        };
+      }
+
+      // Link the whatsapp_id to the user
+      const { error } = await this.supabase
+        .from("users")
+        .update({
+          whatsapp_id: whatsappId,
+          phone_number: phoneNumber,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", userId);
+
+      if (error) throw error;
+
+      return {
+        success: true,
+        message: "WhatsApp account linked successfully",
+      };
+    } catch (error) {
+      logError("Failed to link WhatsApp account", error, {
+        userId,
+        whatsappId,
+      });
+      throw handleServiceError(error, "linkWhatsAppToUser");
+    }
   }
 
   async updateUserSettings(
