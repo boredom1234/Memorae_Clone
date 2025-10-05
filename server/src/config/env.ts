@@ -116,11 +116,6 @@ export const config = {
     anonKey: process.env.SUPABASE_ANON_KEY || "",
     serviceKey: process.env.SUPABASE_SERVICE_KEY || "",
   },
-  redis: {
-    host: process.env.REDIS_HOST || "localhost",
-    port: parseInt(process.env.REDIS_PORT || "6379", 10),
-    password: process.env.REDIS_PASSWORD || "",
-  },
   ai: {
     // Provider and Model Selection
     provider: process.env.AI_PROVIDER || "openai",
