@@ -492,7 +492,23 @@ export class MessageController {
     context: MessageContext,
     user: User,
   ): Promise<any> {
-    return await this.mediaHandler.handleAudioMessage(context, user);
+    const userId = user.id;
+    const conversationContext = this.getConversationContext(userId);
+
+    return await this.mediaHandler.handleAudioMessage(
+      context,
+      user,
+      conversationContext,
+      (userId: string, role: string, content: string, timestamp: Date) => {
+        this.addToConversationContext(userId, {
+          role: role as "user" | "assistant",
+          content,
+          timestamp,
+        });
+      },
+      (result, timezone) =>
+        this.responseFormatter.getResponseMessage(result, timezone),
+    );
   }
 
   // Public method to get response for WhatsApp (for backward compatibility)

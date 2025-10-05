@@ -11,6 +11,7 @@ export interface UserNote {
   category: string;
   isPinned: boolean;
   isArchived: boolean;
+  mediaCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -654,8 +655,128 @@ export class NotesService {
       category: dbNote.category,
       isPinned: dbNote.is_pinned,
       isArchived: dbNote.is_archived,
+      mediaCount: dbNote.media_count || 0,
       createdAt: dbNote.created_at,
       updatedAt: dbNote.updated_at,
     };
+  }
+
+  /**
+   * Get notes with their media attachments
+   */
+  async getNotesWithMedia(
+    userId: string,
+    options?: {
+      category?: string;
+      tags?: string[];
+      includeArchived?: boolean;
+      limit?: number;
+      offset?: number;
+    },
+  ): Promise<{
+    notes: Array<
+      UserNote & {
+        media: Array<{
+          id: string;
+          mediaType: string;
+          fileUrl: string;
+          mimeType?: string;
+          extractedText?: string;
+        }>;
+      }
+    >;
+    total: number;
+  }> {
+    try {
+      logInfo("Getting notes with media", { userId });
+
+      const supabase = getSupabaseClient();
+      let query = supabase
+        .from("user_notes")
+        .select(
+          `
+          *,
+          media:media_attachments(
+            id,
+            media_type,
+            file_url,
+            mime_type,
+            extracted_text
+          )
+        `,
+          { count: "exact" },
+        )
+        .eq("user_id", userId);
+
+      if (options?.category) {
+        query = query.eq("category", options.category);
+      }
+
+      if (options?.tags && options.tags.length > 0) {
+        query = query.overlaps("tags", options.tags);
+      }
+
+      if (!options?.includeArchived) {
+        query = query.eq("is_archived", false);
+      }
+
+      // Order by pinned first, then by creation date
+      query = query
+        .order("is_pinned", { ascending: false })
+        .order("created_at", { ascending: false });
+
+      if (options?.limit) {
+        query = query.limit(options.limit);
+      }
+
+      if (options?.offset) {
+        query = query.range(
+          options.offset,
+          options.offset + (options.limit || 10) - 1,
+        );
+      }
+
+      const { data, error, count } = await query;
+
+      if (error) {
+        logError("Failed to get notes with media", error, { userId });
+        throw new AppError(
+          "Failed to get notes with media",
+          500,
+          "GET_NOTES_WITH_MEDIA_ERROR",
+        );
+      }
+
+      const notesWithMedia = (data || []).map((note: any) => ({
+        ...this.mapDatabaseNote(note),
+        media: (note.media || []).map((m: any) => ({
+          id: m.id,
+          mediaType: m.media_type,
+          fileUrl: m.file_url,
+          mimeType: m.mime_type,
+          extractedText: m.extracted_text,
+        })),
+      }));
+
+      logInfo("Notes with media retrieved", {
+        userId,
+        resultCount: notesWithMedia.length,
+        total: count || 0,
+      });
+
+      return {
+        notes: notesWithMedia,
+        total: count || 0,
+      };
+    } catch (error) {
+      logError("Error in getNotesWithMedia", error, { userId });
+      throw error instanceof AppError
+        ? error
+        : new AppError(
+            "Failed to get notes with media",
+            500,
+            "GET_NOTES_WITH_MEDIA_ERROR",
+          );
+    }
   }
 }

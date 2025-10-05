@@ -73,6 +73,8 @@ export class ListService {
     name: string;
     description?: string;
     items?: string[];
+    icon?: string;
+    color?: string;
   }): Promise<{ success: boolean; listId: string; message: string }> {
     const startTime = Date.now();
 
@@ -88,6 +90,8 @@ export class ListService {
           user_id: validatedParams.userId,
           name: validatedParams.name,
           description: validatedParams.description,
+          icon: validatedParams.icon,
+          color: validatedParams.color,
         })
         .select()
         .single();
@@ -144,6 +148,7 @@ export class ListService {
     listId?: string;
     listName?: string;
     items: string[];
+    notes?: string;
   }): Promise<{ success: boolean; addedCount: number; message: string }> {
     const startTime = Date.now();
 
@@ -199,6 +204,7 @@ export class ListService {
         list_id: listId,
         content,
         position: startPosition + index,
+        notes: validatedParams.notes || null,
       }));
 
       const { error } = await this.supabase.from("list_items").insert(items);

@@ -5,6 +5,8 @@ import { OCRService } from "../../services/ocr-service";
 import { MediaAttachmentService } from "../../services/media-attachment-service";
 import { AIService } from "../../services/ai-service";
 import { ToolsRegistry } from "../../services/tools-registry";
+import { TranscriptionService } from "../../services/transcription-service";
+import { TranslationService } from "../../services/translation-service";
 import pino from "pino";
 
 /**
@@ -18,6 +20,8 @@ export class MediaHandler {
   private mediaService: MediaAttachmentService;
   private aiService: AIService;
   private tools: ToolsRegistry;
+  private transcriptionService: TranscriptionService;
+  private translationService: TranslationService;
 
   constructor(
     ocrService: OCRService,
@@ -29,6 +33,8 @@ export class MediaHandler {
     this.mediaService = mediaService;
     this.aiService = aiService;
     this.tools = tools;
+    this.transcriptionService = new TranscriptionService();
+    this.translationService = new TranslationService();
   }
 
   /**
@@ -165,8 +171,16 @@ Please help the user with their request based on the image content.`;
             : aiResult.text || getResponseMessage(aiResult, user.timezone);
 
         // Link media attachment to created items
+        this.logger.info(
+          `Media linking check - attachmentId: ${attachmentId}, hasToolResults: ${!!aiResult.toolResults}, toolResultsLength: ${aiResult.toolResults?.length || 0}`,
+        );
+
         if (attachmentId && aiResult.toolResults) {
           try {
+            this.logger.info(
+              `Attempting to link media ${attachmentId}. Tool results count: ${aiResult.toolResults.length}`,
+            );
+
             // Find created reminders
             const reminderResults = aiResult.toolResults.filter(
               (r: any) =>
@@ -185,6 +199,37 @@ Please help the user with their request based on the image content.`;
                 });
                 this.logger.info(
                   `Linked media ${attachmentId} to reminder ${reminderId}`,
+                );
+              }
+            }
+
+            // Find created notes
+            const noteResults = aiResult.toolResults.filter(
+              (r: any) => r.toolName === "createNote",
+            );
+
+            this.logger.info(
+              `Found ${noteResults.length} note creation results`,
+            );
+
+            if (noteResults.length > 0) {
+              const firstNote = noteResults[0];
+              this.logger.info(
+                `Note result structure: ${JSON.stringify(firstNote)}`,
+              );
+              const noteId = firstNote.result?.id;
+
+              if (noteId) {
+                await this.mediaService.linkToItem({
+                  attachmentId,
+                  noteId,
+                });
+                this.logger.info(
+                  `Linked media ${attachmentId} to note ${noteId}`,
+                );
+              } else {
+                this.logger.warn(
+                  `Note created but no ID found in result. Result: ${JSON.stringify(firstNote.result)}`,
                 );
               }
             }
@@ -282,14 +327,114 @@ Please help the user with their request based on the image content.`;
   }
 
   /**
-   * Handle audio messages
+   * Handle audio messages with transcription support
    */
   async handleAudioMessage(
-    _context: MessageContext,
-    _user: User,
+    context: MessageContext,
+    user: User,
+    conversationContext: ConversationContext,
+    addToContext: (
+      userId: string,
+      role: string,
+      content: string,
+      timestamp: Date,
+    ) => void,
+    getResponseMessage: (result: any, timezone?: string) => string,
   ): Promise<any> {
-    this.logger.info("Audio message received");
-    throw new Error("Voice transcription is not yet implemented. Coming soon!");
+    this.logger.info("Audio message received with transcription support");
+
+    // Check if transcription service is available
+    if (!this.transcriptionService.isAvailable()) {
+      return {
+        text: "🎤 Voice message received, but transcription is not configured. Please set GROQ_API_KEY in your .env file to enable voice transcription.",
+      };
+    }
+
+    // Check if audio buffer is available
+    if (!context.mediaBuffer) {
+      this.logger.error("Audio buffer not available");
+      return {
+        text: "Sorry, I couldn't process the voice message. Please try sending it again.",
+      };
+    }
+
+    try {
+      this.logger.info(`Processing audio: ${context.mediaBuffer.length} bytes`);
+
+      // Transcribe audio to text (auto-detect language)
+      const transcriptionResult =
+        await this.transcriptionService.transcribeAudio(
+          context.mediaBuffer,
+          // No language specified - Whisper will auto-detect (English, Hindi, Spanish, etc.)
+        );
+
+      if (!transcriptionResult.success) {
+        return {
+          text: `❌ Failed to transcribe audio: ${transcriptionResult.error}`,
+        };
+      }
+
+      const transcribedText = transcriptionResult.text!;
+      this.logger.info(`Transcribed text: "${transcribedText}"`);
+
+      // Translate to English for better tool execution
+      const translationResult =
+        await this.translationService.translateToEnglish(transcribedText);
+
+      const textForProcessing =
+        translationResult.translatedText || transcribedText;
+
+      if (translationResult.wasTranslated) {
+        this.logger.info(`Translated for processing: "${textForProcessing}"`);
+      }
+
+      // Add original transcribed text to conversation context (user's native language)
+      addToContext(user.id, "user", transcribedText, new Date());
+
+      // Get relevant tools based on the translated text
+      const tools = this.tools.getRelevantTools(user.id, textForProcessing);
+
+      // Process with AI using translated text
+      const aiResult = await this.aiService.processMessageWithTools(
+        textForProcessing,
+        user.id,
+        user.timezone,
+        tools,
+        conversationContext.messages,
+      );
+
+      // Format response
+      const renderedText =
+        aiResult.toolResults &&
+        Array.isArray(aiResult.toolResults) &&
+        aiResult.toolResults.length > 0
+          ? getResponseMessage(
+              aiResult.toolResults[aiResult.toolResults.length - 1],
+              user.timezone,
+            )
+          : aiResult.text || getResponseMessage(aiResult, user.timezone);
+
+      // Add AI response to context
+      if (renderedText) {
+        addToContext(user.id, "assistant", renderedText, new Date());
+      }
+
+      return {
+        text: aiResult.text,
+        toolCalls: aiResult.toolCalls,
+        toolResults: aiResult.toolResults,
+        renderedText: renderedText || "Done!",
+        transcribedText: transcribedText, // Original transcribed text
+        translatedText: translationResult.wasTranslated
+          ? textForProcessing
+          : undefined, // Translated text if translation occurred
+      };
+    } catch (error: any) {
+      this.logger.error({ error }, "Error processing audio with transcription");
+      return {
+        text: `Sorry, I encountered an error while processing the voice message: ${error.message}`,
+      };
+    }
   }
 
   /**
