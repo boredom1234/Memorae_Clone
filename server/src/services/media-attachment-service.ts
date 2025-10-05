@@ -363,7 +363,9 @@ export class MediaAttachmentService {
     try {
       const { data, error } = await supabase
         .from("media_attachments")
-        .select("media_type, extracted_text, reminder_id, list_item_id, note_id")
+        .select(
+          "media_type, extracted_text, reminder_id, list_item_id, note_id",
+        )
         .eq("user_id", userId);
 
       if (error) {

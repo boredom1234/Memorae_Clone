@@ -77,11 +77,18 @@ export function createAISDKTools(
           .describe(
             'Recurrence rule. Accepts either plain English (e.g., "daily", "every 2 weeks", "weekdays") OR iCalendar RRULE (e.g., "FREQ=MONTHLY;BYDAY=SA;BYSETPOS=2,4" for 2nd and 4th Saturday).',
           ),
-        notes: z.string().optional().describe("Additional notes - ALWAYS try to extract context from the user's message to fill this field"),
+        notes: z
+          .string()
+          .optional()
+          .describe(
+            "Additional notes - ALWAYS try to extract context from the user's message to fill this field",
+          ),
         priority: z
           .enum(["low", "medium", "high"])
           .optional()
-          .describe("Priority level - infer from urgency keywords (urgent/ASAP/important=high, later/sometime=low, default=medium)"),
+          .describe(
+            "Priority level - infer from urgency keywords (urgent/ASAP/important=high, later/sometime=low, default=medium)",
+          ),
       }),
       execute: dedupe("createReminder", async (params) => {
         const settings = await userService.getUserSettings(userId);
@@ -503,47 +510,81 @@ export function createAISDKTools(
         "Create new list (shopping, todo, tasks). Triggers: create list, make list, new list.",
       inputSchema: z.object({
         name: z.string().describe("Name of the list"),
-        description: z.string().optional().describe("Description of the list - ALWAYS try to infer purpose from context (e.g., 'Shopping list for groceries', 'Tasks for work project')"),
+        description: z
+          .string()
+          .optional()
+          .describe(
+            "Description of the list - ALWAYS try to infer purpose from context (e.g., 'Shopping list for groceries', 'Tasks for work project')",
+          ),
         items: z.array(z.string()).optional().describe("Initial items to add"),
-        icon: z.string().optional().describe("Icon/emoji for the list - infer from list type (🛒 for shopping, ✅ for todo, 📝 for notes, 🎯 for goals, etc.)"),
-        color: z.string().optional().describe("Color for the list - suggest based on category (blue for work, green for shopping, red for urgent, etc.)"),
+        icon: z
+          .string()
+          .optional()
+          .describe(
+            "Icon/emoji for the list - infer from list type (🛒 for shopping, ✅ for todo, 📝 for notes, 🎯 for goals, etc.)",
+          ),
+        color: z
+          .string()
+          .optional()
+          .describe(
+            "Color for the list - suggest based on category (blue for work, green for shopping, red for urgent, etc.)",
+          ),
       }),
       execute: dedupe("createList", async (params) => {
         // Auto-fill icon and color if not provided
         const listData: any = { ...params };
-        
+
         if (!listData.icon) {
           const nameLower = params.name.toLowerCase();
-          if (nameLower.includes('shop') || nameLower.includes('grocery') || nameLower.includes('buy')) {
-            listData.icon = '🛒';
-          } else if (nameLower.includes('todo') || nameLower.includes('task')) {
-            listData.icon = '✅';
-          } else if (nameLower.includes('goal') || nameLower.includes('target')) {
-            listData.icon = '🎯';
-          } else if (nameLower.includes('book') || nameLower.includes('read')) {
-            listData.icon = '📚';
-          } else if (nameLower.includes('movie') || nameLower.includes('watch')) {
-            listData.icon = '🎬';
+          if (
+            nameLower.includes("shop") ||
+            nameLower.includes("grocery") ||
+            nameLower.includes("buy")
+          ) {
+            listData.icon = "🛒";
+          } else if (nameLower.includes("todo") || nameLower.includes("task")) {
+            listData.icon = "✅";
+          } else if (
+            nameLower.includes("goal") ||
+            nameLower.includes("target")
+          ) {
+            listData.icon = "🎯";
+          } else if (nameLower.includes("book") || nameLower.includes("read")) {
+            listData.icon = "📚";
+          } else if (
+            nameLower.includes("movie") ||
+            nameLower.includes("watch")
+          ) {
+            listData.icon = "🎬";
           } else {
-            listData.icon = '📝';
+            listData.icon = "📝";
           }
         }
-        
+
         if (!listData.color) {
           const nameLower = params.name.toLowerCase();
-          if (nameLower.includes('urgent') || nameLower.includes('important')) {
-            listData.color = '#ef4444';
-          } else if (nameLower.includes('work') || nameLower.includes('office')) {
-            listData.color = '#3b82f6';
-          } else if (nameLower.includes('shop') || nameLower.includes('grocery')) {
-            listData.color = '#22c55e';
-          } else if (nameLower.includes('personal') || nameLower.includes('home')) {
-            listData.color = '#a855f7';
+          if (nameLower.includes("urgent") || nameLower.includes("important")) {
+            listData.color = "#ef4444";
+          } else if (
+            nameLower.includes("work") ||
+            nameLower.includes("office")
+          ) {
+            listData.color = "#3b82f6";
+          } else if (
+            nameLower.includes("shop") ||
+            nameLower.includes("grocery")
+          ) {
+            listData.color = "#22c55e";
+          } else if (
+            nameLower.includes("personal") ||
+            nameLower.includes("home")
+          ) {
+            listData.color = "#a855f7";
           } else {
-            listData.color = '#6b7280';
+            listData.color = "#6b7280";
           }
         }
-        
+
         return await listService.createList({
           userId,
           ...listData,
@@ -559,7 +600,10 @@ export function createAISDKTools(
         items: z
           .array(z.string())
           .describe("Items to add to the list (max 50)"),
-        notes: z.string().optional().describe("Optional notes/context for the items being added"),
+        notes: z
+          .string()
+          .optional()
+          .describe("Optional notes/context for the items being added"),
       }),
       execute: dedupe("addItemToList", async (params) => {
         if (params.items.length > 50) {
@@ -765,43 +809,80 @@ export function createAISDKTools(
         content: z
           .string()
           .describe("The information/note content to remember"),
-        title: z.string().optional().describe("Optional title for the note - ALWAYS try to generate a descriptive title from the content"),
+        title: z
+          .string()
+          .optional()
+          .describe(
+            "Optional title for the note - ALWAYS try to generate a descriptive title from the content",
+          ),
         category: z
           .string()
           .optional()
-          .describe("Category like 'personal', 'work', 'general', 'shopping', 'health', 'finance' - infer from content context"),
+          .describe(
+            "Category like 'personal', 'work', 'general', 'shopping', 'health', 'finance' - infer from content context",
+          ),
         tags: z
           .array(z.string())
           .optional()
-          .describe("Optional tags for organization - extract relevant keywords from content as tags"),
-        isPinned: z.boolean().optional().describe("Mark as important/pinned - set to true if user says 'important', 'remember this', 'don't forget'"),
+          .describe(
+            "Optional tags for organization - extract relevant keywords from content as tags",
+          ),
+        isPinned: z
+          .boolean()
+          .optional()
+          .describe(
+            "Mark as important/pinned - set to true if user says 'important', 'remember this', 'don't forget'",
+          ),
       }),
       execute: dedupe("createNote", async (params) => {
         // Auto-generate title if not provided
         let title = params.title;
         if (!title && params.content) {
           // Generate title from first 50 chars of content
-          const firstLine = params.content.split('\n')[0];
-          title = firstLine.length > 50 ? firstLine.substring(0, 47) + '...' : firstLine;
+          const firstLine = params.content.split("\n")[0];
+          title =
+            firstLine.length > 50
+              ? firstLine.substring(0, 47) + "..."
+              : firstLine;
         }
-        
+
         // Auto-infer category if not provided
         let category = params.category || "general";
         if (!params.category) {
           const contentLower = params.content.toLowerCase();
-          if (contentLower.includes('work') || contentLower.includes('office') || contentLower.includes('meeting')) {
-            category = 'work';
-          } else if (contentLower.includes('buy') || contentLower.includes('shop') || contentLower.includes('price')) {
-            category = 'shopping';
-          } else if (contentLower.includes('health') || contentLower.includes('doctor') || contentLower.includes('medicine')) {
-            category = 'health';
-          } else if (contentLower.includes('money') || contentLower.includes('payment') || contentLower.includes('bill')) {
-            category = 'finance';
-          } else if (contentLower.includes('family') || contentLower.includes('friend') || contentLower.includes('personal')) {
-            category = 'personal';
+          if (
+            contentLower.includes("work") ||
+            contentLower.includes("office") ||
+            contentLower.includes("meeting")
+          ) {
+            category = "work";
+          } else if (
+            contentLower.includes("buy") ||
+            contentLower.includes("shop") ||
+            contentLower.includes("price")
+          ) {
+            category = "shopping";
+          } else if (
+            contentLower.includes("health") ||
+            contentLower.includes("doctor") ||
+            contentLower.includes("medicine")
+          ) {
+            category = "health";
+          } else if (
+            contentLower.includes("money") ||
+            contentLower.includes("payment") ||
+            contentLower.includes("bill")
+          ) {
+            category = "finance";
+          } else if (
+            contentLower.includes("family") ||
+            contentLower.includes("friend") ||
+            contentLower.includes("personal")
+          ) {
+            category = "personal";
           }
         }
-        
+
         return await notesService.createNote({
           userId,
           content: params.content,

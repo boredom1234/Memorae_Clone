@@ -114,13 +114,6 @@ export class WhatsAppManager {
         this.logger.warn({ e }, "De-duplication check failed, proceeding");
       }
 
-      // Format the reminder notification message
-      const priorityText = {
-        high: "High Priority",
-        medium: "Medium Priority",
-        low: "Low Priority",
-      }[reminder.priority];
-
       // Format the reminder time in user's timezone
       const reminderTime = new Date(reminder.reminderTime);
       const now = new Date();
@@ -140,21 +133,26 @@ export class WhatsAppManager {
         timeZone: user.timezone || "UTC",
       });
 
-      let message = `*REMINDER NOTIFICATION*\n\n`;
-      message += `*Task:* ${reminder.title}\n\n`;
+      // Create a natural, conversational reminder message
+      let message = `🔔 Hey! Time for: *${reminder.title}*\n\n`;
 
       if (reminder.notes) {
-        message += `*Details:* ${reminder.notes}\n\n`;
+        message += `${reminder.notes}\n\n`;
       }
 
-      message += `*Scheduled Time:* ${dateStr} at ${timeStr}\n`;
-      message += `*Priority Level:* ${priorityText}\n`;
+      // Add time info naturally
+      message += `⏰ Scheduled for ${dateStr} at ${timeStr}`;
+
+      // Add priority emoji based on level
+      if (reminder.priority === "high") {
+        message += ` 🔥`;
+      } else if (reminder.priority === "medium") {
+        message += ` ⚡`;
+      }
 
       if (reminder.isRecurring) {
-        message += `*Type:* Recurring Reminder\n`;
+        message += `\n🔁 This is a recurring reminder`;
       }
-
-      message += `\n---\nMemorae Reminder Service`;
 
       // Respect notification_enabled and quiet hours
       const notificationsEnabled = user.notification_enabled !== false;

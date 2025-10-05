@@ -180,10 +180,11 @@ export class WhatsAppService {
       // Propagate isSelfChat info downstream for defense-in-depth
       (context as any).isSelfChat = isSelfChat;
 
-      // Download media if it's an image, video, or document
+      // Download media if it's an image, video, audio, or document
       if (
         context.messageType === "image" ||
         context.messageType === "video" ||
+        context.messageType === "audio" ||
         context.messageType === "document"
       ) {
         this.logger.info(
@@ -199,6 +200,9 @@ export class WhatsAppService {
               context.mimeType = msg.imageMessage.mimetype || "image/jpeg";
             } else if (msg?.videoMessage) {
               context.mimeType = msg.videoMessage.mimetype || "video/mp4";
+            } else if (msg?.audioMessage) {
+              context.mimeType =
+                msg.audioMessage.mimetype || "audio/ogg; codecs=opus";
             } else if (msg?.documentMessage) {
               context.mimeType =
                 msg.documentMessage.mimetype || "application/pdf";
