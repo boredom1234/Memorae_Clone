@@ -3,29 +3,25 @@ import { getWhatsAppManager } from "./runtime";
 import { UserService } from "./user-service";
 import { ReminderService } from "./reminder-service";
 import pino from "pino";
-
 export type SendReminderToContactParams = {
-  senderUserId: string; // required for shared_reminders
+  senderUserId: string;
   recipientNumber: string;
   recipientName?: string;
   reminderText: string;
-  reminderTime: string; // ISO 8601
+  reminderTime: string;
   fromUserName?: string;
 };
-
 export type SendReminderToContactResponse = {
   success: boolean;
   messageId: string;
   message: string;
 };
-
 export type GetNotificationHistoryParams = {
   limit?: number;
   offset?: number;
   type?: "reminder" | "shared" | "all";
   userId?: string;
 };
-
 export type NotificationHistoryItem = {
   id: string;
   type: string;
@@ -34,40 +30,36 @@ export type NotificationHistoryItem = {
   content: string;
   status: "sent" | "failed" | "pending";
 };
-
 export type GetNotificationHistoryResponse = {
   notifications: NotificationHistoryItem[];
   total: number;
 };
-
 export type SendCustomMessageParams = {
   message: string;
   formatting?: "plain" | "markdown";
-  buttons?: Array<{ id: string; label: string }>;
+  buttons?: Array<{
+    id: string;
+    label: string;
+  }>;
 };
-
 export type SendCustomMessageResponse = {
   success: boolean;
   messageId: string;
 };
-
 function normalizePhoneNumber(num: string): string {
   const trimmed = num.trim();
   if (trimmed.startsWith("+")) return trimmed;
   return "+" + trimmed.replace(/[^0-9]/g, "");
 }
-
 function toWhatsAppJid(phone: string): string {
   const digits = phone.replace(/[^0-9]/g, "");
   return `${digits}@s.whatsapp.net`;
 }
-
 export class NotificationService {
   private supabase = getSupabaseClient();
   private userService = new UserService();
   private reminderService = new ReminderService();
   private logger = pino({ level: "info" });
-
   async sendReminderToContact(
     params: SendReminderToContactParams,
   ): Promise<SendReminderToContactResponse> {
@@ -76,20 +68,12 @@ export class NotificationService {
     }
     const phone = normalizePhoneNumber(params.recipientNumber);
     const jid = toWhatsAppJid(phone);
-
-    // Ensure user exists
     const { user } = await this.userService.findOrCreateUser(jid, phone);
-
-    // Determine user's timezone for scheduling
     let tz = "UTC";
     try {
       const settings = await this.userService.getUserSettings(user.id);
       tz = settings?.timezone || "UTC";
-    } catch {
-      // fallback to UTC
-    }
-
-    // Create reminder so the scheduler sends it (and history is recorded)
+    } catch {}
     const create = await this.reminderService.createReminder({
       userId: user.id,
       title: params.reminderText,
@@ -99,8 +83,6 @@ export class NotificationService {
       notes: params.fromUserName ? `From: ${params.fromUserName}` : undefined,
       priority: "medium",
     });
-
-    // Insert shared_reminders row (pending by default)
     let sharedId: string | undefined;
     try {
       const { data: sharedIns, error: sharedErr } = await this.supabase
@@ -119,20 +101,15 @@ export class NotificationService {
     } catch (e) {
       this.logger.warn({ e }, "Failed to persist shared_reminders (pending)");
     }
-
-    // If reminder time is now/past, try sending immediately and write history
     try {
       const rt = new Date(params.reminderTime).getTime();
       const now = Date.now();
-      const shouldSendNow = !isNaN(rt) && rt - now <= 30_000; // <= 30s
-
+      const shouldSendNow = !isNaN(rt) && rt - now <= 30000;
       if (shouldSendNow) {
         const manager = getWhatsAppManager();
         if (manager && manager.isConnected()) {
           const text = `*REMINDER*\n\n${params.reminderText}`;
           const ok: boolean = await manager.sendMessage(jid, text);
-
-          // Persist to notification_history
           await this.supabase.from("notification_history").insert({
             user_id: user.id,
             type: "reminder",
@@ -142,8 +119,6 @@ export class NotificationService {
             sent_at: ok ? new Date().toISOString() : null,
             recipient_whatsapp_id: jid,
           });
-
-          // Update shared_reminders status
           if (sharedId) {
             try {
               await this.supabase
@@ -165,37 +140,30 @@ export class NotificationService {
     } catch (e) {
       this.logger.warn({ e }, "Immediate send fallback failed");
     }
-
     return {
       success: true,
       messageId: create.reminderId,
       message: create.message,
     };
   }
-
   async getNotificationHistory(
     params: GetNotificationHistoryParams,
   ): Promise<GetNotificationHistoryResponse> {
     const limit = params.limit ?? 20;
     const offset = params.offset ?? 0;
-
     let query = this.supabase
       .from("notification_history")
       .select("*", { count: "exact" })
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
-
     if (params.userId) {
       query = query.eq("user_id", params.userId);
     }
-
     if (params.type && params.type !== "all") {
       query = query.eq("type", params.type);
     }
-
     const { data, error, count } = await query;
     if (error) throw error;
-
     const notifications: NotificationHistoryItem[] = (data || []).map(
       (row: any) => {
         const status: NotificationHistoryItem["status"] =
@@ -204,13 +172,11 @@ export class NotificationService {
             : row.status === "permanently_failed"
               ? "failed"
               : (row.status as any);
-
         let recipient: string | undefined;
         if (row.recipient_whatsapp_id) {
           const digit = String(row.recipient_whatsapp_id).split("@")[0];
           recipient = "+" + digit;
         }
-
         return {
           id: row.id,
           type: row.type,
@@ -221,42 +187,31 @@ export class NotificationService {
         };
       },
     );
-
     return { notifications, total: count || 0 };
   }
-
   async sendCustomMessage(
     userId: string,
     params: SendCustomMessageParams,
   ): Promise<SendCustomMessageResponse> {
-    // Fetch target user's WhatsApp JID
     const { data: user, error } = await this.supabase
       .from("users")
       .select("whatsapp_id, id")
       .eq("id", userId)
       .single();
-
     if (error || !user) {
       throw new Error("Target user not found");
     }
-
     const jid = user.whatsapp_id as string;
-
-    // Build text with optional buttons (fallback rendering)
     let text = params.message;
     if (params.buttons && params.buttons.length > 0) {
       const lines = params.buttons.map((b) => `- ${b.label}`);
       text = `${text}\n\nOptions:\n${lines.join("\n")}`;
     }
-
     const manager = getWhatsAppManager();
     if (!manager || !manager.isConnected()) {
       throw new Error("WhatsApp is not connected");
     }
-
     const ok: boolean = await manager.sendMessage(jid, text);
-
-    // Persist notification
     const { data: inserted, error: insErr } = await this.supabase
       .from("notification_history")
       .insert({
@@ -269,9 +224,7 @@ export class NotificationService {
       })
       .select("id")
       .single();
-
     if (insErr) throw insErr;
-
     return { success: ok, messageId: inserted.id };
   }
 }

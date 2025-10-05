@@ -1,14 +1,11 @@
 import { z } from "zod";
 import { ValidationError } from "./errors";
-
-// Common validators
 export const uuidSchema = z.string().uuid("Invalid UUID format");
 export const nonEmptyStringSchema = z
   .string()
   .min(1, "Cannot be empty")
   .max(500, "Too long");
 export const dateStringSchema = z.string().refine((val) => {
-  // Very flexible datetime validation - accept anything that can be parsed as a date
   try {
     const date = new Date(val);
     return !isNaN(date.getTime()) && val.trim().length > 0;
@@ -24,13 +21,8 @@ export const statusSchema = z.enum([
   "cancelled",
   "snoozed",
 ]);
-
-// Helper: ensure datetime string contains timezone (Z or ±HH:MM) - made more flexible
 const hasTimezone = (s: string) => {
-  // Accept explicit timezone indicators
   if (/Z$/i.test(s) || /[+-]\d{2}:?\d{2}$/.test(s)) return true;
-
-  // Also accept if it's a valid date string (LLM might generate timezone-aware dates)
   try {
     const date = new Date(s);
     return !isNaN(date.getTime());
@@ -38,8 +30,6 @@ const hasTimezone = (s: string) => {
     return false;
   }
 };
-
-// Reminder validation schemas
 export const createReminderSchema = z
   .object({
     userId: uuidSchema,
@@ -59,10 +49,6 @@ export const createReminderSchema = z
     (data) => {
       const reminderDate = new Date(data.reminderTime);
       const now = new Date();
-      // Allow times that are up to 1 hour in the past to account for:
-      // 1. Processing delays
-      // 2. LLM interpretation issues
-      // 3. Timezone conversion edge cases
       const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
       return reminderDate > oneHourAgo;
     },
@@ -80,7 +66,6 @@ export const createReminderSchema = z
       path: ["recurrenceRule"],
     },
   );
-
 export const updateReminderSchema = z
   .object({
     userId: uuidSchema,
@@ -99,7 +84,6 @@ export const updateReminderSchema = z
       path: ["reminderTime"],
     },
   );
-
 export const deleteReminderSchema = z
   .object({
     userId: uuidSchema,
@@ -109,7 +93,6 @@ export const deleteReminderSchema = z
   .refine((data) => data.reminderId || data.searchQuery, {
     message: "Either reminderId or searchQuery must be provided",
   });
-
 export const listRemindersSchema = z.object({
   userId: uuidSchema,
   status: z.enum(["pending", "completed", "all"]).optional(),
@@ -119,7 +102,6 @@ export const listRemindersSchema = z.object({
   offset: z.number().int().min(0).optional().default(0),
   sortBy: z.enum(["time", "priority", "created"]).optional().default("time"),
 });
-
 export const snoozeReminderSchema = z
   .object({
     userId: uuidSchema,
@@ -135,12 +117,10 @@ export const snoozeReminderSchema = z
     message: "Snooze time must be in the future",
     path: ["snoozeUntil"],
   });
-
 export const completeReminderSchema = z.object({
   userId: uuidSchema,
   reminderId: uuidSchema,
 });
-
 export const searchRemindersSchema = z.object({
   userId: uuidSchema,
   query: z.string().min(1, "Search query is required").max(200),
@@ -158,13 +138,11 @@ export const searchRemindersSchema = z.object({
     .optional(),
   limit: z.number().int().min(1).max(100).optional().default(20),
 });
-
 export const getUpcomingRemindersSchema = z.object({
   userId: uuidSchema,
   timeframe: z.enum(["today", "tomorrow", "week", "month"]),
   limit: z.number().int().min(1).max(50).optional().default(10),
 });
-
 export const batchCreateRemindersSchema = z.object({
   userId: uuidSchema,
   reminders: z
@@ -179,8 +157,6 @@ export const batchCreateRemindersSchema = z.object({
     .min(1, "At least one reminder is required")
     .max(50, "Maximum 50 reminders per batch"),
 });
-
-// List validation schemas
 export const createListSchema = z.object({
   userId: uuidSchema,
   name: z
@@ -192,7 +168,6 @@ export const createListSchema = z.object({
   icon: z.string().max(10).optional(),
   color: z.string().max(20).optional(),
 });
-
 export const addItemToListSchema = z
   .object({
     userId: uuidSchema,
@@ -209,7 +184,6 @@ export const addItemToListSchema = z
   .refine((data) => data.listId || data.listName, {
     message: "Either listId or listName must be provided",
   });
-
 export const removeItemFromListSchema = z
   .object({
     userId: uuidSchema,
@@ -221,20 +195,17 @@ export const removeItemFromListSchema = z
   .refine((data) => data.itemIds || data.itemText, {
     message: "Either itemIds or itemText must be provided",
   });
-
 export const updateListItemSchema = z.object({
   itemId: uuidSchema,
   newContent: z.string().min(1).max(500).optional(),
   isCompleted: z.boolean().optional(),
   position: z.number().int().min(0).optional(),
 });
-
 export const getListsSchema = z.object({
   userId: uuidSchema,
   includeItems: z.boolean().optional().default(false),
   limit: z.number().int().min(1).max(100).optional().default(50),
 });
-
 export const getListItemsSchema = z
   .object({
     userId: uuidSchema,
@@ -245,7 +216,6 @@ export const getListItemsSchema = z
   .refine((data) => data.listId || data.listName, {
     message: "Either listId or listName must be provided",
   });
-
 export const deleteListSchema = z
   .object({
     userId: uuidSchema,
@@ -255,15 +225,12 @@ export const deleteListSchema = z
   .refine((data) => data.listId || data.listName, {
     message: "Either listId or listName must be provided",
   });
-
 export const searchListsSchema = z.object({
   userId: uuidSchema,
   query: z.string().min(1, "Search query is required").max(200),
   searchIn: z.enum(["list-names", "items", "both"]).optional().default("both"),
   limit: z.number().int().min(1).max(100).optional().default(20),
 });
-
-// User settings validation schemas
 export const updateUserSettingsSchema = z.object({
   userId: uuidSchema,
   name: z.string().min(1).max(255).optional(),
@@ -300,7 +267,6 @@ export const updateUserSettingsSchema = z.object({
     )
     .nullable()
     .optional(),
-  // Legacy support
   notificationPreferences: z
     .object({
       enabled: z.boolean(),
@@ -308,11 +274,9 @@ export const updateUserSettingsSchema = z.object({
     })
     .optional(),
 });
-
 export const getUserSettingsSchema = z.object({
   userId: uuidSchema,
 });
-
 export const setQuietHoursSchema = z.object({
   userId: uuidSchema,
   enabled: z.boolean(),
@@ -336,19 +300,15 @@ export const setQuietHoursSchema = z.object({
     )
     .optional(),
 });
-
-// Utility validation schemas
 export const parseNaturalLanguageDateSchema = z.object({
   text: z.string().min(1, "Text is required").max(500),
   timezone: timezoneSchema,
   referenceDate: dateStringSchema.optional(),
 });
-
 export const detectIntentSchema = z.object({
   message: z.string().min(1, "Message is required").max(1000),
   conversationContext: z.array(z.string()).max(10).optional(),
 });
-
 export const suggestReminderTimeSchema = z.object({
   taskDescription: z.string().min(1).max(500),
   timezone: timezoneSchema,
@@ -361,8 +321,6 @@ export const suggestReminderTimeSchema = z.object({
     )
     .optional(),
 });
-
-// Validation helper function
 export function validate<T>(schema: z.ZodSchema<T>, data: unknown): T {
   try {
     return schema.parse(data);
@@ -372,7 +330,6 @@ export function validate<T>(schema: z.ZodSchema<T>, data: unknown): T {
         field: e.path.join("."),
         message: e.message,
       }));
-      // Log validation errors for debugging
       console.error(
         "Validation failed:",
         JSON.stringify({ data, errors }, null, 2),
@@ -382,8 +339,6 @@ export function validate<T>(schema: z.ZodSchema<T>, data: unknown): T {
     throw error;
   }
 }
-
-// Sanitize string to prevent SQL injection
 export function sanitizeString(input: string): string {
   return input.replace(/[%_\\]/g, "\\$&").trim();
 }

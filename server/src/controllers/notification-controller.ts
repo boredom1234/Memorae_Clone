@@ -8,16 +8,13 @@ import {
   sendCustomMessageSchema,
 } from "../middleware/validation";
 import { NotificationService } from "../services/notification-service";
-
 export async function registerNotificationRoutes(app: FastifyInstance) {
   const service = new NotificationService();
-
-  // POST /api/v1/notifications/send-reminder-to-contact
   app.post(
     "/api/v1/notifications/send-reminder-to-contact",
     {
       preHandler: [
-        rateLimitByUser(20, 60_000),
+        rateLimitByUser(20, 60000),
         validateBody(sendReminderToContactSchema),
       ],
     },
@@ -41,13 +38,11 @@ export async function registerNotificationRoutes(app: FastifyInstance) {
       return reply.send(result);
     },
   );
-
-  // GET /api/v1/notifications/history
   app.get(
     "/api/v1/notifications/history",
     {
       preHandler: [
-        rateLimitByUser(60, 60_000),
+        rateLimitByUser(60, 60000),
         validateQuery(getNotificationHistoryQuerySchema),
       ],
     },
@@ -58,13 +53,11 @@ export async function registerNotificationRoutes(app: FastifyInstance) {
       return reply.send(result);
     },
   );
-
-  // POST /api/v1/notifications/send-custom
   app.post(
     "/api/v1/notifications/send-custom",
     {
       preHandler: [
-        rateLimitByUser(30, 60_000),
+        rateLimitByUser(30, 60000),
         validateBody(sendCustomMessageSchema),
       ],
     },

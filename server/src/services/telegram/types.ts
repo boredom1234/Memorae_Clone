@@ -1,11 +1,11 @@
 export interface MessageContext {
-  messageId: string; // Changed to string for compatibility with MessageController
-  from: string; // Changed to string for compatibility with MessageController
+  messageId: string;
+  from: string;
   fromName: string;
   text?: string;
   timestamp: number;
   isGroup: boolean;
-  groupId?: string; // Changed to string for compatibility
+  groupId?: string;
   messageType:
     | "text"
     | "image"
@@ -15,29 +15,26 @@ export interface MessageContext {
     | "voice"
     | "unknown";
   mediaUrl?: string;
-  mediaBuffer?: Buffer; // For photo/document OCR processing
-  mimeType?: string; // MIME type of media
+  mediaBuffer?: Buffer;
+  mimeType?: string;
   quoted?: {
-    messageId: string; // Changed to string for compatibility
+    messageId: string;
     text?: string;
   };
-  chatId: number; // Telegram chat ID (kept as number for internal use)
+  chatId: number;
 }
-
 export interface TelegramServiceConfig {
   botToken: string;
-  allowedUsers?: number[]; // List of allowed Telegram user IDs
+  allowedUsers?: number[];
   onMessage?: (context: MessageContext) => Promise<void>;
   onConnectionUpdate?: (isConnected: boolean) => void;
 }
-
 export interface SendMessageOptions {
   chatId: number;
   text: string;
   replyToMessageId?: number;
   parseMode?: "Markdown" | "MarkdownV2" | "HTML";
 }
-
 export interface SendMediaOptions {
   chatId: number;
   mediaBuffer: Buffer;

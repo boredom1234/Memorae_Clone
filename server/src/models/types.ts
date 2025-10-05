@@ -1,4 +1,3 @@
-// Database Types
 export interface User {
   id: string;
   whatsapp_id?: string | null;
@@ -18,7 +17,6 @@ export interface User {
   updated_at: string;
   last_active_at: string;
 }
-
 export interface Reminder {
   id: string;
   user_id: string;
@@ -36,7 +34,6 @@ export interface Reminder {
   created_at: string;
   updated_at: string;
 }
-
 export interface List {
   id: string;
   user_id: string;
@@ -49,7 +46,6 @@ export interface List {
   created_at: string;
   updated_at: string;
 }
-
 export interface ListItem {
   id: string;
   list_id: string;
@@ -62,7 +58,6 @@ export interface ListItem {
   created_at: string;
   updated_at: string;
 }
-
 export interface CalendarConnection {
   id: string;
   user_id: string;
@@ -78,7 +73,6 @@ export interface CalendarConnection {
   connected_at: string;
   last_synced_at?: string;
 }
-
 export interface NotificationHistory {
   id: string;
   user_id: string;
@@ -94,7 +88,6 @@ export interface NotificationHistory {
   delivered_at?: string;
   created_at: string;
 }
-
 export interface ConversationContext {
   id: string;
   user_id: string;
@@ -106,7 +99,6 @@ export interface ConversationContext {
   created_at: string;
   updated_at: string;
 }
-
 export interface MediaAttachment {
   id: string;
   user_id: string;

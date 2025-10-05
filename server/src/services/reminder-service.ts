@@ -22,10 +22,8 @@ import { formatInZone } from "../utils/time-utils";
 import { logInfo, logError, logAudit, logPerformance } from "../utils/logger";
 import { toUTC } from "../utils/time-utils";
 import { DateTime } from "luxon";
-
 export class ReminderService {
   private supabase = getSupabaseClient();
-
   async createReminder(params: {
     userId: string;
     title: string;
@@ -42,23 +40,17 @@ export class ReminderService {
     scheduledFor: string;
   }> {
     const startTime = Date.now();
-
     try {
-      // Validate input (timezone presence enforced by schema)
       const validatedParams = validate(createReminderSchema, params);
-
       logInfo("Creating reminder", {
         userId: params.userId,
         title: params.title,
       });
-
-      // Idempotency: avoid duplicates created within a short time window for the same title
       try {
         const targetUTC = toUTC(validatedParams.reminderTime);
         const target = DateTime.fromISO(targetUTC, { zone: "utc" });
         const windowStart = target.minus({ minutes: 1 }).toISO();
         const windowEnd = target.plus({ minutes: 1 }).toISO();
-
         const { data: existing } = await this.supabase
           .from("reminders")
           .select("id, title, reminder_time, status")
@@ -66,13 +58,11 @@ export class ReminderService {
           .eq("status", "pending")
           .gte("reminder_time", windowStart)
           .lte("reminder_time", windowEnd);
-
         const match = (existing || []).find(
           (r: any) =>
             String(r.title).trim().toLowerCase() ===
             String(validatedParams.title).trim().toLowerCase(),
         );
-
         if (match) {
           logInfo("Dedup: reusing existing reminder", {
             userId: validatedParams.userId,
@@ -87,12 +77,10 @@ export class ReminderService {
           };
         }
       } catch (e) {
-        // If idempotency check fails, proceed with creation
         logInfo("Dedup check failed, proceeding with insert", {
           error: String(e),
         });
       }
-
       const { data, error } = await this.supabase
         .from("reminders")
         .insert({
@@ -107,21 +95,17 @@ export class ReminderService {
         })
         .select()
         .single();
-
       if (error) {
         throw error;
       }
-
       if (!data) {
         throw new Error("No data returned from insert operation");
       }
-
       logAudit("CREATE_REMINDER", params.userId, "reminder", {
         reminderId: data.id,
         title: data.title,
       });
       logPerformance("createReminder", Date.now() - startTime);
-
       return {
         success: true,
         reminderId: data.id,
@@ -136,7 +120,6 @@ export class ReminderService {
       throw handleServiceError(error, "createReminder");
     }
   }
-
   async updateReminder(params: {
     userId: string;
     reminderId: string;
@@ -152,27 +135,20 @@ export class ReminderService {
     updatedReminder: Reminder;
   }> {
     const startTime = Date.now();
-
     try {
-      // Validate input
       const validatedParams = validate(updateReminderSchema, params);
-
-      // Check if reminder exists
       const { data: existing, error: checkError } = await this.supabase
         .from("reminders")
         .select("id, status, user_id")
         .eq("id", validatedParams.reminderId)
         .eq("user_id", validatedParams.userId)
         .single();
-
       if (checkError || !existing) {
         throw new NotFoundError("Reminder", validatedParams.reminderId);
       }
-
       if (existing.status === "completed") {
         throw new ValidationError("Cannot update a completed reminder");
       }
-
       const updateData: any = {};
       if (validatedParams.title) updateData.title = validatedParams.title;
       if (validatedParams.reminderTime)
@@ -186,7 +162,6 @@ export class ReminderService {
       if (validatedParams.priority)
         updateData.priority = validatedParams.priority;
       updateData.updated_at = new Date().toISOString();
-
       const { data, error } = await this.supabase
         .from("reminders")
         .update(updateData)
@@ -194,20 +169,16 @@ export class ReminderService {
         .eq("user_id", validatedParams.userId)
         .select()
         .single();
-
       if (error) {
         throw error;
       }
-
       if (!data) {
         throw new NotFoundError("Reminder", validatedParams.reminderId);
       }
-
       logAudit("UPDATE_REMINDER", data.user_id, "reminder", {
         reminderId: data.id,
       });
       logPerformance("updateReminder", Date.now() - startTime);
-
       return {
         success: true,
         message: "Reminder updated successfully",
@@ -220,50 +191,42 @@ export class ReminderService {
       throw handleServiceError(error, "updateReminder");
     }
   }
-
   async deleteReminder(params: {
     userId: string;
     reminderId?: string;
     searchQuery?: string;
-  }): Promise<{ success: boolean; deletedCount: number; message: string }> {
+  }): Promise<{
+    success: boolean;
+    deletedCount: number;
+    message: string;
+  }> {
     const startTime = Date.now();
-
     try {
-      // Validate input
       const validatedParams = validate(deleteReminderSchema, params);
-
       let query = this.supabase
         .from("reminders")
         .delete()
         .eq("user_id", validatedParams.userId);
-
       if (validatedParams.reminderId) {
         query = query.eq("id", validatedParams.reminderId);
       } else if (validatedParams.searchQuery) {
-        // Sanitize search query to prevent SQL injection
         const sanitized = sanitizeString(validatedParams.searchQuery);
         query = query.ilike("title", `%${sanitized}%`);
       }
-
       const { data, error } = await query.select();
-
       if (error) {
         throw error;
       }
-
       const deletedCount = data?.length || 0;
-
       if (deletedCount === 0) {
         throw new NotFoundError("Reminder");
       }
-
       logAudit("DELETE_REMINDER", validatedParams.userId, "reminder", {
         deletedCount,
         reminderId: validatedParams.reminderId,
         searchQuery: validatedParams.searchQuery,
       });
       logPerformance("deleteReminder", Date.now() - startTime);
-
       return {
         success: true,
         deletedCount,
@@ -274,7 +237,6 @@ export class ReminderService {
       throw handleServiceError(error, "deleteReminder");
     }
   }
-
   async listReminders(params: {
     userId: string;
     status?: "pending" | "completed" | "all";
@@ -296,29 +258,21 @@ export class ReminderService {
     hasMore: boolean;
   }> {
     const startTime = Date.now();
-
     try {
-      // Validate input
       const validatedParams = validate(listRemindersSchema, params);
-
       let query = this.supabase
         .from("reminders")
         .select("*", { count: "exact" })
         .eq("user_id", validatedParams.userId);
-
       if (validatedParams.status && validatedParams.status !== "all") {
         query = query.eq("status", validatedParams.status);
       }
-
       if (validatedParams.startDate) {
         query = query.gte("reminder_time", validatedParams.startDate);
       }
-
       if (validatedParams.endDate) {
         query = query.lte("reminder_time", validatedParams.endDate);
       }
-
-      // Sorting
       const sortBy = validatedParams.sortBy || "time";
       if (sortBy === "time") {
         query = query.order("reminder_time", { ascending: true });
@@ -327,40 +281,35 @@ export class ReminderService {
       } else if (sortBy === "created") {
         query = query.order("created_at", { ascending: false });
       }
-
       const limit = validatedParams.limit || 50;
       const offset = validatedParams.offset || 0;
-
       query = query.range(offset, offset + limit - 1);
-
       const { data, error, count } = await query;
-
       if (error) {
         throw error;
       }
-
-      // Fetch user's timezone for formatting
       const { data: userTzRow } = await this.supabase
         .from("users")
         .select("timezone")
         .eq("id", validatedParams.userId)
         .single();
       const tz = userTzRow?.timezone || "UTC";
-
       const reminders = (data || []).map((r) => ({
         id: r.id,
         title: r.title,
         reminderTime: r.reminder_time,
-        reminderTimeFormatted: formatInZone(r.reminder_time, tz, "MMM d, yyyy 'at' h:mm a"),
+        reminderTimeFormatted: formatInZone(
+          r.reminder_time,
+          tz,
+          "MMM d, yyyy 'at' h:mm a",
+        ),
         isRecurring: r.is_recurring,
         priority: r.priority,
         createdAt: r.created_at,
       }));
-
       logPerformance("listReminders", Date.now() - startTime, {
         count: reminders.length,
       });
-
       return {
         reminders,
         total: count || 0,
@@ -371,36 +320,31 @@ export class ReminderService {
       throw handleServiceError(error, "listReminders");
     }
   }
-
   async snoozeReminder(params: {
     userId: string;
     reminderId: string;
     snoozeUntil: string;
     snoozeDuration?: number;
-  }): Promise<{ success: boolean; newReminderTime: string; message: string }> {
+  }): Promise<{
+    success: boolean;
+    newReminderTime: string;
+    message: string;
+  }> {
     const startTime = Date.now();
-
     try {
-      // Validate input
       const validatedParams = validate(snoozeReminderSchema, params);
-
-      // Check if reminder exists and is not completed
       const { data: existing, error: checkError } = await this.supabase
         .from("reminders")
         .select("id, status, snooze_count, user_id")
         .eq("id", validatedParams.reminderId)
         .eq("user_id", validatedParams.userId)
         .single();
-
       if (checkError || !existing) {
         throw new NotFoundError("Reminder", validatedParams.reminderId);
       }
-
       if (existing.status === "completed") {
         throw new ValidationError("Cannot snooze a completed reminder");
       }
-
-      // Fix snooze flow: move reminder_time forward and keep status pending
       const { data, error } = await this.supabase
         .from("reminders")
         .update({
@@ -413,20 +357,16 @@ export class ReminderService {
         .eq("user_id", validatedParams.userId)
         .select()
         .single();
-
       if (error) {
         throw error;
       }
-
       if (!data) {
         throw new NotFoundError("Reminder", validatedParams.reminderId);
       }
-
       logAudit("SNOOZE_REMINDER", existing.user_id, "reminder", {
         reminderId: data.id,
       });
       logPerformance("snoozeReminder", Date.now() - startTime);
-
       return {
         success: true,
         newReminderTime: validatedParams.snoozeUntil,
@@ -439,36 +379,31 @@ export class ReminderService {
       throw handleServiceError(error, "snoozeReminder");
     }
   }
-
   async completeReminder(params: {
     userId: string;
     reminderId: string;
-  }): Promise<{ success: boolean; message: string }> {
+  }): Promise<{
+    success: boolean;
+    message: string;
+  }> {
     const startTime = Date.now();
-
     try {
-      // Validate input
       const validatedParams = validate(completeReminderSchema, params);
-
-      // Check if reminder exists
       const { data: existing, error: checkError } = await this.supabase
         .from("reminders")
         .select("id, status, user_id")
         .eq("id", validatedParams.reminderId)
         .eq("user_id", validatedParams.userId)
         .single();
-
       if (checkError || !existing) {
         throw new NotFoundError("Reminder", validatedParams.reminderId);
       }
-
       if (existing.status === "completed") {
         return {
           success: true,
           message: "Reminder is already completed",
         };
       }
-
       const { error } = await this.supabase
         .from("reminders")
         .update({
@@ -478,16 +413,13 @@ export class ReminderService {
         })
         .eq("id", validatedParams.reminderId)
         .eq("user_id", validatedParams.userId);
-
       if (error) {
         throw error;
       }
-
       logAudit("COMPLETE_REMINDER", existing.user_id, "reminder", {
         reminderId: validatedParams.reminderId,
       });
       logPerformance("completeReminder", Date.now() - startTime);
-
       return {
         success: true,
         message: "Reminder marked as completed",
@@ -499,7 +431,6 @@ export class ReminderService {
       throw handleServiceError(error, "completeReminder");
     }
   }
-
   async getUpcomingReminders(params: {
     userId: string;
     timeframe: "today" | "tomorrow" | "week" | "month";
@@ -514,30 +445,22 @@ export class ReminderService {
     total: number;
   }> {
     const startTime = Date.now();
-
     try {
-      // Validate input
       const validatedParams = validate(getUpcomingRemindersSchema, params);
-
-      // Fetch user's timezone
       const { data: userTzRow } = await this.supabase
         .from("users")
         .select("timezone")
         .eq("id", validatedParams.userId)
         .single();
       const tz = userTzRow?.timezone || "UTC";
-
-      // Compute window in user's timezone, then convert to UTC
       const zoneNow = DateTime.now().setZone(tz);
       let start = zoneNow;
       let end: DateTime;
       switch (validatedParams.timeframe) {
         case "today":
-          // From now until end of day
           end = zoneNow.endOf("day");
           break;
         case "tomorrow":
-          // Only tomorrow's day window
           start = zoneNow.plus({ days: 1 }).startOf("day");
           end = zoneNow.plus({ days: 1 }).endOf("day");
           break;
@@ -550,7 +473,6 @@ export class ReminderService {
       }
       const startUTC = start.toUTC().toISO()!;
       const endUTC = end.toUTC().toISO()!;
-
       const { data, error } = await this.supabase
         .from("reminders")
         .select("*")
@@ -560,11 +482,9 @@ export class ReminderService {
         .lte("reminder_time", endUTC)
         .order("reminder_time", { ascending: true })
         .limit(validatedParams.limit || 10);
-
       if (error) {
         throw error;
       }
-
       const reminders = (data || []).map((r) => {
         const rt = DateTime.fromISO(r.reminder_time, { setZone: true }).toUTC();
         const nowUTC = DateTime.utc();
@@ -572,7 +492,6 @@ export class ReminderService {
         const diffMins = Math.floor(diffMs / 60000);
         const diffHours = Math.floor(diffMins / 60);
         const diffDays = Math.floor(diffHours / 24);
-
         let timeUntil: string;
         if (diffDays > 0) {
           timeUntil = `${diffDays} day${diffDays > 1 ? "s" : ""}`;
@@ -581,20 +500,21 @@ export class ReminderService {
         } else {
           timeUntil = `${diffMins} minute${diffMins > 1 ? "s" : ""}`;
         }
-
         return {
           id: r.id,
           title: r.title,
           reminderTime: r.reminder_time,
-          reminderTimeFormatted: formatInZone(r.reminder_time, tz, "MMM d, yyyy 'at' h:mm a"),
+          reminderTimeFormatted: formatInZone(
+            r.reminder_time,
+            tz,
+            "MMM d, yyyy 'at' h:mm a",
+          ),
           timeUntil,
         };
       });
-
       logPerformance("getUpcomingReminders", Date.now() - startTime, {
         count: reminders.length,
       });
-
       return {
         reminders,
         total: reminders.length,
@@ -606,12 +526,14 @@ export class ReminderService {
       throw handleServiceError(error, "getUpcomingReminders");
     }
   }
-
   async searchReminders(params: {
     userId: string;
     query: string;
     filters?: {
-      dateRange?: { start: string; end: string };
+      dateRange?: {
+        start: string;
+        end: string;
+      };
       priority?: "low" | "medium" | "high";
       status?: "pending" | "completed";
     };
@@ -626,53 +548,39 @@ export class ReminderService {
     total: number;
   }> {
     const startTime = Date.now();
-
     try {
-      // Validate input
       const validatedParams = validate(searchRemindersSchema, params);
-
-      // Sanitize search query
       const sanitizedQuery = sanitizeString(validatedParams.query);
-
       let query = this.supabase
         .from("reminders")
         .select("*")
         .eq("user_id", validatedParams.userId)
         .or(`title.ilike.%${sanitizedQuery}%,notes.ilike.%${sanitizedQuery}%`);
-
       if (validatedParams.filters?.dateRange) {
         query = query
           .gte("reminder_time", validatedParams.filters.dateRange.start)
           .lte("reminder_time", validatedParams.filters.dateRange.end);
       }
-
       if (validatedParams.filters?.priority) {
         query = query.eq("priority", validatedParams.filters.priority);
       }
-
       if (validatedParams.filters?.status) {
         query = query.eq("status", validatedParams.filters.status);
       }
-
       query = query.limit(validatedParams.limit || 20);
-
       const { data, error } = await query;
-
       if (error) {
         throw error;
       }
-
       const results = (data || []).map((r) => ({
         id: r.id,
         title: r.title,
         reminderTime: r.reminder_time,
-        relevanceScore: 1.0, // TODO: Implement proper relevance scoring
+        relevanceScore: 1.0,
       }));
-
       logPerformance("searchReminders", Date.now() - startTime, {
         count: results.length,
       });
-
       return {
         results,
         total: results.length,
@@ -682,7 +590,6 @@ export class ReminderService {
       throw handleServiceError(error, "searchReminders");
     }
   }
-
   async batchCreateReminders(params: {
     userId: string;
     reminders: Array<{
@@ -703,21 +610,15 @@ export class ReminderService {
     }>;
   }> {
     const startTime = Date.now();
-
     try {
-      // Validate input
       const validatedParams = validate(batchCreateRemindersSchema, params);
-
       logInfo("Batch creating reminders", {
         userId: params.userId,
         count: validatedParams.reminders.length,
       });
-
       const results = [];
       let created = 0;
       let failed = 0;
-
-      // Process reminders with error isolation
       for (const reminder of validatedParams.reminders) {
         try {
           const result = await this.createReminder({
@@ -728,7 +629,6 @@ export class ReminderService {
             isRecurring: reminder.isRecurring || false,
             recurrenceRule: reminder.recurrenceRule,
           });
-
           results.push({
             title: reminder.title,
             success: true,
@@ -747,7 +647,6 @@ export class ReminderService {
           failed++;
         }
       }
-
       logAudit("BATCH_CREATE_REMINDERS", validatedParams.userId, "reminder", {
         created,
         failed,
@@ -756,7 +655,6 @@ export class ReminderService {
         created,
         failed,
       });
-
       return {
         success: created > 0,
         created,

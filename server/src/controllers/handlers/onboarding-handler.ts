@@ -2,22 +2,11 @@ import { MessageContext } from "../../services/whatsapp";
 import { User } from "../../models/types";
 import { ConversationContext } from "../../types/conversation";
 import { UserService } from "../../services/user-service";
-
-/**
- * Onboarding Handler Module
- * Manages user onboarding flow
- */
-
 export class OnboardingHandler {
   private userService: UserService;
-
   constructor(userService: UserService) {
     this.userService = userService;
   }
-
-  /**
-   * Handle onboarding flow for new or in-progress users
-   */
   async handleOnboardingFlow(
     context: MessageContext,
     user: User,
@@ -29,10 +18,7 @@ export class OnboardingHandler {
         step: 0,
         collected: {},
       });
-
     const lower = (userInput || "").trim().toLowerCase();
-
-    // Helpers
     const isYes = (s: string) => /^(y|yes|yeah|yup|true|1)$/i.test(s.trim());
     const isNo = (s: string) => /^(n|no|nope|false|0)$/i.test(s.trim());
     const timeRegex = /^([0-1]?\d|2[0-3]):[0-5]\d$/;
@@ -58,8 +44,6 @@ export class OnboardingHandler {
       const valid = parts.filter((p) => allDays.includes(p));
       return valid.length > 0 ? valid : null;
     };
-
-    // Step machine
     switch (onboarding.step) {
       case 0: {
         onboarding.step = 1;
@@ -76,7 +60,6 @@ export class OnboardingHandler {
             name: onboarding.collected.name,
           });
         }
-        // Skip phone number collection - security risk without verification
         onboarding.step = 2;
         return (
           `2) What's your timezone? (e.g., Asia/Kolkata, America/New_York)\n` +
@@ -93,9 +76,7 @@ export class OnboardingHandler {
         onboarding.step = 3;
         return (
           `3) Default reminder time (24h HH:MM).\n` +
-          `For example, 09:00. Type 'skip' to keep ${
-            user.default_reminder_time || "09:00"
-          }.`
+          `For example, 09:00. Type 'skip' to keep ${user.default_reminder_time || "09:00"}.`
         );
       }
       case 3: {
@@ -209,8 +190,6 @@ export class OnboardingHandler {
         } else if (lower !== "skip") {
           return `Please provide a 2-letter language code (e.g., en, es, fr), or 'skip'.`;
         }
-
-        // Done
         const summary = this.buildOnboardingSummary(onboarding);
         conversationContext.onboarding = undefined;
         return (
@@ -223,10 +202,6 @@ export class OnboardingHandler {
         return null;
     }
   }
-
-  /**
-   * Build summary of collected onboarding data
-   */
   private buildOnboardingSummary(
     onb: NonNullable<ConversationContext["onboarding"]>,
   ): string {

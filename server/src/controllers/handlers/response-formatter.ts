@@ -1,25 +1,11 @@
 import { formatInZone } from "../../utils/time-utils";
-
-/**
- * Response Formatter Module
- * Formats AI tool results into user-friendly WhatsApp messages
- */
-
 export class ResponseFormatter {
-  /**
-   * Get formatted response message for WhatsApp
-   */
   getResponseMessage(result: any, timezone?: string): string {
     if (!result) return "Done!";
-
-    // If result has text from AI, use that
     if (result.text) {
       return result.text;
     }
-
     if (result.message) return result.message;
-
-    // Format different result types
     if (result.reminders) {
       if (result.reminders.length === 0) {
         return "No reminders found.";
@@ -33,9 +19,7 @@ export class ResponseFormatter {
         })
         .join("\n")}`;
     }
-
     if (result.results && Array.isArray(result.results)) {
-      // Search results
       if (result.results.length === 0) {
         return "No reminders found matching your search.";
       }
@@ -48,7 +32,6 @@ export class ResponseFormatter {
         })
         .join("\n")}`;
     }
-
     if (result.lists) {
       if (result.lists.length === 0) {
         return "No lists found.";
@@ -67,8 +50,6 @@ export class ResponseFormatter {
         })
         .join("\n\n")}`;
     }
-
-    // Handle list items response
     if (result.items && Array.isArray(result.items)) {
       if (result.items.length === 0) {
         return `List "${result.listName || "Unknown"}" is empty.`;
@@ -80,37 +61,26 @@ export class ResponseFormatter {
         )
         .join("\n")}`;
     }
-
-    // Handle batch create results
     if (result.created !== undefined && result.failed !== undefined) {
       return `✅ Created ${result.created} reminder(s)${result.failed > 0 ? `, ${result.failed} failed` : ""}`;
     }
-
-    // Handle added/removed count
     if (result.addedCount !== undefined) {
       return `✅ Added ${result.addedCount} item(s) to list`;
     }
-
     if (result.removedCount !== undefined) {
       return `✅ Removed ${result.removedCount} item(s) from list`;
     }
-
-    // Handle getCurrentTime response
     if (result.formattedTime && result.timezone) {
       return `🕐 Current time: ${result.formattedTime}`;
     }
-
-    // Handle notes responses
     if (result.notes && Array.isArray(result.notes)) {
       if (result.notes.length === 0) {
         return "No notes found.";
       }
-
       const totalText = result.total
         ? ` (showing ${result.notes.length} of ${result.total})`
         : "";
       let response = `📝 Found ${result.notes.length} note(s)${totalText}:\n`;
-
       const formattedNotes = result.notes
         .map((note: any, i: number) => {
           const title = note.title ? `**${note.title}**` : "";
@@ -126,15 +96,10 @@ export class ResponseFormatter {
           return `${i + 1}. ${pinned}${title}${title ? "\n   " : ""}${content}${tags}`;
         })
         .join("\n\n");
-
       response += formattedNotes;
-
-      // Add helpful hints for large result sets
       if (result.total && result.total > result.notes.length) {
         response += `\n\n💡 *Tip: Use more specific search terms or categories to narrow results*`;
       }
-
-      // Truncate if response is too long (WhatsApp limit ~4000 chars)
       if (response.length > 3500) {
         const truncatedNotes = result.notes.slice(
           0,
@@ -157,11 +122,8 @@ export class ResponseFormatter {
           truncatedFormatted +
           "\n\n💡 *Use more specific search to see all results*";
       }
-
       return response;
     }
-
-    // Handle single note response (create/update)
     if (result.content && result.id) {
       const title = result.title ? `**${result.title}**` : "";
       const tags =
@@ -170,12 +132,9 @@ export class ResponseFormatter {
           : "";
       return `✅ Note saved!\n${title}${title ? "\n" : ""}${result.content}${tags}`;
     }
-
-    // Handle note deletion
     if (result.success === true) {
       return "✅ Note deleted successfully!";
     }
-
     return "Done!";
   }
 }

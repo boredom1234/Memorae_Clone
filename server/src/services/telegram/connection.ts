@@ -1,22 +1,17 @@
 import TelegramBot from "node-telegram-bot-api";
 import pino from "pino";
 import { TelegramServiceConfig } from "./types";
-
 export class TelegramConnection {
   private bot: TelegramBot | null = null;
   private config: TelegramServiceConfig;
   private logger = pino({ level: "info" });
   private isConnected = false;
-
   constructor(config: TelegramServiceConfig) {
     this.config = config;
   }
-
   async connect(): Promise<TelegramBot> {
     try {
       this.logger.info("Connecting to Telegram...");
-
-      // Create bot instance with polling
       this.bot = new TelegramBot(this.config.botToken, {
         polling: {
           interval: 300,
@@ -26,27 +21,19 @@ export class TelegramConnection {
           },
         },
       });
-
-      // Test connection by getting bot info
       const botInfo = await this.bot.getMe();
       this.logger.info(
         { username: botInfo.username, id: botInfo.id },
         "✅ Telegram bot connected",
       );
-
       this.isConnected = true;
       this.config.onConnectionUpdate?.(true);
-
-      // Handle polling errors
       this.bot.on("polling_error", (error) => {
         this.logger.error({ error }, "Telegram polling error");
       });
-
-      // Handle webhook errors (if any)
       this.bot.on("webhook_error", (error) => {
         this.logger.error({ error }, "Telegram webhook error");
       });
-
       return this.bot;
     } catch (error) {
       this.logger.error({ error }, "Failed to connect to Telegram");
@@ -55,15 +42,12 @@ export class TelegramConnection {
       throw error;
     }
   }
-
   getBot(): TelegramBot | null {
     return this.bot;
   }
-
   isConnectedStatus(): boolean {
     return this.isConnected && this.bot !== null;
   }
-
   async disconnect(): Promise<void> {
     if (this.bot) {
       try {

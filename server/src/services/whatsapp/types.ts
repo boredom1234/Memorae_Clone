@@ -1,5 +1,4 @@
 import { proto } from "@whiskeysockets/baileys";
-
 export interface MessageContext {
   messageId: string;
   from: string;
@@ -17,36 +16,30 @@ export interface MessageContext {
     | "voice"
     | "unknown";
   mediaUrl?: string;
-  mediaBuffer?: Buffer; // For image/document OCR processing
-  mimeType?: string; // MIME type of media (e.g., image/jpeg, image/png)
+  mediaBuffer?: Buffer;
+  mimeType?: string;
   quoted?: {
     messageId: string;
     text?: string;
   };
-  // Propagated by WhatsAppService after filtering to avoid accidental
-  // processing (e.g., creating users) in downstream layers.
   isSelfChat?: boolean;
 }
-
 export interface WhatsAppMessage {
   key: proto.IMessageKey;
   message?: proto.IMessage;
   messageTimestamp?: number | Long;
 }
-
 export interface WhatsAppServiceConfig {
   sessionPath: string;
   printQRInTerminal?: boolean;
   onMessage?: (context: MessageContext) => Promise<void>;
   onConnectionUpdate?: (isConnected: boolean) => void;
 }
-
 export interface SendMessageOptions {
   to: string;
   text: string;
   quotedMessageId?: string;
 }
-
 export interface SendMediaOptions {
   to: string;
   mediaUrl: string;

@@ -4,29 +4,26 @@ export interface ConversationMessage {
   timestamp: Date;
   messageId?: string;
 }
-
 export interface ConversationContext {
   userId: string;
   messages: ConversationMessage[];
   lastActivity: Date;
   maxMessages: number;
-  // Optional onboarding state for first-time user setup
   onboarding?: {
     step: number;
     collected: {
       name?: string;
       timezone?: string;
-      defaultReminderTime?: string; // HH:MM
+      defaultReminderTime?: string;
       notificationEnabled?: boolean;
       advanceNoticeMinutes?: number;
       quietHoursEnabled?: boolean;
-      quietHoursStart?: string; // HH:MM
-      quietHoursEnd?: string; // HH:MM
-      quietHoursDays?: string[]; // monday..sunday
-      language?: string; // 2-letter code
+      quietHoursStart?: string;
+      quietHoursEnd?: string;
+      quietHoursDays?: string[];
+      language?: string;
     };
   };
-  // Ephemeral state for disambiguation and confirmation flows
   lastReminderSearch?: {
     query: string;
     results: any[];
@@ -57,7 +54,6 @@ export interface ConversationContext {
     timestamp: Date;
   };
 }
-
 export interface ConversationManager {
   getContext(userId: string): ConversationContext;
   addMessage(userId: string, message: ConversationMessage): void;

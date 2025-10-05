@@ -1,8 +1,6 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { config } from "../config/env";
-
 let supabase: SupabaseClient | null = null;
-
 export function getSupabaseClient(): SupabaseClient {
   if (!supabase) {
     if (!config.supabase.url || !config.supabase.serviceKey) {
@@ -10,7 +8,6 @@ export function getSupabaseClient(): SupabaseClient {
         "Supabase configuration is missing. Please set SUPABASE_URL and SUPABASE_SERVICE_KEY in your .env file",
       );
     }
-
     supabase = createClient(config.supabase.url, config.supabase.serviceKey, {
       auth: {
         autoRefreshToken: false,
@@ -18,8 +15,6 @@ export function getSupabaseClient(): SupabaseClient {
       },
     });
   }
-
   return supabase;
 }
-
 export { supabase };

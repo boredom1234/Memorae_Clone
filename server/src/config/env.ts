@@ -1,21 +1,14 @@
-// Environment validation
 function validateEnv() {
   const errors: string[] = [];
-
-  // Required environment variables
   const required = {
     SUPABASE_URL: process.env.SUPABASE_URL,
     SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY,
   };
-
-  // Check required variables
   Object.entries(required).forEach(([key, value]) => {
     if (!value || value.trim() === "") {
       errors.push(`Missing required environment variable: ${key}`);
     }
   });
-
-  // Validate at least one AI provider is configured
   const aiProviders = [
     process.env.OPENAI_API_KEY,
     process.env.GROQ_API_KEY,
@@ -30,13 +23,10 @@ function validateEnv() {
     process.env.DEEPINFRA_API_KEY,
     process.env.CEREBRAS_API_KEY,
   ];
-
   const hasAiProvider = aiProviders.some((key) => key && key.trim() !== "");
   if (!hasAiProvider) {
     errors.push("At least one AI provider API key must be configured");
   }
-
-  // Validate AI provider/model combination
   const aiProvider = process.env.AI_PROVIDER?.toLowerCase() || "openai";
   const providerKeyMap: Record<string, string> = {
     openai: "OPENAI_API_KEY",
@@ -52,21 +42,16 @@ function validateEnv() {
     deepinfra: "DEEPINFRA_API_KEY",
     cerebras: "CEREBRAS_API_KEY",
   };
-
   const requiredKey = providerKeyMap[aiProvider];
   if (requiredKey && !process.env[requiredKey]) {
     errors.push(
       `AI provider "${aiProvider}" requires ${requiredKey} to be set`,
     );
   }
-
-  // Validate port
   const port = parseInt(process.env.PORT || "3000", 10);
   if (isNaN(port) || port < 1 || port > 65535) {
     errors.push("PORT must be a valid number between 1 and 65535");
   }
-
-  // Validate messaging platform
   const messagingPlatform = process.env.MESSAGING_PLATFORM || "both";
   const validPlatforms = ["whatsapp", "telegram", "both"];
   if (!validPlatforms.includes(messagingPlatform.toLowerCase())) {
@@ -74,8 +59,6 @@ function validateEnv() {
       `MESSAGING_PLATFORM must be one of: ${validPlatforms.join(", ")}`,
     );
   }
-
-  // Validate platform-specific requirements
   if (messagingPlatform === "telegram" || messagingPlatform === "both") {
     if (!process.env.TELEGRAM_BOT_TOKEN) {
       errors.push(
@@ -83,7 +66,6 @@ function validateEnv() {
       );
     }
   }
-
   if (errors.length > 0) {
     console.error("❌ Environment validation failed:");
     errors.forEach((error) => console.error(`  - ${error}`));
@@ -92,13 +74,9 @@ function validateEnv() {
     );
     process.exit(1);
   }
-
   console.log("✅ Environment validation passed");
 }
-
-// Run validation
 validateEnv();
-
 export const config = {
   server: {
     port: parseInt(process.env.PORT || "3000", 10),
@@ -117,11 +95,8 @@ export const config = {
     serviceKey: process.env.SUPABASE_SERVICE_KEY || "",
   },
   ai: {
-    // Provider and Model Selection
     provider: process.env.AI_PROVIDER || "openai",
     model: process.env.AI_MODEL || "gpt-4o-mini",
-
-    // API Keys
     openaiApiKey: process.env.OPENAI_API_KEY || "",
     groqApiKey: process.env.GROQ_API_KEY || "",
     xaiApiKey: process.env.XAI_API_KEY || "",
@@ -134,17 +109,11 @@ export const config = {
     fireworksApiKey: process.env.FIREWORKS_API_KEY || "",
     deepinfraApiKey: process.env.DEEPINFRA_API_KEY || "",
     cerebrasApiKey: process.env.CEREBRAS_API_KEY || "",
-
-    // Azure OpenAI
     azureApiKey: process.env.AZURE_OPENAI_API_KEY || "",
     azureResourceName: process.env.AZURE_RESOURCE_NAME || "",
     azureDeploymentName: process.env.AZURE_DEPLOYMENT_NAME || "",
-
-    // Google Vertex AI
     vertexProjectId: process.env.VERTEX_PROJECT_ID || "",
     vertexLocation: process.env.VERTEX_LOCATION || "",
-
-    // AWS Bedrock
     awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
     awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
     awsRegion: process.env.AWS_REGION || "",

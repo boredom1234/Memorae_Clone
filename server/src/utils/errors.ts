@@ -1,5 +1,3 @@
-// Custom Error Classes for better error handling
-
 export class AppError extends Error {
   constructor(
     public message: string,
@@ -12,13 +10,11 @@ export class AppError extends Error {
     Error.captureStackTrace(this, this.constructor);
   }
 }
-
 export class ValidationError extends AppError {
   constructor(message: string, details?: any) {
     super(message, 400, "VALIDATION_ERROR", details);
   }
 }
-
 export class NotFoundError extends AppError {
   constructor(resource: string, identifier?: string) {
     const message = identifier
@@ -27,53 +23,45 @@ export class NotFoundError extends AppError {
     super(message, 404, "NOT_FOUND");
   }
 }
-
 export class DatabaseError extends AppError {
   constructor(message: string, details?: any) {
     super(message, 500, "DATABASE_ERROR", details);
   }
 }
-
 export class ConflictError extends AppError {
   constructor(message: string, details?: any) {
     super(message, 409, "CONFLICT_ERROR", details);
   }
 }
-
 export class RateLimitError extends AppError {
   constructor(message: string = "Too many requests") {
     super(message, 429, "RATE_LIMIT_ERROR");
   }
 }
-
 export class UnauthorizedError extends AppError {
   constructor(message: string = "Unauthorized") {
     super(message, 401, "UNAUTHORIZED");
   }
 }
-
-// Error handler wrapper for async functions
 export function handleServiceError(error: any, context: string): never {
   if (error instanceof AppError) {
     throw error;
   }
-
-  // Handle Supabase/PostgreSQL errors
   if (error.code) {
     switch (error.code) {
-      case "23505": // unique_violation
+      case "23505":
         throw new ConflictError("Resource already exists", {
           original: error.message,
         });
-      case "23503": // foreign_key_violation
+      case "23503":
         throw new ValidationError("Referenced resource does not exist", {
           original: error.message,
         });
-      case "23502": // not_null_violation
+      case "23502":
         throw new ValidationError("Required field is missing", {
           original: error.message,
         });
-      case "PGRST116": // No rows found
+      case "PGRST116":
         throw new NotFoundError("Resource");
       default:
         throw new DatabaseError(`Database error in ${context}`, {
@@ -82,8 +70,6 @@ export function handleServiceError(error: any, context: string): never {
         });
     }
   }
-
-  // Generic error
   throw new AppError(
     `Unexpected error in ${context}: ${error.message}`,
     500,

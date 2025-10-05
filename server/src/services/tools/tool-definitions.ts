@@ -8,12 +8,6 @@ import { NotesService } from "../notes-service";
 import { NotificationService } from "../notification-service";
 import { MediaAttachmentService } from "../media-attachment-service";
 import { logError, logInfo } from "../../utils/logger";
-
-/**
- * Tool Definitions Module
- * Contains all AI SDK tool schemas and execution logic
- */
-
 export interface ToolServices {
   userService: UserService;
   reminderService: ReminderService;
@@ -23,15 +17,10 @@ export interface ToolServices {
   notificationService: NotificationService;
   mediaService: MediaAttachmentService;
 }
-
 export type DedupeFunction = <T>(
   name: string,
   fn: (params: any) => Promise<T>,
 ) => (params: any) => Promise<T>;
-
-/**
- * Creates all AI SDK compatible tools for a specific user
- */
 export function createAISDKTools(
   userId: string,
   services: ToolServices,
@@ -46,9 +35,7 @@ export function createAISDKTools(
     notificationService,
     mediaService,
   } = services;
-
   return {
-    // ==================== REMINDER TOOLS ====================
     createReminder: tool({
       description:
         "Create reminder at specific time. Supports one-time and recurring (daily/weekly/monthly). Triggers: remind, alert, schedule, notify.",
@@ -93,9 +80,7 @@ export function createAISDKTools(
       execute: dedupe("createReminder", async (params) => {
         const settings = await userService.getUserSettings(userId);
         const tz = settings?.timezone || "UTC";
-
         let finalTime = params.reminderTime;
-
         if (params.naturalTimeText || !finalTime) {
           const textToParse =
             params.naturalTimeText || params.reminderTime || "";
@@ -103,7 +88,6 @@ export function createAISDKTools(
             text: textToParse,
             timezone: tz,
           });
-
           if (parsed.success && parsed.extractedDates.length > 0) {
             const bestDate = utilityService.pickBestDate(parsed.extractedDates);
             if (bestDate) {
@@ -111,27 +95,22 @@ export function createAISDKTools(
             }
           }
         }
-
         if (!finalTime) {
           throw new Error(
             "Could not determine reminder time. Please specify a valid date/time.",
           );
         }
-
         const parsedDate = new Date(finalTime);
         if (isNaN(parsedDate.getTime())) {
           throw new Error("Invalid reminder time format.");
         }
-
         if (parsedDate.getTime() <= Date.now()) {
           finalTime = utilityService.ensureFuture(finalTime, tz);
         }
-
         const normalizedTitle = params.title.trim().replace(/\s+/g, " ");
         if (!normalizedTitle) {
           throw new Error("Reminder title cannot be empty.");
         }
-
         return await reminderService.createReminder({
           userId,
           title: normalizedTitle,
@@ -144,7 +123,6 @@ export function createAISDKTools(
         });
       }),
     }),
-
     updateReminder: tool({
       description:
         "Modify existing reminder (time, title, priority). Triggers: change, update, edit, reschedule, move.",
@@ -164,19 +142,16 @@ export function createAISDKTools(
       execute: dedupe("updateReminder", async (params) => {
         const settings = await userService.getUserSettings(userId);
         const tz = settings?.timezone || "UTC";
-
         const searchResult = await reminderService.searchReminders({
           userId,
           query: params.searchQuery,
           limit: 5,
         });
-
         if (searchResult.results.length === 0) {
           throw new Error(
             "Could not find any reminders matching that description.",
           );
         }
-
         if (searchResult.results.length > 1) {
           return {
             needsSelection: true,
@@ -190,7 +165,6 @@ export function createAISDKTools(
             })),
           };
         }
-
         let finalTime = params.reminderTime;
         if (
           params.naturalTimeText ||
@@ -203,30 +177,25 @@ export function createAISDKTools(
             text: textToParse,
             timezone: tz,
           });
-
           if (parsed.success && parsed.extractedDates.length > 0) {
             finalTime =
               utilityService.pickBestDate(parsed.extractedDates) || finalTime;
           }
         }
-
         if (finalTime) {
           const parsedDate = new Date(finalTime);
           if (parsedDate.getTime() <= Date.now()) {
             finalTime = utilityService.ensureFuture(finalTime, tz);
           }
         }
-
         const normalizedTitle = params.title
           ? params.title.trim().replace(/\s+/g, " ")
           : undefined;
-
         if (!normalizedTitle && !finalTime && !params.priority) {
           throw new Error(
             "Please specify what you want to update (title, time, or priority).",
           );
         }
-
         return await reminderService.updateReminder({
           userId,
           reminderId: searchResult.results[0].id,
@@ -237,7 +206,6 @@ export function createAISDKTools(
         });
       }),
     }),
-
     deleteReminder: tool({
       description:
         "Delete/cancel reminder permanently. Triggers: delete, remove, cancel, clear.",
@@ -252,13 +220,11 @@ export function createAISDKTools(
           query: params.searchQuery,
           limit: 5,
         });
-
         if (searchResult.results.length === 0) {
           throw new Error(
             "Could not find any reminders matching that description.",
           );
         }
-
         if (searchResult.results.length > 1) {
           return {
             needsSelection: true,
@@ -273,9 +239,7 @@ export function createAISDKTools(
             })),
           };
         }
-
         const reminder = searchResult.results[0];
-
         if (reminder.isRecurring) {
           return {
             needsConfirmation: true,
@@ -285,14 +249,12 @@ export function createAISDKTools(
             summary: `Delete recurring reminder: ${reminder.title}`,
           };
         }
-
         return await reminderService.deleteReminder({
           userId,
           reminderId: reminder.id,
         });
       }),
     }),
-
     listReminders: tool({
       description:
         "List reminders with filters (status, date). Triggers: list, show, display, what reminders.",
@@ -315,7 +277,6 @@ export function createAISDKTools(
         });
       }),
     }),
-
     completeReminder: tool({
       description:
         "Mark reminder as done (status only, not deleted). Triggers: complete, done, finished, mark as done.",
@@ -330,18 +291,15 @@ export function createAISDKTools(
           query: params.searchQuery,
           limit: 1,
         });
-
         if (searchResult.results.length === 0) {
           throw new Error("Could not find that reminder");
         }
-
         return await reminderService.completeReminder({
           userId,
           reminderId: searchResult.results[0].id,
         });
       }),
     }),
-
     searchReminders: tool({
       description:
         "Search reminders by keyword/title. Triggers: find, search, look for, where is.",
@@ -361,7 +319,6 @@ export function createAISDKTools(
         });
       }),
     }),
-
     snoozeReminder: tool({
       description:
         "Postpone reminder to later time. Triggers: snooze, postpone, delay, push back, later.",
@@ -385,19 +342,16 @@ export function createAISDKTools(
       execute: dedupe("snoozeReminder", async (params) => {
         const settings = await userService.getUserSettings(userId);
         const tz = settings?.timezone || "UTC";
-
         const searchResult = await reminderService.searchReminders({
           userId,
           query: params.searchQuery,
           limit: 5,
         });
-
         if (searchResult.results.length === 0) {
           throw new Error(
             "Could not find any reminders matching that description.",
           );
         }
-
         if (searchResult.results.length > 1) {
           return {
             needsSelection: true,
@@ -412,7 +366,6 @@ export function createAISDKTools(
             })),
           };
         }
-
         let finalTime = params.snoozeUntil;
         if (params.naturalTimeText || !finalTime) {
           const textToParse =
@@ -421,24 +374,20 @@ export function createAISDKTools(
             text: textToParse,
             timezone: tz,
           });
-
           if (parsed.success && parsed.extractedDates.length > 0) {
             finalTime =
               utilityService.pickBestDate(parsed.extractedDates) || finalTime;
           }
         }
-
         if (!finalTime) {
           throw new Error(
             "Please specify when to snooze until (e.g., 'in 10 minutes', 'tomorrow 3pm').",
           );
         }
-
         const parsedDate = new Date(finalTime);
         if (parsedDate.getTime() <= Date.now()) {
           throw new Error("Snooze time must be in the future.");
         }
-
         return await reminderService.snoozeReminder({
           userId,
           reminderId: searchResult.results[0].id,
@@ -447,7 +396,6 @@ export function createAISDKTools(
         });
       }),
     }),
-
     getUpcomingReminders: tool({
       description:
         "Get reminders for timeframe (today/tomorrow/week/month). Triggers: upcoming, what's coming, scheduled.",
@@ -468,7 +416,6 @@ export function createAISDKTools(
         });
       }),
     }),
-
     batchCreateReminders: tool({
       description:
         "Create multiple reminders at once. Triggers: remind me to [list], set reminders for.",
@@ -503,8 +450,6 @@ export function createAISDKTools(
         });
       }),
     }),
-
-    // ==================== LIST TOOLS ====================
     createList: tool({
       description:
         "Create new list (shopping, todo, tasks). Triggers: create list, make list, new list.",
@@ -531,9 +476,7 @@ export function createAISDKTools(
           ),
       }),
       execute: dedupe("createList", async (params) => {
-        // Auto-fill icon and color if not provided
         const listData: any = { ...params };
-
         if (!listData.icon) {
           const nameLower = params.name.toLowerCase();
           if (
@@ -560,7 +503,6 @@ export function createAISDKTools(
             listData.icon = "📝";
           }
         }
-
         if (!listData.color) {
           const nameLower = params.name.toLowerCase();
           if (nameLower.includes("urgent") || nameLower.includes("important")) {
@@ -584,14 +526,12 @@ export function createAISDKTools(
             listData.color = "#6b7280";
           }
         }
-
         return await listService.createList({
           userId,
           ...listData,
         });
       }),
     }),
-
     addItemToList: tool({
       description:
         "Add items to list (auto-creates if missing, max 50/call). Triggers: add to, put on, include.",
@@ -611,10 +551,8 @@ export function createAISDKTools(
           for (let i = 0; i < params.items.length; i += 50) {
             batches.push(params.items.slice(i, i + 50));
           }
-
           let totalAdded = 0;
           let errors = [];
-
           for (let i = 0; i < batches.length; i++) {
             try {
               const result = await listService.addItemToList({
@@ -640,7 +578,6 @@ export function createAISDKTools(
               }
             }
           }
-
           return {
             success: errors.length === 0,
             addedCount: totalAdded,
@@ -653,7 +590,6 @@ export function createAISDKTools(
             errors: errors.length > 0 ? errors : undefined,
           };
         }
-
         try {
           return await listService.addItemToList({
             userId,
@@ -675,7 +611,6 @@ export function createAISDKTools(
         }
       }),
     }),
-
     getLists: tool({
       description:
         "Show all user lists. Triggers: show lists, what lists, all lists.",
@@ -693,7 +628,6 @@ export function createAISDKTools(
         });
       }),
     }),
-
     getListItems: tool({
       description:
         "Show items in specific list. Triggers: show [list], what's on, what's in, view.",
@@ -712,7 +646,6 @@ export function createAISDKTools(
         });
       }),
     }),
-
     removeItemFromList: tool({
       description:
         "Remove items from list. Triggers: remove, delete, take off.",
@@ -728,7 +661,6 @@ export function createAISDKTools(
         });
       }),
     }),
-
     updateListItem: tool({
       description:
         "Update list item (complete/edit/reorder). Triggers: mark as done, check off, update, change.",
@@ -747,17 +679,14 @@ export function createAISDKTools(
           listName: params.listName,
           includeCompleted: true,
         });
-
         const item = listItems.items.find((i) =>
           i.content.toLowerCase().includes(params.itemText.toLowerCase()),
         );
-
         if (!item) {
           throw new Error(
             `Could not find item "${params.itemText}" in list "${params.listName}"`,
           );
         }
-
         return await listService.updateListItem({
           itemId: item.id,
           isCompleted: params.isCompleted,
@@ -765,7 +694,6 @@ export function createAISDKTools(
         });
       }),
     }),
-
     deleteList: tool({
       description:
         "Delete entire list and items. Triggers: delete list, remove list, clear list.",
@@ -779,7 +707,6 @@ export function createAISDKTools(
         });
       }),
     }),
-
     searchLists: tool({
       description:
         "Search all lists/items. Triggers: find, search, where is, look for.",
@@ -800,8 +727,6 @@ export function createAISDKTools(
         });
       }),
     }),
-
-    // ==================== NOTES TOOLS ====================
     createNote: tool({
       description:
         "Save information/facts for later. Triggers: remember, note, save, store, keep track.",
@@ -835,18 +760,14 @@ export function createAISDKTools(
           ),
       }),
       execute: dedupe("createNote", async (params) => {
-        // Auto-generate title if not provided
         let title = params.title;
         if (!title && params.content) {
-          // Generate title from first 50 chars of content
           const firstLine = params.content.split("\n")[0];
           title =
             firstLine.length > 50
               ? firstLine.substring(0, 47) + "..."
               : firstLine;
         }
-
-        // Auto-infer category if not provided
         let category = params.category || "general";
         if (!params.category) {
           const contentLower = params.content.toLowerCase();
@@ -882,7 +803,6 @@ export function createAISDKTools(
             category = "personal";
           }
         }
-
         return await notesService.createNote({
           userId,
           content: params.content,
@@ -893,7 +813,6 @@ export function createAISDKTools(
         });
       }),
     }),
-
     searchNotes: tool({
       description:
         "Search saved notes/memories. Triggers: what did I, find note, do you remember, what was.",
@@ -914,7 +833,6 @@ export function createAISDKTools(
         });
       }),
     }),
-
     listNotes: tool({
       description:
         "Show all saved notes. Triggers: show notes, list memories, what have I saved.",
@@ -940,7 +858,6 @@ export function createAISDKTools(
         });
       }),
     }),
-
     updateNote: tool({
       description:
         "Modify existing note. Triggers: update, change, modify, edit, correct.",
@@ -961,11 +878,9 @@ export function createAISDKTools(
           limit: 1,
           includeArchived: false,
         });
-
         if (searchResult.notes.length === 0) {
           throw new Error("Could not find that note");
         }
-
         return await notesService.updateNote({
           userId,
           noteId: searchResult.notes[0].id,
@@ -977,7 +892,6 @@ export function createAISDKTools(
         });
       }),
     }),
-
     deleteNote: tool({
       description:
         "Delete note permanently. Triggers: delete, remove, forget, clear.",
@@ -993,16 +907,12 @@ export function createAISDKTools(
           limit: 1,
           includeArchived: false,
         });
-
         if (searchResult.notes.length === 0) {
           throw new Error("Could not find that note");
         }
-
         return await notesService.deleteNote(userId, searchResult.notes[0].id);
       }),
     }),
-
-    // ==================== SETTINGS TOOLS ====================
     getUserSettings: tool({
       description:
         "Get user profile/settings (name, timezone, language, notifications). Triggers: my settings, who am I, my name.",
@@ -1011,7 +921,6 @@ export function createAISDKTools(
         return await userService.getUserSettings(userId);
       }),
     }),
-
     updateUserSettings: tool({
       description:
         "Update settings (name, timezone, language, notifications, quiet hours). Triggers: change, set, update, configure.",
@@ -1091,7 +1000,6 @@ export function createAISDKTools(
         return await userService.updateUserSettings(userId, params);
       }),
     }),
-
     setQuietHours: tool({
       description:
         "Set do-not-disturb windows. Triggers: quiet hours, do not disturb, DND, silent hours.",
@@ -1120,7 +1028,6 @@ export function createAISDKTools(
         );
       }),
     }),
-
     getCurrentTime: tool({
       description:
         "Get current time/date in user timezone. Triggers: what time, current time, what date.",
@@ -1128,14 +1035,11 @@ export function createAISDKTools(
       execute: dedupe("getCurrentTime", async () => {
         const settings = await userService.getUserSettings(userId);
         const tz = settings?.timezone || "UTC";
-
         return await utilityService.getCurrentTime({
           timezone: tz,
         });
       }),
     }),
-
-    // ==================== NOTIFICATION TOOLS ====================
     sendReminderToContact: tool({
       description:
         "Send reminder to contact at specific time. Trigger: remind [number] to [task].",
@@ -1179,7 +1083,6 @@ export function createAISDKTools(
           }
           iso = parsed.extractedDates[0].parsedDate;
         }
-
         let whenMs = new Date(iso).getTime();
         const nowMs = Date.now();
         if (whenMs <= nowMs && nowMs - whenMs < 24 * 60 * 60 * 1000) {
@@ -1189,7 +1092,6 @@ export function createAISDKTools(
         if (whenMs <= nowMs) {
           throw new Error("Reminder time must be in the future");
         }
-
         return await notificationService.sendReminderToContact({
           senderUserId: userId,
           recipientNumber: params.recipientNumber,
@@ -1200,7 +1102,6 @@ export function createAISDKTools(
         });
       }),
     }),
-
     getNotificationHistory: tool({
       description:
         "Get notification history. Trigger: show notification history.",
@@ -1226,7 +1127,6 @@ export function createAISDKTools(
         });
       }),
     }),
-
     sendCustomMessage: tool({
       description: "Send custom formatted WhatsApp message to user.",
       inputSchema: z.object({
@@ -1244,8 +1144,6 @@ export function createAISDKTools(
         });
       }),
     }),
-
-    // ==================== MEDIA TOOLS ====================
     getMediaHistory: tool({
       description:
         "Get user's image/media history with OCR text. Triggers: show images, my images, media history.",
@@ -1264,7 +1162,6 @@ export function createAISDKTools(
           mediaType: params.mediaType,
           limit: Math.min(params.limit || 10, 50),
         });
-
         return {
           success: true,
           attachments: result.attachments.map((a) => ({
@@ -1281,7 +1178,6 @@ export function createAISDKTools(
         };
       }),
     }),
-
     searchMediaByText: tool({
       description:
         "Search through extracted text from images. Triggers: find in images, search images, what image.",
@@ -1293,7 +1189,6 @@ export function createAISDKTools(
         const results = await mediaService.searchByText(userId, params.query, {
           limit: params.limit || 5,
         });
-
         if (results.length === 0) {
           return {
             success: true,
@@ -1301,7 +1196,6 @@ export function createAISDKTools(
             message: `No images found containing "${params.query}"`,
           };
         }
-
         return {
           success: true,
           results: results.map((r) => ({
@@ -1316,14 +1210,12 @@ export function createAISDKTools(
         };
       }),
     }),
-
     getMediaStats: tool({
       description:
         "Get statistics about user's media attachments. Triggers: media stats, how many images.",
       inputSchema: z.object({}),
       execute: dedupe("getMediaStats", async () => {
         const stats = await mediaService.getAttachmentStats(userId);
-
         return {
           success: true,
           ...stats,

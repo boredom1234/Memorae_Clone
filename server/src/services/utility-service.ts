@@ -13,7 +13,6 @@ import {
 } from "../utils/validators";
 import { handleServiceError, ValidationError } from "../utils/errors";
 import { logError, logPerformance, logWarn } from "../utils/logger";
-
 export class UtilityService {
   parseNaturalLanguageDate(params: {
     text: string;
@@ -29,31 +28,22 @@ export class UtilityService {
     }>;
   } {
     const startTime = Date.now();
-
     try {
-      // Validate input
       const validatedParams = validate(parseNaturalLanguageDateSchema, params);
-
       if (!validatedParams.text || validatedParams.text.trim().length === 0) {
         throw new ValidationError("Text cannot be empty");
       }
-
       const referenceDate = validatedParams.referenceDate
         ? new Date(validatedParams.referenceDate)
         : new Date();
-
-      // Validate reference date
       if (isNaN(referenceDate.getTime())) {
         throw new ValidationError("Invalid reference date");
       }
-
       const results = chrono.parse(validatedParams.text, referenceDate);
-
       const extractedDates = results
         .map((result) => {
           try {
             const date = result.start.date();
-            // Interpret the parsed wall-clock time in the user's timezone and convert to UTC
             const utcISO = wallClockToUTCFromZone(
               date,
               validatedParams.timezone,
@@ -75,11 +65,9 @@ export class UtilityService {
           }
         })
         .filter((d): d is NonNullable<typeof d> => d !== null);
-
       logPerformance("parseNaturalLanguageDate", Date.now() - startTime, {
         count: extractedDates.length,
       });
-
       return {
         success: extractedDates.length > 0,
         extractedDates,
@@ -91,7 +79,6 @@ export class UtilityService {
       throw handleServiceError(error, "parseNaturalLanguageDate");
     }
   }
-
   detectIntent(params: { message: string; conversationContext?: string[] }): {
     intent: string;
     confidence: number;
@@ -104,25 +91,19 @@ export class UtilityService {
     isActionIntent: boolean;
   } {
     const startTime = Date.now();
-
     try {
-      // Validate input
       const validatedParams = validate(detectIntentSchema, params);
-
       if (
         !validatedParams.message ||
         validatedParams.message.trim().length === 0
       ) {
         throw new ValidationError("Message cannot be empty");
       }
-
       const message = validatedParams.message.toLowerCase();
       let intent = "unknown";
       let confidence = 0.5;
       const entities: any = {};
       let isActionIntent = false;
-
-      // Reminder creation patterns
       if (
         message.includes("remind me") ||
         message.includes("reminder") ||
@@ -132,9 +113,7 @@ export class UtilityService {
         intent = "createReminder";
         confidence = 0.9;
         isActionIntent = true;
-      }
-      // Update/modify patterns
-      else if (
+      } else if (
         message.includes("update") ||
         message.includes("change") ||
         message.includes("modify") ||
@@ -143,9 +122,7 @@ export class UtilityService {
         intent = "updateReminder";
         confidence = 0.85;
         isActionIntent = true;
-      }
-      // Delete/remove patterns
-      else if (
+      } else if (
         message.includes("delete") ||
         message.includes("remove") ||
         message.includes("cancel")
@@ -161,9 +138,7 @@ export class UtilityService {
           confidence = 0.7;
         }
         isActionIntent = true;
-      }
-      // Snooze patterns
-      else if (
+      } else if (
         message.includes("snooze") ||
         message.includes("postpone") ||
         message.includes("delay")
@@ -171,9 +146,7 @@ export class UtilityService {
         intent = "snoozeReminder";
         confidence = 0.9;
         isActionIntent = true;
-      }
-      // List management patterns
-      else if (
+      } else if (
         message.includes("add to list") ||
         message.includes("add to my list") ||
         message.includes("shopping list") ||
@@ -182,9 +155,7 @@ export class UtilityService {
         intent = "addItemToList";
         confidence = 0.85;
         isActionIntent = true;
-      }
-      // Personal info/settings queries
-      else if (
+      } else if (
         message.includes("my name") ||
         message.includes("who am i") ||
         message.includes("my phone") ||
@@ -195,10 +166,8 @@ export class UtilityService {
       ) {
         intent = "getUserSettings";
         confidence = 0.9;
-        isActionIntent = false; // Query, not action
-      }
-      // Query patterns
-      else if (
+        isActionIntent = false;
+      } else if (
         message.includes("show me") ||
         message.includes("what") ||
         message.includes("list my") ||
@@ -211,10 +180,8 @@ export class UtilityService {
           intent = "getLists";
           confidence = 0.8;
         }
-        isActionIntent = false; // Query, not action
-      }
-      // Completion patterns
-      else if (
+        isActionIntent = false;
+      } else if (
         message.includes("done") ||
         message.includes("complete") ||
         message.includes("finished")
@@ -223,8 +190,6 @@ export class UtilityService {
         confidence = 0.75;
         isActionIntent = true;
       }
-
-      // Extract dates with error handling
       try {
         const dateResults = chrono.parse(message);
         if (dateResults.length > 0) {
@@ -244,8 +209,6 @@ export class UtilityService {
       } catch (error) {
         logWarn("Failed to extract dates from message", { message });
       }
-
-      // Extract priorities
       if (
         message.includes("high priority") ||
         message.includes("urgent") ||
@@ -255,13 +218,11 @@ export class UtilityService {
       } else if (message.includes("low priority")) {
         entities.priorities = ["low"];
       }
-
       logPerformance("detectIntent", Date.now() - startTime, {
         intent,
         confidence,
         isActionIntent,
       });
-
       return {
         intent,
         confidence,
@@ -273,11 +234,13 @@ export class UtilityService {
       throw handleServiceError(error, "detectIntent");
     }
   }
-
   suggestReminderTime(params: {
     taskDescription: string;
     timezone: string;
-    userSchedule?: Array<{ startTime: string; endTime: string }>;
+    userSchedule?: Array<{
+      startTime: string;
+      endTime: string;
+    }>;
   }): {
     suggestedTimes: Array<{
       time: string;
@@ -286,50 +249,39 @@ export class UtilityService {
     }>;
   } {
     const startTime = Date.now();
-
     try {
-      // Validate input
       const validatedParams = validate(suggestReminderTimeSchema, params);
-
       if (
         !validatedParams.taskDescription ||
         validatedParams.taskDescription.trim().length === 0
       ) {
         throw new ValidationError("Task description cannot be empty");
       }
-
       if (!validatedParams.timezone) {
         throw new ValidationError("Timezone is required");
       }
-
       const suggestedTimes: Array<{
         time: string;
         reason: string;
         confidence: number;
       }> = [];
-
-      // Default suggestions using user's timezone
       const tomorrow9am = createFutureDateInZone(
         validatedParams.timezone,
         1,
         9,
         0,
       );
-
       suggestedTimes.push({
         time: tomorrow9am,
         reason: "Tomorrow morning at 9 AM",
         confidence: 0.8,
       });
-
       const todayEvening = createFutureDateInZone(
         validatedParams.timezone,
         0,
         18,
         0,
       );
-
-      // Only suggest today evening if it's still in the future
       try {
         const eveningDate = new Date(todayEvening);
         if (eveningDate > new Date()) {
@@ -339,19 +291,18 @@ export class UtilityService {
             confidence: 0.7,
           });
         }
-      } catch {
-        // Skip if date parsing fails
-      }
-
-      const nextWeek = createFutureDateInZone(validatedParams.timezone, 7, 9, 0);
-
+      } catch {}
+      const nextWeek = createFutureDateInZone(
+        validatedParams.timezone,
+        7,
+        9,
+        0,
+      );
       suggestedTimes.push({
         time: nextWeek,
         reason: "Next week at 9 AM",
         confidence: 0.6,
       });
-
-      // TODO: Implement smart scheduling based on userSchedule
       if (
         validatedParams.userSchedule &&
         validatedParams.userSchedule.length > 0
@@ -360,11 +311,9 @@ export class UtilityService {
           "User schedule provided but smart scheduling not yet implemented",
         );
       }
-
       logPerformance("suggestReminderTime", Date.now() - startTime, {
         count: suggestedTimes.length,
       });
-
       return { suggestedTimes };
     } catch (error) {
       logError("Failed to suggest reminder time", error, {
@@ -373,7 +322,6 @@ export class UtilityService {
       throw handleServiceError(error, "suggestReminderTime");
     }
   }
-
   getCurrentTime(params: { timezone: string }): {
     currentTime: string;
     formattedTime: string;
@@ -382,14 +330,11 @@ export class UtilityService {
     try {
       const now = new Date();
       const utcISO = now.toISOString();
-
-      // Format the current time in the user's timezone
       const formattedTime = formatInZone(
         utcISO,
         params.timezone,
         "DATETIME_MED_WITH_SECONDS",
       );
-
       return {
         currentTime: utcISO,
         formattedTime,
@@ -402,11 +347,6 @@ export class UtilityService {
       throw handleServiceError(error, "getCurrentTime");
     }
   }
-
-  /**
-   * Pick the best date from multiple extracted dates
-   * Prioritizes: highest confidence, soonest future date
-   */
   pickBestDate(
     extractedDates: Array<{
       originalText: string;
@@ -418,18 +358,13 @@ export class UtilityService {
     if (!extractedDates || extractedDates.length === 0) {
       return null;
     }
-
     const now = Date.now();
-    // Filter to future dates only
     const futureDates = extractedDates.filter(
       (d) => new Date(d.parsedDate).getTime() > now,
     );
-
     if (futureDates.length === 0) {
       return null;
     }
-
-    // Sort by confidence (desc), then by time (asc - soonest first)
     futureDates.sort((a, b) => {
       const confDiff = b.confidence - a.confidence;
       if (Math.abs(confDiff) > 0.1) return confDiff;
@@ -437,15 +372,8 @@ export class UtilityService {
         new Date(a.parsedDate).getTime() - new Date(b.parsedDate).getTime()
       );
     });
-
     return futureDates[0].parsedDate;
   }
-
-  /**
-   * Ensure a date is in the future; if not, roll forward intelligently
-   * @param dateISO - ISO date string
-   * @param timezone - User's timezone
-   */
   ensureFuture(dateISO: string, timezone: string): string {
     return ensureFutureInZone(dateISO, timezone);
   }

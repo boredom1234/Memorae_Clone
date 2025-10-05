@@ -10,7 +10,6 @@ import { logError, logInfo } from "../utils/logger";
 import { createAISDKTools, ToolServices } from "./tools/tool-definitions";
 import { createDeduplicationWrapper } from "./tools/tool-deduplication";
 import { detectIntent, mapIntentsToTools } from "./tools/tool-intent-detection";
-
 export class ToolsRegistry {
   private userService: UserService;
   private reminderService: ReminderService;
@@ -19,7 +18,6 @@ export class ToolsRegistry {
   private notesService: NotesService;
   private notificationService: NotificationService;
   private mediaService: MediaAttachmentService;
-
   constructor() {
     this.userService = new UserService();
     this.reminderService = new ReminderService();
@@ -29,11 +27,8 @@ export class ToolsRegistry {
     this.notificationService = new NotificationService();
     this.mediaService = new MediaAttachmentService();
   }
-
-  // Get all available tools with their schemas
   getTools() {
     return {
-      // Reminder Management
       createReminder: {
         description: "Create a new reminder",
         parameters: {
@@ -129,8 +124,6 @@ export class ToolsRegistry {
           this.reminderService,
         ),
       },
-
-      // List Management
       createList: {
         description: "Create a new list",
         parameters: {
@@ -203,8 +196,6 @@ export class ToolsRegistry {
         },
         handler: this.listService.searchLists.bind(this.listService),
       },
-
-      // User Settings
       updateUserSettings: {
         description: "Update user settings",
         parameters: {
@@ -230,8 +221,6 @@ export class ToolsRegistry {
         },
         handler: this.userService.setQuietHours.bind(this.userService),
       },
-
-      // Utility
       parseNaturalLanguageDate: {
         description: "Parse natural language dates",
         parameters: {
@@ -270,15 +259,11 @@ export class ToolsRegistry {
       },
     };
   }
-
-  // Execute a tool by name
   async executeTool(toolName: string, params: any): Promise<any> {
     try {
       logInfo(`Executing tool: ${toolName}`, { toolName, hasParams: !!params });
-
       const tools = this.getTools();
       const tool = tools[toolName as keyof typeof tools];
-
       if (!tool) {
         throw new AppError(
           `Tool "${toolName}" not found`,
@@ -286,23 +271,17 @@ export class ToolsRegistry {
           "TOOL_NOT_FOUND",
         );
       }
-
       const result = await tool.handler(params);
-
       logInfo(`Tool executed successfully: ${toolName}`, { toolName });
-
       return result;
     } catch (error) {
       logError(`Failed to execute tool: ${toolName}`, error, {
         toolName,
         params,
       });
-
-      // Re-throw AppError as-is, wrap other errors
       if (error instanceof AppError) {
         throw error;
       }
-
       throw new AppError(
         `Tool execution failed: ${error instanceof Error ? error.message : "Unknown error"}`,
         500,
@@ -311,38 +290,23 @@ export class ToolsRegistry {
       );
     }
   }
-
-  // Get user service for direct access
   getUserService() {
     return this.userService;
   }
-
-  // Get reminder service for direct access
   getReminderService() {
     return this.reminderService;
   }
-
-  // Get list service for direct access
   getListService() {
     return this.listService;
   }
-
-  // Get utility service for direct access
   getUtilityService() {
     return this.utilityService;
   }
-
-  // Get notes service for direct access
   getNotesService() {
     return this.notesService;
   }
-
-  // Get AI SDK compatible tools for tool calling
   getAISDKTools(userId: string) {
-    // Create deduplication wrapper
     const { dedupe, stats } = createDeduplicationWrapper();
-
-    // Prepare services
     const services: ToolServices = {
       userService: this.userService,
       reminderService: this.reminderService,
@@ -352,53 +316,30 @@ export class ToolsRegistry {
       notificationService: this.notificationService,
       mediaService: this.mediaService,
     };
-
-    // Create all tools
     const toolsObj = createAISDKTools(userId, services, dedupe);
-
-    // Attach stats for tracking
     (toolsObj as any).__stats = stats;
     return toolsObj;
   }
-
-  /**
-   * Get relevant tools based on detected intent
-   * Filters tools to reduce context size
-   */
   getRelevantTools(userId: string, message: string): any {
     const intents = detectIntent(message);
     const allTools = this.getAISDKTools(userId);
     const selectedToolNames = mapIntentsToTools(intents);
-
-    // Build filtered tools object
     const filteredTools: any = {};
     for (const toolName of selectedToolNames) {
       if (allTools[toolName]) {
         filteredTools[toolName] = allTools[toolName];
       }
     }
-
-    // Copy stats reference
     if ((allTools as any).__stats) {
       (filteredTools as any).__stats = (allTools as any).__stats;
     }
-
     logInfo(
       `Intent detection: ${intents.join(", ")} | Selected ${selectedToolNames.size} tools from ${Object.keys(allTools).length} total`,
       { intents, toolCount: selectedToolNames.size },
     );
-
     return filteredTools;
   }
-
-  /**
-   * LEGACY: Get a restricted subset of tools based on detected intent
-   * Kept for backward compatibility
-   * @deprecated Use getRelevantTools instead
-   */
   getAISDKToolsSubset(userId: string, intent: string): any {
-    // For backward compatibility, just return all tools
-    // The new system uses getRelevantTools with message-based intent detection
     return this.getAISDKTools(userId);
   }
 }

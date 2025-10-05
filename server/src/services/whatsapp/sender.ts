@@ -1,21 +1,17 @@
 import { WASocket, proto } from "@whiskeysockets/baileys";
 import { SendMessageOptions } from "./types";
 import pino from "pino";
-
 export class MessageSender {
   private socket: WASocket;
   private logger = pino({ level: "info" });
-
   constructor(socket: WASocket) {
     this.socket = socket;
   }
-
   async sendText(
     options: SendMessageOptions,
   ): Promise<proto.WebMessageInfo | null> {
     try {
       const { to, text, quotedMessageId } = options;
-
       const sentMessage = await this.socket.sendMessage(
         to,
         { text },
@@ -25,7 +21,6 @@ export class MessageSender {
             : undefined,
         },
       );
-
       this.logger.info(`Message sent to ${to}`);
       return sentMessage ?? null;
     } catch (error) {
@@ -33,7 +28,6 @@ export class MessageSender {
       return null;
     }
   }
-
   async sendImage(
     to: string,
     imageBuffer: Buffer,
@@ -44,7 +38,6 @@ export class MessageSender {
         image: imageBuffer,
         caption,
       });
-
       this.logger.info(`Image sent to ${to}`);
       return sentMessage ?? null;
     } catch (error) {
@@ -52,7 +45,6 @@ export class MessageSender {
       return null;
     }
   }
-
   async sendAudio(
     to: string,
     audioBuffer: Buffer,
@@ -61,9 +53,8 @@ export class MessageSender {
       const sentMessage = await this.socket.sendMessage(to, {
         audio: audioBuffer,
         mimetype: "audio/mp4",
-        ptt: true, // Push to talk (voice note)
+        ptt: true,
       });
-
       this.logger.info(`Audio sent to ${to}`);
       return sentMessage ?? null;
     } catch (error) {
@@ -71,7 +62,6 @@ export class MessageSender {
       return null;
     }
   }
-
   async sendDocument(
     to: string,
     documentBuffer: Buffer,
@@ -84,7 +74,6 @@ export class MessageSender {
         fileName: filename,
         mimetype,
       });
-
       this.logger.info(`Document sent to ${to}`);
       return sentMessage ?? null;
     } catch (error) {
@@ -92,7 +81,6 @@ export class MessageSender {
       return null;
     }
   }
-
   async sendReaction(
     to: string,
     messageId: string,
@@ -105,13 +93,11 @@ export class MessageSender {
           key: { id: messageId, remoteJid: to },
         },
       });
-
       this.logger.info(`Reaction sent to ${to}`);
     } catch (error) {
       this.logger.error({ error }, "Error sending reaction");
     }
   }
-
   async markAsRead(to: string, messageId: string): Promise<void> {
     try {
       await this.socket.readMessages([
@@ -122,7 +108,6 @@ export class MessageSender {
       this.logger.error({ error }, "Error marking message as read");
     }
   }
-
   async sendTyping(to: string, isTyping: boolean = true): Promise<void> {
     try {
       await this.socket.sendPresenceUpdate(

@@ -1,6 +1,4 @@
 import pino from "pino";
-
-// Create logger instance
 export const logger = pino({
   level: process.env.LOG_LEVEL || "info",
   transport:
@@ -15,12 +13,9 @@ export const logger = pino({
         }
       : undefined,
 });
-
-// Helper functions for structured logging
 export const logInfo = (message: string, data?: any) => {
   logger.info(data || {}, message);
 };
-
 export const logError = (message: string, error: any, context?: any) => {
   logger.error(
     {
@@ -35,16 +30,12 @@ export const logError = (message: string, error: any, context?: any) => {
     message,
   );
 };
-
 export const logWarn = (message: string, data?: any) => {
   logger.warn(data || {}, message);
 };
-
 export const logDebug = (message: string, data?: any) => {
   logger.debug(data || {}, message);
 };
-
-// Performance logging
 export const logPerformance = (
   operation: string,
   duration: number,
@@ -59,8 +50,6 @@ export const logPerformance = (
     `Performance: ${operation} took ${duration}ms`,
   );
 };
-
-// Audit logging
 export const logAudit = (
   action: string,
   userId: string,

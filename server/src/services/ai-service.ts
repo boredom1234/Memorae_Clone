@@ -16,35 +16,24 @@ import { cerebras } from "@ai-sdk/cerebras";
 import { config } from "../config/env";
 import { ConversationMessage } from "../types/conversation";
 import pino from "pino";
-
 export class AIService {
   private logger = pino({ level: "info" });
   private defaultModel: any;
   private fallbackModels: any[] = [];
-
   constructor() {
-    // Initialize default model and fallbacks based on available API keys
     this.initializeModels();
   }
-
   private initializeModels() {
-    // Get primary model
     this.defaultModel = this.getDefaultModel();
-
-    // Initialize fallback models
     this.fallbackModels = this.getFallbackModels();
-
     this.logger.info(
       `AI Service initialized with ${this.fallbackModels.length} fallback models`,
     );
   }
-
   private getDefaultModel() {
     const provider = config.ai.provider.toLowerCase();
     const model = config.ai.model;
-
     this.logger.info(`Configuring AI: Provider=${provider}, Model=${model}`);
-
     try {
       switch (provider) {
         case "openai":
@@ -52,73 +41,61 @@ export class AIService {
             throw new Error("OpenAI API key not configured");
           this.logger.info(`Using OpenAI (${model})`);
           return openai(model);
-
         case "groq":
           if (!config.ai.groqApiKey)
             throw new Error("Groq API key not configured");
           this.logger.info(`Using Groq (${model})`);
           return groq(model);
-
         case "xai":
           if (!config.ai.xaiApiKey)
             throw new Error("xAI API key not configured");
           this.logger.info(`Using xAI (${model})`);
           return xai(model);
-
         case "google":
           if (!config.ai.googleApiKey)
             throw new Error("Google API key not configured");
           this.logger.info(`Using Google (${model})`);
           return google(model);
-
         case "anthropic":
           if (!config.ai.anthropicApiKey)
             throw new Error("Anthropic API key not configured");
           this.logger.info(`Using Anthropic (${model})`);
           return anthropic(model);
-
         case "deepseek":
           if (!config.ai.deepseekApiKey)
             throw new Error("DeepSeek API key not configured");
           this.logger.info(`Using DeepSeek (${model})`);
           return deepseek(model);
-
         case "mistral":
           if (!config.ai.mistralApiKey)
             throw new Error("Mistral API key not configured");
           this.logger.info(`Using Mistral (${model})`);
           return mistral(model);
-
         case "togetherai":
           if (!config.ai.togetheraiApiKey)
             throw new Error("Together.ai API key not configured");
           this.logger.info(`Using Together.ai (${model})`);
           return togetherai(model);
-
         case "cohere":
           if (!config.ai.cohereApiKey)
             throw new Error("Cohere API key not configured");
           this.logger.info(`Using Cohere (${model})`);
           return cohere(model);
-
         case "fireworks":
           if (!config.ai.fireworksApiKey)
             throw new Error("Fireworks API key not configured");
           this.logger.info(`Using Fireworks (${model})`);
           return fireworks(model);
-
         case "deepinfra":
           if (!config.ai.deepinfraApiKey)
             throw new Error("DeepInfra API key not configured");
           this.logger.info(`Using DeepInfra (${model})`);
           return deepinfra(model);
-
         case "cerebras":
           if (!config.ai.cerebrasApiKey)
             throw new Error("Cerebras API key not configured");
           this.logger.info(`Using Cerebras (${model})`);
           return cerebras(model);
-
         case "azure":
           if (
             !config.ai.azureApiKey ||
@@ -131,14 +108,12 @@ export class AIService {
             `Using Azure OpenAI (${config.ai.azureDeploymentName})`,
           );
           return azure(config.ai.azureDeploymentName);
-
         case "vertex":
           if (!config.ai.vertexProjectId || !config.ai.vertexLocation) {
             throw new Error("Google Vertex AI not fully configured");
           }
           this.logger.info(`Using Google Vertex AI (${model})`);
           return vertex(model);
-
         default:
           throw new Error(`Unknown AI provider: ${provider}`);
       }
@@ -148,11 +123,8 @@ export class AIService {
       return null;
     }
   }
-
   private getFallbackModels(): any[] {
     const fallbacks: any[] = [];
-
-    // Define fallback providers in order of preference
     const fallbackConfigs = [
       {
         provider: "groq",
@@ -181,18 +153,13 @@ export class AIService {
         apiKey: config.ai.deepseekApiKey,
       },
     ];
-
     for (const fallbackConfig of fallbackConfigs) {
-      // Skip if this is already the primary provider
       if (fallbackConfig.provider === config.ai.provider.toLowerCase()) {
         continue;
       }
-
-      // Skip if API key is not configured
       if (!fallbackConfig.apiKey) {
         continue;
       }
-
       try {
         let model: any;
         switch (fallbackConfig.provider) {
@@ -217,13 +184,11 @@ export class AIService {
           default:
             continue;
         }
-
         fallbacks.push({
           provider: fallbackConfig.provider,
           model: fallbackConfig.model,
           instance: model,
         });
-
         this.logger.info(
           `Added fallback: ${fallbackConfig.provider} (${fallbackConfig.model})`,
         );
@@ -233,14 +198,8 @@ export class AIService {
         );
       }
     }
-
     return fallbacks;
   }
-
-  /**
-   * Process user message with AI tool calling
-   * The LLM will automatically decide which tool to call
-   */
   async processMessageWithTools(
     message: string,
     userId: string,
@@ -258,11 +217,7 @@ export class AIService {
       this.logger.error("No AI models configured");
       throw new Error("AI service not available - no models configured");
     }
-
-    // Capture a stable 'now' for this turn to avoid time drift between retries
     const nowIso = new Date().toISOString();
-
-    // Try primary model first, then fallbacks
     const modelsToTry = [
       { provider: "primary", instance: this.defaultModel },
       ...this.fallbackModels.map((f) => ({
@@ -270,24 +225,15 @@ export class AIService {
         instance: f.instance,
       })),
     ].filter((m) => m.instance);
-
     let lastError: Error | null = null;
-
     for (const modelConfig of modelsToTry) {
       try {
         this.logger.info(`Attempting AI request with ${modelConfig.provider}`);
-
-        // Debug: Log tool names to verify they're being passed
         this.logger.info(`Tools available: ${Object.keys(tools).join(", ")}`);
-
-        // Convert conversation history to AI SDK format. The latest user message
-        // is already included by the caller in conversationHistory, so DO NOT
-        // append it again here to avoid duplication and confused context.
         const messages = conversationHistory.map((msg) => ({
           role: msg.role,
           content: msg.content,
         }));
-
         let result = await generateText({
           model: modelConfig.instance,
           messages,
@@ -507,35 +453,25 @@ When users send images with captions like "Make this list for me" or "Create rem
 Current user timezone: ${timezone}
 Current user ID: ${userId}`,
           tools,
-          stopWhen: stepCountIs(7), // Allow up to 7 multi-step tool calls for complex flows
+          stopWhen: stepCountIs(7),
         });
-
-        // Check if tools were actually executed by examining the stats
         const toolStats = (tools as any).__stats;
         const toolsActuallyExecuted = toolStats?.executed === true;
-
         this.logger.info(
           `AI processed message with ${modelConfig.provider} - ${result.toolCalls.length} tool calls, tools executed: ${toolsActuallyExecuted}`,
         );
-
         if (toolsActuallyExecuted && toolStats.names) {
           this.logger.info(`Tools executed: ${toolStats.names.join(", ")}`);
         }
-
-        // If no tools appear to have been used AND the input likely requires tools,
-        // retry with stricter instructions. Some providers may execute tools but
-        // not populate toolCalls; in that case, also check toolResults or execution stats.
         const toolsUsed =
           (Array.isArray(result.toolCalls) && result.toolCalls.length > 0) ||
           (Array.isArray(result.toolResults) &&
             result.toolResults.length > 0) ||
           toolsActuallyExecuted;
-
         if (!toolsUsed && this.messageLikelyNeedsTools(message)) {
           this.logger.warn(
             `No tool calls detected for a likely tool-requiring message. Retrying with tools-required system prompt...`,
           );
-
           result = await generateText({
             model: modelConfig.instance,
             messages,
@@ -548,23 +484,17 @@ Current user ID: ${userId}`,
             tools,
             stopWhen: stepCountIs(5),
           });
-
           this.logger.info(
             `Retry completed - tool calls: ${result.toolCalls.length}, tool results: ${Array.isArray(result.toolResults) ? result.toolResults.length : 0}`,
           );
-
-          // Check if tools were executed in retry
           const retryToolStats = (tools as any).__stats;
           const retryToolsExecuted = retryToolStats?.executed === true;
-
-          // Check if tools are still missing after retry for action intents
           const stillNoTools =
             (!Array.isArray(result.toolCalls) ||
               result.toolCalls.length === 0) &&
             (!Array.isArray(result.toolResults) ||
               result.toolResults.length === 0) &&
             !retryToolsExecuted;
-
           if (stillNoTools) {
             this.logger.warn(
               `Tools required but missing even after retry. Flagging response.`,
@@ -577,17 +507,13 @@ Current user ID: ${userId}`,
             };
           }
         }
-
-        // Final check: were tools actually executed even if arrays are empty?
         const finalToolStats = (tools as any).__stats;
         const finalToolsExecuted = finalToolStats?.executed === true;
-
         return {
           text: result.text,
           toolCalls: result.toolCalls,
           toolResults: result.toolResults,
           toolsRequiredButMissing: false,
-          // Pass through execution stats for downstream use
           _toolsExecuted: finalToolsExecuted,
         };
       } catch (error: any) {
@@ -599,8 +525,6 @@ Current user ID: ${userId}`,
         continue;
       }
     }
-
-    // All models failed
     this.logger.error(
       { error: lastError?.message || "Unknown error" },
       "All AI models failed to process message",
@@ -609,13 +533,9 @@ Current user ID: ${userId}`,
       `AI service unavailable: ${lastError?.message || "All providers failed"}`,
     );
   }
-
-  // Broadened heuristic to detect when a message likely requires tools
-  // Includes personal info/settings queries and more action verbs
   private messageLikelyNeedsTools(input: string): boolean {
     const s = (input || "").toLowerCase();
     const actionKeywords = [
-      // Reminder actions
       "remind",
       "reminder",
       "set a reminder",
@@ -623,7 +543,6 @@ Current user ID: ${userId}`,
       "snooze",
       "postpone",
       "delay",
-      // CRUD operations
       "create",
       "add",
       "put",
@@ -639,7 +558,6 @@ Current user ID: ${userId}`,
       "mark as",
       "done",
       "finished",
-      // Query operations
       "list",
       "show",
       "what's on",
@@ -647,7 +565,6 @@ Current user ID: ${userId}`,
       "find",
       "search",
       "upcoming",
-      // Personal info/settings
       "my name",
       "who am i",
       "my phone",
@@ -656,7 +573,6 @@ Current user ID: ${userId}`,
       "my settings",
       "quiet hours",
       "notification",
-      // Notes
       "note",
       "remember",
       "save",

@@ -1,24 +1,15 @@
 import { FastifyRequest } from "fastify";
 import { z } from "zod";
 import { AppError } from "../utils/errors";
-
-/**
- * Sanitize user input to prevent XSS and injection attacks
- */
 export function sanitizeInput(input: string): string {
   if (typeof input !== "string") return "";
-
   return input
     .trim()
-    .replace(/[<>]/g, "") // Remove potential HTML tags
-    .replace(/javascript:/gi, "") // Remove javascript: protocol
-    .replace(/on\w+=/gi, "") // Remove event handlers
-    .substring(0, 10000); // Limit length to prevent DoS
+    .replace(/[<>]/g, "")
+    .replace(/javascript:/gi, "")
+    .replace(/on\w+=/gi, "")
+    .substring(0, 10000);
 }
-
-/**
- * Validate WhatsApp message input
- */
 export const whatsappMessageSchema = z.object({
   to: z
     .string()
@@ -30,10 +21,6 @@ export const whatsappMessageSchema = z.object({
     .max(4096, "Message too long")
     .transform(sanitizeInput),
 });
-
-/**
- * Validate reminder creation input
- */
 export const reminderSchema = z.object({
   title: z
     .string()
@@ -54,10 +41,6 @@ export const reminderSchema = z.object({
     .transform(sanitizeInput)
     .optional(),
 });
-
-/**
- * Validate list creation input
- */
 export const listSchema = z.object({
   name: z
     .string()
@@ -71,10 +54,6 @@ export const listSchema = z.object({
     .optional(),
   items: z.array(z.string().max(500).transform(sanitizeInput)).optional(),
 });
-
-/**
- * Validate search query input
- */
 export const searchSchema = z.object({
   query: z
     .string()
@@ -84,10 +63,6 @@ export const searchSchema = z.object({
   limit: z.number().int().min(1).max(100).optional(),
   offset: z.number().int().min(0).optional(),
 });
-
-/**
- * Validate user settings input
- */
 export const userSettingsSchema = z.object({
   timezone: z
     .string()
@@ -105,10 +80,6 @@ export const userSettingsSchema = z.object({
     .optional(),
   notificationEnabled: z.boolean().optional(),
 });
-
-/**
- * Generic validation middleware factory
- */
 export function validateBody<T>(schema: z.ZodSchema<T>) {
   return async (request: FastifyRequest) => {
     try {
@@ -119,7 +90,6 @@ export function validateBody<T>(schema: z.ZodSchema<T>) {
         const errorMessages = error.errors
           .map((err) => `${err.path.join(".")}: ${err.message}`)
           .join(", ");
-
         throw new AppError(
           `Validation failed: ${errorMessages}`,
           400,
@@ -130,10 +100,6 @@ export function validateBody<T>(schema: z.ZodSchema<T>) {
     }
   };
 }
-
-/**
- * Validate query parameters
- */
 export function validateQuery<T>(schema: z.ZodSchema<T>) {
   return async (request: FastifyRequest) => {
     try {
@@ -144,7 +110,6 @@ export function validateQuery<T>(schema: z.ZodSchema<T>) {
         const errorMessages = error.errors
           .map((err) => `${err.path.join(".")}: ${err.message}`)
           .join(", ");
-
         throw new AppError(
           `Query validation failed: ${errorMessages}`,
           400,
@@ -155,15 +120,13 @@ export function validateQuery<T>(schema: z.ZodSchema<T>) {
     }
   };
 }
-
-/**
- * Rate limiting per user
- */
 export const userRateLimit = new Map<
   string,
-  { count: number; resetTime: number }
+  {
+    count: number;
+    resetTime: number;
+  }
 >();
-
 export function rateLimitByUser(
   maxRequests: number = 60,
   windowMs: number = 60000,
@@ -173,15 +136,12 @@ export function rateLimitByUser(
       (request.headers["x-user-id"] as string) ||
       (request.body as any)?.userId ||
       request.ip;
-
     const now = Date.now();
     const userLimit = userRateLimit.get(userId);
-
     if (!userLimit || now > userLimit.resetTime) {
       userRateLimit.set(userId, { count: 1, resetTime: now + windowMs });
       return;
     }
-
     if (userLimit.count >= maxRequests) {
       throw new AppError(
         "Rate limit exceeded. Please try again later.",
@@ -189,30 +149,17 @@ export function rateLimitByUser(
         "RATE_LIMIT_EXCEEDED",
       );
     }
-
     userLimit.count++;
   };
 }
-
-/**
- * Validate WhatsApp ID format
- */
 export function validateWhatsAppId(id: string): boolean {
   const whatsappIdRegex = /^\+?[1-9]\d{1,14}@s\.whatsapp\.net$/;
   return whatsappIdRegex.test(id);
 }
-
-/**
- * Validate phone number format
- */
 export function validatePhoneNumber(phone: string): boolean {
   const phoneRegex = /^\+?[1-9]\d{1,14}$/;
   return phoneRegex.test(phone);
 }
-
-/**
- * Validate ISO datetime string
- */
 export function validateDateTime(datetime: string): boolean {
   try {
     const date = new Date(datetime);
@@ -221,10 +168,6 @@ export function validateDateTime(datetime: string): boolean {
     return false;
   }
 }
-
-/**
- * Validate timezone string
- */
 export function validateTimezone(timezone: string): boolean {
   try {
     Intl.DateTimeFormat(undefined, { timeZone: timezone });
@@ -233,29 +176,19 @@ export function validateTimezone(timezone: string): boolean {
     return false;
   }
 }
-
-/**
- * Clean and validate text input for AI processing
- */
 export function validateAIInput(text: string): string {
   if (typeof text !== "string") {
     throw new AppError("Input must be a string", 400, "INVALID_INPUT");
   }
-
   const cleaned = sanitizeInput(text);
-
   if (cleaned.length === 0) {
     throw new AppError("Input cannot be empty", 400, "EMPTY_INPUT");
   }
-
   if (cleaned.length > 4000) {
     throw new AppError("Input too long", 400, "INPUT_TOO_LONG");
   }
-
   return cleaned;
 }
-
-// ---------------- Notification & Communication Schemas ----------------
 export const sendReminderToContactSchema = z.object({
   recipientNumber: z
     .string()
@@ -272,13 +205,11 @@ export const sendReminderToContactSchema = z.object({
   recipientName: z.string().max(100).transform(sanitizeInput).optional(),
   fromUserName: z.string().max(100).transform(sanitizeInput).optional(),
 });
-
 export const getNotificationHistoryQuerySchema = z.object({
   limit: z.number().int().min(1).max(100).optional(),
   offset: z.number().int().min(0).optional(),
   type: z.enum(["reminder", "shared", "all"]).optional(),
 });
-
 export const sendCustomMessageSchema = z.object({
   message: z
     .string()

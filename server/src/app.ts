@@ -11,7 +11,6 @@ import {
 } from "./middleware/validation";
 import { registerNotificationRoutes } from "./controllers/notification-controller";
 import { getWhatsAppManager } from "./services/runtime";
-
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
@@ -29,23 +28,17 @@ export async function buildApp(): Promise<FastifyInstance> {
           : undefined,
     },
   });
-
-  // Register plugins
   await app.register(helmet, {
     contentSecurityPolicy: false,
   });
-
   await app.register(cors, {
     origin: true,
     credentials: true,
   });
-
   await app.register(rateLimit, {
     max: 100,
     timeWindow: "1 minute",
   });
-
-  // Health check route
   app.get("/health", async () => {
     return {
       status: "ok",
@@ -53,8 +46,6 @@ export async function buildApp(): Promise<FastifyInstance> {
       uptime: process.uptime(),
     };
   });
-
-  // API routes
   app.get("/api/v1", async () => {
     return {
       message: "Memorae Clone API",
@@ -65,25 +56,21 @@ export async function buildApp(): Promise<FastifyInstance> {
       },
     };
   });
-
-  // WhatsApp routes with validation
   app.post(
     "/api/v1/whatsapp/send",
     {
       preHandler: [
-        rateLimitByUser(30, 60000), // 30 requests per minute per user
+        rateLimitByUser(30, 60000),
         validateBody(whatsappMessageSchema),
       ],
     },
     async (_request, reply) => {
-      // Body is validated by middleware, implementation will use WhatsApp manager
       return reply.send({
         success: true,
         message: "Message queued for sending",
       });
     },
   );
-
   app.get("/api/v1/whatsapp/status", async () => {
     const manager = getWhatsAppManager();
     const connected = manager ? manager.isConnected() : false;
@@ -93,12 +80,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       schedulerRunning: manager ? manager.isSchedulerRunning() : false,
     };
   });
-
-  // Register Notification & Communication routes
   await registerNotificationRoutes(app);
-
-  // Global error handler
   app.setErrorHandler(globalErrorHandler);
-
   return app;
 }

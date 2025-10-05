@@ -1,24 +1,18 @@
 import TelegramBot from "node-telegram-bot-api";
 import { SendMessageOptions } from "./types";
 import pino from "pino";
-
 export class MessageSender {
   private bot: TelegramBot;
   private logger = pino({ level: "info" });
-
   constructor(bot: TelegramBot) {
     this.bot = bot;
   }
-
   async sendText(
     options: SendMessageOptions,
   ): Promise<TelegramBot.Message | null> {
     try {
       const { chatId, text, replyToMessageId, parseMode } = options;
-
-      // If parseMode is Markdown, try to send with it, but fall back to plain text on error
       let sentMessage: TelegramBot.Message | null = null;
-
       if (parseMode === "Markdown" || parseMode === "MarkdownV2") {
         try {
           sentMessage = await this.bot.sendMessage(chatId, text, {
@@ -26,7 +20,6 @@ export class MessageSender {
             parse_mode: parseMode,
           });
         } catch (markdownError: any) {
-          // If Markdown parsing fails, try without parse mode
           this.logger.warn(
             `Markdown parsing failed, sending as plain text: ${markdownError.message}`,
           );
@@ -40,7 +33,6 @@ export class MessageSender {
           parse_mode: parseMode,
         });
       }
-
       this.logger.info(`Message sent to chat ${chatId}`);
       return sentMessage;
     } catch (error) {
@@ -48,7 +40,6 @@ export class MessageSender {
       return null;
     }
   }
-
   async sendPhoto(
     chatId: number,
     photoBuffer: Buffer,
@@ -60,7 +51,6 @@ export class MessageSender {
         caption,
         reply_to_message_id: replyToMessageId,
       });
-
       this.logger.info(`Photo sent to chat ${chatId}`);
       return sentMessage;
     } catch (error) {
@@ -68,7 +58,6 @@ export class MessageSender {
       return null;
     }
   }
-
   async sendAudio(
     chatId: number,
     audioBuffer: Buffer,
@@ -80,7 +69,6 @@ export class MessageSender {
         caption,
         reply_to_message_id: replyToMessageId,
       });
-
       this.logger.info(`Audio sent to chat ${chatId}`);
       return sentMessage;
     } catch (error) {
@@ -88,7 +76,6 @@ export class MessageSender {
       return null;
     }
   }
-
   async sendVoice(
     chatId: number,
     voiceBuffer: Buffer,
@@ -100,7 +87,6 @@ export class MessageSender {
         caption,
         reply_to_message_id: replyToMessageId,
       });
-
       this.logger.info(`Voice message sent to chat ${chatId}`);
       return sentMessage;
     } catch (error) {
@@ -108,7 +94,6 @@ export class MessageSender {
       return null;
     }
   }
-
   async sendVideo(
     chatId: number,
     videoBuffer: Buffer,
@@ -120,7 +105,6 @@ export class MessageSender {
         caption,
         reply_to_message_id: replyToMessageId,
       });
-
       this.logger.info(`Video sent to chat ${chatId}`);
       return sentMessage;
     } catch (error) {
@@ -128,7 +112,6 @@ export class MessageSender {
       return null;
     }
   }
-
   async sendDocument(
     chatId: number,
     documentBuffer: Buffer,
@@ -148,7 +131,6 @@ export class MessageSender {
           filename,
         },
       );
-
       this.logger.info(`Document sent to chat ${chatId}`);
       return sentMessage;
     } catch (error) {
@@ -156,7 +138,6 @@ export class MessageSender {
       return null;
     }
   }
-
   async sendChatAction(
     chatId: number,
     action: TelegramBot.ChatAction,
@@ -167,7 +148,6 @@ export class MessageSender {
       this.logger.error({ error }, "Error sending chat action");
     }
   }
-
   async sendTyping(chatId: number, isTyping: boolean = true): Promise<void> {
     if (isTyping) {
       await this.sendChatAction(chatId, "typing");

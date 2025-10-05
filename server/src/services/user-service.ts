@@ -8,32 +8,28 @@ import {
 } from "../utils/validators";
 import { handleServiceError, NotFoundError } from "../utils/errors";
 import { logInfo, logError, logAudit, logPerformance } from "../utils/logger";
-
 export class UserService {
   private supabase = getSupabaseClient();
-
   async findOrCreateUser(
     whatsappId: string,
     phoneNumber: string,
     name?: string,
-  ): Promise<{ user: User; isNew: boolean }> {
-    // Check if user exists
+  ): Promise<{
+    user: User;
+    isNew: boolean;
+  }> {
     const { data: existingUser } = await this.supabase
       .from("users")
       .select("*")
       .eq("whatsapp_id", whatsappId)
       .single();
-
     if (existingUser) {
-      // Update last_active_at
       await this.supabase
         .from("users")
         .update({ last_active_at: new Date().toISOString() })
         .eq("id", existingUser.id);
       return { user: existingUser, isNew: false };
     }
-
-    // Create new user
     const { data: newUser, error } = await this.supabase
       .from("users")
       .insert({
@@ -45,33 +41,29 @@ export class UserService {
       })
       .select()
       .single();
-
     if (error) throw error;
     return { user: newUser, isNew: true };
   }
-
   async findOrCreateTelegramUser(
     telegramId: string,
     name?: string,
     phoneNumber?: string,
-  ): Promise<{ user: User; isNew: boolean }> {
-    // Check if user exists by telegram_id
+  ): Promise<{
+    user: User;
+    isNew: boolean;
+  }> {
     const { data: existingUser } = await this.supabase
       .from("users")
       .select("*")
       .eq("telegram_id", telegramId)
       .single();
-
     if (existingUser) {
-      // Update last_active_at
       await this.supabase
         .from("users")
         .update({ last_active_at: new Date().toISOString() })
         .eq("id", existingUser.id);
       return { user: existingUser, isNew: false };
     }
-
-    // If phone number is provided, check if a WhatsApp user exists with this phone
     if (phoneNumber) {
       const { data: whatsappUser } = await this.supabase
         .from("users")
@@ -79,9 +71,7 @@ export class UserService {
         .eq("phone_number", phoneNumber)
         .is("telegram_id", null)
         .single();
-
       if (whatsappUser) {
-        // Link Telegram to existing WhatsApp account
         const { data: linkedUser, error: updateError } = await this.supabase
           .from("users")
           .update({
@@ -91,13 +81,10 @@ export class UserService {
           .eq("id", whatsappUser.id)
           .select()
           .single();
-
         if (updateError) throw updateError;
         return { user: linkedUser, isNew: false };
       }
     }
-
-    // Create new user
     const { data: newUser, error } = await this.supabase
       .from("users")
       .insert({
@@ -109,54 +96,44 @@ export class UserService {
       })
       .select()
       .single();
-
     if (error) throw error;
     return { user: newUser, isNew: true };
   }
-
   async getUserByWhatsAppId(whatsappId: string): Promise<User | null> {
     const { data } = await this.supabase
       .from("users")
       .select("*")
       .eq("whatsapp_id", whatsappId)
       .single();
-
     return data;
   }
-
   async getUserByTelegramId(telegramId: string): Promise<User | null> {
     const { data } = await this.supabase
       .from("users")
       .select("*")
       .eq("telegram_id", telegramId)
       .single();
-
     return data;
   }
-
-  /**
-   * Link a Telegram account to an existing user (by phone number)
-   */
   async linkTelegramToUser(
     userId: string,
     telegramId: string,
-  ): Promise<{ success: boolean; message: string }> {
+  ): Promise<{
+    success: boolean;
+    message: string;
+  }> {
     try {
-      // Check if telegram_id is already linked to another user
       const { data: existingTelegram } = await this.supabase
         .from("users")
         .select("id")
         .eq("telegram_id", telegramId)
         .single();
-
       if (existingTelegram && existingTelegram.id !== userId) {
         return {
           success: false,
           message: "This Telegram account is already linked to another user",
         };
       }
-
-      // Link the telegram_id to the user
       const { error } = await this.supabase
         .from("users")
         .update({
@@ -164,9 +141,7 @@ export class UserService {
           updated_at: new Date().toISOString(),
         })
         .eq("id", userId);
-
       if (error) throw error;
-
       return {
         success: true,
         message: "Telegram account linked successfully",
@@ -179,31 +154,26 @@ export class UserService {
       throw handleServiceError(error, "linkTelegramToUser");
     }
   }
-
-  /**
-   * Link a WhatsApp account to an existing user
-   */
   async linkWhatsAppToUser(
     userId: string,
     whatsappId: string,
     phoneNumber: string,
-  ): Promise<{ success: boolean; message: string }> {
+  ): Promise<{
+    success: boolean;
+    message: string;
+  }> {
     try {
-      // Check if whatsapp_id is already linked to another user
       const { data: existingWhatsApp } = await this.supabase
         .from("users")
         .select("id")
         .eq("whatsapp_id", whatsappId)
         .single();
-
       if (existingWhatsApp && existingWhatsApp.id !== userId) {
         return {
           success: false,
           message: "This WhatsApp account is already linked to another user",
         };
       }
-
-      // Link the whatsapp_id to the user
       const { error } = await this.supabase
         .from("users")
         .update({
@@ -212,9 +182,7 @@ export class UserService {
           updated_at: new Date().toISOString(),
         })
         .eq("id", userId);
-
       if (error) throw error;
-
       return {
         success: true,
         message: "WhatsApp account linked successfully",
@@ -227,7 +195,6 @@ export class UserService {
       throw handleServiceError(error, "linkWhatsAppToUser");
     }
   }
-
   async updateUserSettings(
     userId: string,
     settings: {
@@ -241,36 +208,30 @@ export class UserService {
       quietHoursStart?: string | null;
       quietHoursEnd?: string | null;
       quietHoursDays?: string[] | null;
-      // Legacy support
       notificationPreferences?: {
         enabled: boolean;
         advanceNotice?: number;
       };
     },
-  ): Promise<{ success: boolean; message: string }> {
+  ): Promise<{
+    success: boolean;
+    message: string;
+  }> {
     const startTime = Date.now();
-
     try {
-      // Validate input
       const validatedParams = validate(updateUserSettingsSchema, {
         userId,
         ...settings,
       });
-
-      // Check if user exists
       const { data: existing, error: checkError } = await this.supabase
         .from("users")
         .select("id")
         .eq("id", validatedParams.userId)
         .single();
-
       if (checkError || !existing) {
         throw new NotFoundError("User", validatedParams.userId);
       }
-
       const updateData: any = {};
-
-      // Basic settings
       if (settings.name !== undefined) updateData.name = settings.name;
       if (settings.timezone !== undefined)
         updateData.timezone = settings.timezone;
@@ -278,14 +239,10 @@ export class UserService {
         updateData.language = settings.language;
       if (settings.defaultReminderTime !== undefined)
         updateData.default_reminder_time = settings.defaultReminderTime;
-
-      // Notification settings
       if (settings.notificationEnabled !== undefined)
         updateData.notification_enabled = settings.notificationEnabled;
       if (settings.advanceNoticeMinutes !== undefined)
         updateData.advance_notice_minutes = settings.advanceNoticeMinutes;
-
-      // Quiet hours settings (support null to clear)
       if (settings.quietHoursEnabled !== undefined)
         updateData.quiet_hours_enabled = settings.quietHoursEnabled;
       if (settings.quietHoursStart !== undefined)
@@ -294,8 +251,6 @@ export class UserService {
         updateData.quiet_hours_end = settings.quietHoursEnd;
       if (settings.quietHoursDays !== undefined)
         updateData.quiet_hours_days = settings.quietHoursDays;
-
-      // Legacy notification preferences support
       if (settings.notificationPreferences) {
         updateData.notification_enabled =
           settings.notificationPreferences.enabled;
@@ -304,55 +259,42 @@ export class UserService {
             settings.notificationPreferences.advanceNotice;
         }
       }
-
       updateData.updated_at = new Date().toISOString();
-
       const { error } = await this.supabase
         .from("users")
         .update(updateData)
         .eq("id", validatedParams.userId);
-
       if (error) {
         throw error;
       }
-
       logAudit("UPDATE_USER_SETTINGS", validatedParams.userId, "user", {
         settings: Object.keys(updateData),
       });
       logPerformance("updateUserSettings", Date.now() - startTime);
-
       return { success: true, message: "Settings updated successfully" };
     } catch (error) {
       logError("Failed to update user settings", error, { userId });
       throw handleServiceError(error, "updateUserSettings");
     }
   }
-
   async getUserSettings(userId: string) {
     const startTime = Date.now();
-
     try {
-      // Validate input
       const validatedParams = validate(getUserSettingsSchema, { userId });
-
       const { data: user, error } = await this.supabase
         .from("users")
         .select("*")
         .eq("id", validatedParams.userId)
         .single();
-
       if (error || !user) {
         throw new NotFoundError("User", validatedParams.userId);
       }
-
-      // Get calendar connections with error handling
       let calendarConnections: string[] = [];
       try {
         const { data: calendars, error: calError } = await this.supabase
           .from("calendar_connections")
           .select("provider")
           .eq("user_id", validatedParams.userId);
-
         if (calError) {
           logError("Failed to fetch calendar connections", calError, {
             userId: validatedParams.userId,
@@ -365,9 +307,7 @@ export class UserService {
           userId: validatedParams.userId,
         });
       }
-
       logPerformance("getUserSettings", Date.now() - startTime);
-
       return {
         id: user.id,
         name: user.name,
@@ -393,18 +333,18 @@ export class UserService {
       throw handleServiceError(error, "getUserSettings");
     }
   }
-
   async setQuietHours(
     userId: string,
     enabled: boolean,
     startTime: string,
     endTime: string,
     days?: string[],
-  ): Promise<{ success: boolean; message: string }> {
+  ): Promise<{
+    success: boolean;
+    message: string;
+  }> {
     const startTimeMs = Date.now();
-
     try {
-      // Validate input
       const validatedParams = validate(setQuietHoursSchema, {
         userId,
         enabled,
@@ -412,18 +352,14 @@ export class UserService {
         endTime,
         days,
       });
-
-      // Check if user exists
       const { data: existing, error: checkError } = await this.supabase
         .from("users")
         .select("id")
         .eq("id", validatedParams.userId)
         .single();
-
       if (checkError || !existing) {
         throw new NotFoundError("User", validatedParams.userId);
       }
-
       const { error } = await this.supabase
         .from("users")
         .update({
@@ -434,16 +370,13 @@ export class UserService {
           updated_at: new Date().toISOString(),
         })
         .eq("id", validatedParams.userId);
-
       if (error) {
         throw error;
       }
-
       logAudit("SET_QUIET_HOURS", validatedParams.userId, "user", {
         enabled: validatedParams.enabled,
       });
       logPerformance("setQuietHours", Date.now() - startTimeMs);
-
       return { success: true, message: "Quiet hours updated successfully" };
     } catch (error) {
       logError("Failed to set quiet hours", error, { userId });
