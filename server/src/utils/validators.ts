@@ -189,6 +189,8 @@ export const createListSchema = z.object({
     .max(100, "List name too long"),
   description: z.string().max(500).optional(),
   items: z.array(z.string().min(1).max(500)).max(100).optional(),
+  icon: z.string().max(10).optional(),
+  color: z.string().max(20).optional(),
 });
 
 export const addItemToListSchema = z
@@ -202,6 +204,7 @@ export const addItemToListSchema = z
       )
       .min(1, "At least one item required")
       .max(50, "Maximum 50 items at once"),
+    notes: z.string().max(1000).optional(),
   })
   .refine((data) => data.listId || data.listName, {
     message: "Either listId or listName must be provided",
