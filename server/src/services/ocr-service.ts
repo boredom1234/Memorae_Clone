@@ -2,6 +2,15 @@ import { generateText } from "ai";
 import { mistral } from "@ai-sdk/mistral";
 import { config } from "../config/env";
 import pino from "pino";
+interface QueuedRequest {
+  resolve: (result: OCRResult) => void;
+  reject: (error: Error) => void;
+  imageBuffer: Buffer;
+  userPrompt?: string;
+  mimeType: string;
+  type: "extract" | "process";
+  instruction?: string;
+}
 export interface OCRResult {
   success: boolean;
   extractedText: string;
@@ -11,6 +20,11 @@ export interface OCRResult {
 export class OCRService {
   private logger = pino({ level: "info" });
   private model: any;
+  private requestQueue: QueuedRequest[] = [];
+  private isProcessing = false;
+  private readonly MAX_CONCURRENT_REQUESTS = 2;
+  private readonly REQUEST_DELAY_MS = 1000;
+  private activeRequests = 0;
   constructor() {
     if (config.ai.mistralApiKey) {
       this.model = mistral("pixtral-large-latest");
@@ -34,6 +48,75 @@ export class OCRService {
           "OCR service not available. Please configure MISTRAL_API_KEY in your .env file.",
       };
     }
+    return new Promise((resolve, reject) => {
+      const request: QueuedRequest = {
+        resolve,
+        reject,
+        imageBuffer,
+        userPrompt,
+        mimeType,
+        type: "extract",
+      };
+      this.requestQueue.push(request);
+      this.processQueue();
+    });
+  }
+  private async processQueue(): Promise<void> {
+    if (
+      this.isProcessing ||
+      this.activeRequests >= this.MAX_CONCURRENT_REQUESTS ||
+      this.requestQueue.length === 0
+    ) {
+      return;
+    }
+    this.isProcessing = true;
+    while (
+      this.requestQueue.length > 0 &&
+      this.activeRequests < this.MAX_CONCURRENT_REQUESTS
+    ) {
+      const request = this.requestQueue.shift();
+      if (request) {
+        this.activeRequests++;
+        this.processRequest(request);
+        if (this.requestQueue.length > 0) {
+          await this.delay(this.REQUEST_DELAY_MS);
+        }
+      }
+    }
+    this.isProcessing = false;
+  }
+  private async processRequest(request: QueuedRequest): Promise<void> {
+    try {
+      let result: OCRResult;
+      if (request.type === "extract") {
+        result = await this.performOCRExtraction(
+          request.imageBuffer,
+          request.userPrompt,
+          request.mimeType,
+        );
+      } else {
+        result = await this.performOCRProcessing(
+          request.imageBuffer,
+          request.instruction!,
+          request.mimeType,
+        );
+      }
+      request.resolve(result);
+    } catch (error) {
+      request.reject(error as Error);
+    } finally {
+      this.activeRequests--;
+      setTimeout(() => this.processQueue(), 100);
+    }
+  }
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+  private async performOCRExtraction(
+    imageBuffer: Buffer,
+    userPrompt?: string,
+    mimeType: string = "image/jpeg",
+  ): Promise<OCRResult> {
     try {
       this.logger.info(
         `Starting OCR extraction. Buffer size: ${imageBuffer.length} bytes, MIME: ${mimeType}`,
@@ -64,7 +147,6 @@ Be thorough and accurate.`;
             ],
           },
         ],
-        maxSteps: 1,
       });
       const extractedText = result.text.trim();
       if (!extractedText || extractedText.length === 0) {
@@ -109,6 +191,31 @@ Be thorough and accurate.`;
         error: "OCR service not available. Please configure MISTRAL_API_KEY.",
       };
     }
+    return new Promise((resolve, reject) => {
+      const request: QueuedRequest = {
+        resolve: (result: OCRResult) => {
+          resolve({
+            success: result.success,
+            ocrText: result.extractedText,
+            interpretation: result.extractedText,
+            error: result.error,
+          });
+        },
+        reject,
+        imageBuffer,
+        mimeType,
+        type: "process",
+        instruction,
+      };
+      this.requestQueue.push(request);
+      this.processQueue();
+    });
+  }
+  private async performOCRProcessing(
+    imageBuffer: Buffer,
+    instruction: string,
+    mimeType: string = "image/jpeg",
+  ): Promise<OCRResult> {
     try {
       this.logger.info(
         `Processing image with instruction: "${instruction.substring(0, 50)}..."`,
@@ -143,7 +250,6 @@ Format your response as:
             ],
           },
         ],
-        maxSteps: 1,
       });
       const response = result.text.trim();
       const extractedTextMatch = response.match(
@@ -160,15 +266,14 @@ Format your response as:
         : "";
       return {
         success: true,
-        ocrText,
-        interpretation: interpretation || ocrText,
+        extractedText: ocrText,
+        confidence: 0.9,
       };
     } catch (error: any) {
       this.logger.error({ error }, "Image processing with instruction failed");
       return {
         success: false,
-        ocrText: "",
-        interpretation: "",
+        extractedText: "",
         error: `Processing failed: ${error.message || "Unknown error"}`,
       };
     }

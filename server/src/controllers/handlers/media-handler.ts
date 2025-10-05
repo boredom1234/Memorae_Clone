@@ -342,6 +342,232 @@ Please help the user with their request based on the image content.`;
       };
     }
   }
+  async handleMultipleImageMessages(
+    contexts: MessageContext[],
+    user: User,
+    conversationContext: ConversationContext,
+    addToContext: (
+      userId: string,
+      role: string,
+      content: string,
+      timestamp: Date,
+    ) => void,
+    getResponseMessage: (result: any, timezone?: string) => string,
+  ): Promise<any> {
+    return await this.handleMultipleImages(
+      contexts,
+      user,
+      conversationContext,
+      addToContext,
+      getResponseMessage,
+    );
+  }
+  private async handleMultipleImages(
+    contexts: MessageContext[],
+    user: User,
+    conversationContext: ConversationContext,
+    addToContext: (
+      userId: string,
+      role: string,
+      content: string,
+      timestamp: Date,
+    ) => void,
+    getResponseMessage: (result: any, timezone?: string) => string,
+  ): Promise<any> {
+    this.logger.info(`Processing batch of ${contexts.length} images for OCR`);
+    const messageWithCaption = contexts.find(
+      (ctx) => ctx.text && ctx.text.trim().length > 0,
+    );
+    const instruction =
+      messageWithCaption?.text || "Extract text from all these images";
+    this.logger.info(
+      `Processing ${contexts.length} images with instruction: "${instruction}"`,
+    );
+    if (!this.ocrService.isAvailable()) {
+      return {
+        text: "📷 Images received, but OCR is not configured. Please set MISTRAL_API_KEY in your .env file to enable image text extraction.",
+      };
+    }
+    try {
+      const ocrResults: string[] = [];
+      const attachmentIds: string[] = [];
+      for (let i = 0; i < contexts.length; i++) {
+        const context = contexts[i];
+        if (!context.mediaBuffer) {
+          this.logger.warn(
+            `Image buffer not available for message ${context.messageId}`,
+          );
+          continue;
+        }
+        const caption = context.text || "";
+        const mimeType = context.mimeType || "image/jpeg";
+        this.logger.info(
+          `Processing image ${i + 1}/${contexts.length}: ${context.mediaBuffer.length} bytes`,
+        );
+        let ocrResult;
+        if (caption && caption.trim().length > 0) {
+          ocrResult = await this.ocrService.processImageWithInstruction(
+            context.mediaBuffer,
+            caption,
+            mimeType,
+          );
+        } else {
+          ocrResult = await this.ocrService.extractTextFromImage(
+            context.mediaBuffer,
+            undefined,
+            mimeType,
+          );
+        }
+        if (ocrResult.success) {
+          const extractedText =
+            "ocrText" in ocrResult
+              ? ocrResult.ocrText
+              : ocrResult.extractedText;
+          ocrResults.push(`--- Image ${i + 1} ---\n${extractedText}`);
+          try {
+            const fileUrl = await this.uploadImageToStorage(
+              user.id,
+              context.messageId,
+              context.mediaBuffer,
+              mimeType,
+            );
+            const attachment = await this.mediaService.saveAttachment({
+              userId: user.id,
+              mediaType: "image",
+              fileUrl: fileUrl,
+              mimeType: mimeType,
+              fileSize: context.mediaBuffer.length,
+              extractedText: extractedText,
+              extractedData: {
+                caption: caption,
+                ocrEngine: "mistral-pixtral",
+                processedAt: new Date().toISOString(),
+                whatsappMessageId: context.messageId,
+                batchIndex: i,
+                batchSize: contexts.length,
+              },
+            });
+            attachmentIds.push(attachment.id);
+            this.logger.info(
+              `Saved attachment ${attachment.id} for image ${i + 1}`,
+            );
+          } catch (error: any) {
+            this.logger.error(
+              { error },
+              `Failed to save attachment for image ${i + 1}, continuing...`,
+            );
+          }
+        } else {
+          this.logger.error(
+            `OCR failed for image ${i + 1}: ${ocrResult.error}`,
+          );
+          ocrResults.push(
+            `--- Image ${i + 1} ---\nFailed to extract text: ${ocrResult.error}`,
+          );
+        }
+      }
+      if (ocrResults.length === 0) {
+        return {
+          text: "❌ Failed to extract text from any of the images.",
+        };
+      }
+      const combinedText = ocrResults.join("\n\n");
+      const combinedPrompt = `I extracted text from ${contexts.length} images:
+
+${combinedText}
+
+User instruction: "${instruction}"
+
+Please help the user with their request based on all the image content.`;
+      this.logger.info(
+        `Combined OCR text from ${contexts.length} images, total length: ${combinedText.length} characters`,
+      );
+      addToContext(user.id, "user", combinedPrompt, new Date());
+      const tools = this.tools.getRelevantTools(user.id, instruction);
+      const aiResult = await this.aiService.processMessageWithTools(
+        combinedPrompt,
+        user.id,
+        user.timezone,
+        tools,
+        conversationContext.messages,
+      );
+      const renderedText =
+        aiResult.toolResults &&
+        Array.isArray(aiResult.toolResults) &&
+        aiResult.toolResults.length > 0
+          ? getResponseMessage(
+              aiResult.toolResults[aiResult.toolResults.length - 1],
+              user.timezone,
+            )
+          : aiResult.text || getResponseMessage(aiResult, user.timezone);
+      if (attachmentIds.length > 0 && aiResult.toolResults) {
+        try {
+          this.logger.info(
+            `Linking ${attachmentIds.length} attachments to tool results`,
+          );
+          const noteResults = aiResult.toolResults.filter(
+            (r: any) => r.toolName === "createNote",
+          );
+          if (noteResults.length > 0) {
+            const firstNote = noteResults[0];
+            const noteId = firstNote.result?.id;
+            if (noteId) {
+              for (const attachmentId of attachmentIds) {
+                await this.mediaService.linkToItem({
+                  attachmentId,
+                  noteId,
+                });
+                this.logger.info(
+                  `Linked attachment ${attachmentId} to note ${noteId}`,
+                );
+              }
+            }
+          }
+          const reminderResults = aiResult.toolResults.filter(
+            (r: any) =>
+              r.toolName === "createReminder" ||
+              r.toolName === "batchCreateReminders",
+          );
+          if (reminderResults.length > 0) {
+            const firstReminder = reminderResults[0];
+            const reminderId = firstReminder.result?.id;
+            if (reminderId) {
+              for (const attachmentId of attachmentIds) {
+                await this.mediaService.linkToItem({
+                  attachmentId,
+                  reminderId,
+                });
+                this.logger.info(
+                  `Linked attachment ${attachmentId} to reminder ${reminderId}`,
+                );
+              }
+            }
+          }
+        } catch (error: any) {
+          this.logger.error(
+            { error },
+            "Failed to link media attachments to items",
+          );
+        }
+      }
+      if (renderedText) {
+        addToContext(user.id, "assistant", renderedText, new Date());
+      }
+      return {
+        text: aiResult.text,
+        toolCalls: aiResult.toolCalls,
+        toolResults: aiResult.toolResults,
+        renderedText: renderedText || "Done!",
+        processedImages: contexts.length,
+        attachmentIds,
+      };
+    } catch (error: any) {
+      this.logger.error({ error }, "Error processing multiple images");
+      return {
+        text: `Sorry, I encountered an error while processing the images: ${error.message}`,
+      };
+    }
+  }
   private async uploadImageToStorage(
     userId: string,
     messageId: string,

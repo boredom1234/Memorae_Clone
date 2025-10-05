@@ -3,6 +3,7 @@ import { ToolsRegistry } from "../services/tools-registry";
 import { AIService } from "../services/ai-service";
 import { OCRService } from "../services/ocr-service";
 import { MediaAttachmentService } from "../services/media-attachment-service";
+import { MessageBatchService } from "../services/message-batch-service";
 import { User } from "../models/types";
 import {
   ConversationMessage,
@@ -19,6 +20,7 @@ export class MessageController {
   private aiService: AIService;
   private ocrService: OCRService;
   private mediaService: MediaAttachmentService;
+  private messageBatchService: MessageBatchService;
   private userCache: Map<string, User> = new Map();
   private userNewCache: Map<string, boolean> = new Map();
   private conversationContexts: Map<string, ConversationContext> = new Map();
@@ -32,6 +34,7 @@ export class MessageController {
     this.aiService = new AIService();
     this.ocrService = new OCRService();
     this.mediaService = new MediaAttachmentService();
+    this.messageBatchService = new MessageBatchService();
     this.onboardingHandler = new OnboardingHandler(this.tools.getUserService());
     this.responseFormatter = new ResponseFormatter();
     this.mediaHandler = new MediaHandler(
@@ -177,6 +180,7 @@ export class MessageController {
     }
     this.userCache.clear();
     this.conversationContexts.clear();
+    this.messageBatchService.cleanup();
   }
   private async handleTextMessage(
     context: MessageContext,
@@ -376,19 +380,70 @@ export class MessageController {
     user: User,
   ): Promise<any> {
     const conversationContext = this.getConversationContext(user.id);
-    return await this.mediaHandler.handleImageMessage(
+    return await this.messageBatchService.addMessage(
       context,
-      user,
-      conversationContext,
-      (userId, role, content, timestamp) => {
-        this.addToConversationContext(userId, {
-          role: role as "user" | "assistant",
-          content,
-          timestamp,
-        });
+      user.id,
+      async (contexts: MessageContext[]) => {
+        if (contexts.length > 1) {
+          this.logger.info(
+            `Processing batch of ${contexts.length} images for user ${user.name}`,
+          );
+          const messageWithCaption = contexts.find(
+            (ctx) => ctx.text && ctx.text.trim().length > 0,
+          );
+          if (messageWithCaption) {
+            return await this.mediaHandler.handleMultipleImageMessages(
+              contexts,
+              user,
+              conversationContext,
+              (userId, role, content, timestamp) => {
+                this.addToConversationContext(userId, {
+                  role: role as "user" | "assistant",
+                  content,
+                  timestamp,
+                });
+              },
+              (result, timezone) =>
+                this.responseFormatter.getResponseMessage(result, timezone),
+            );
+          } else {
+            const results = [];
+            for (const ctx of contexts) {
+              const result = await this.mediaHandler.handleImageMessage(
+                ctx,
+                user,
+                conversationContext,
+                (userId, role, content, timestamp) => {
+                  this.addToConversationContext(userId, {
+                    role: role as "user" | "assistant",
+                    content,
+                    timestamp,
+                  });
+                },
+                (result, timezone) =>
+                  this.responseFormatter.getResponseMessage(result, timezone),
+              );
+              results.push(result);
+            }
+            return results[results.length - 1];
+          }
+        } else {
+          return await this.mediaHandler.handleImageMessage(
+            contexts[0],
+            user,
+            conversationContext,
+            (userId, role, content, timestamp) => {
+              this.addToConversationContext(userId, {
+                role: role as "user" | "assistant",
+                content,
+                timestamp,
+              });
+            },
+            (result, timezone) =>
+              this.responseFormatter.getResponseMessage(result, timezone),
+          );
+        }
       },
-      (result, timezone) =>
-        this.responseFormatter.getResponseMessage(result, timezone),
     );
   }
   private async handleAudioMessage(
