@@ -1,6 +1,7 @@
 import { getSupabaseClient } from "../lib/supabase";
 import { AppError } from "../utils/errors";
 import { logError, logInfo } from "../utils/logger";
+import { validate, duplicateNoteSchema } from "../utils/validators";
 export interface UserNote {
   id: string;
   userId: string;
@@ -642,6 +643,63 @@ export class NotesService {
             500,
             "GET_NOTES_WITH_MEDIA_ERROR",
           );
+    }
+  }
+  async duplicateNote(params: {
+    userId: string;
+    noteId: string;
+    newTitle?: string;
+  }): Promise<UserNote> {
+    try {
+      const validatedParams = validate(duplicateNoteSchema, params);
+      logInfo("Duplicating note", {
+        userId: validatedParams.userId,
+        noteId: validatedParams.noteId,
+      });
+      const supabase = getSupabaseClient();
+      const { data: originalNote, error: fetchError } = await supabase
+        .from("user_notes")
+        .select("*")
+        .eq("id", validatedParams.noteId)
+        .eq("user_id", validatedParams.userId)
+        .single();
+      if (fetchError || !originalNote) {
+        throw new AppError("Note not found", 404, "NOTE_NOT_FOUND");
+      }
+      const newTitle =
+        validatedParams.newTitle ||
+        (originalNote.title ? `${originalNote.title} (Copy)` : "Copy of note");
+      const { data: newNote, error: createError } = await supabase
+        .from("user_notes")
+        .insert({
+          user_id: validatedParams.userId,
+          title: newTitle,
+          content: originalNote.content,
+          tags: originalNote.tags || [],
+          category: originalNote.category,
+          is_pinned: false,
+          is_archived: false,
+        })
+        .select()
+        .single();
+      if (createError || !newNote) {
+        logError("Failed to duplicate note", createError, validatedParams);
+        throw new AppError(
+          "Failed to duplicate note",
+          500,
+          "DUPLICATE_NOTE_ERROR",
+        );
+      }
+      logInfo("Note duplicated successfully", {
+        originalNoteId: validatedParams.noteId,
+        newNoteId: newNote.id,
+      });
+      return this.mapDatabaseNote(newNote);
+    } catch (error) {
+      logError("Error in duplicateNote", error, params);
+      throw error instanceof AppError
+        ? error
+        : new AppError("Failed to duplicate note", 500, "DUPLICATE_NOTE_ERROR");
     }
   }
 }

@@ -7,6 +7,7 @@ import { UtilityService } from "../utility-service";
 import { NotesService } from "../notes-service";
 import { NotificationService } from "../notification-service";
 import { MediaAttachmentService } from "../media-attachment-service";
+import { ActivityService } from "../activity-service";
 import { logError, logInfo } from "../../utils/logger";
 export interface ToolServices {
   userService: UserService;
@@ -16,6 +17,7 @@ export interface ToolServices {
   notesService: NotesService;
   notificationService: NotificationService;
   mediaService: MediaAttachmentService;
+  activityService: ActivityService;
 }
 export type DedupeFunction = <T>(
   name: string,
@@ -34,6 +36,7 @@ export function createAISDKTools(
     notesService,
     notificationService,
     mediaService,
+    activityService,
   } = services;
   return {
     createReminder: tool({
@@ -613,17 +616,24 @@ export function createAISDKTools(
     }),
     getLists: tool({
       description:
-        "Show all user lists. Triggers: show lists, what lists, all lists.",
+        "Show all user lists. Triggers: show lists, what lists, all lists. Can include archived lists.",
       inputSchema: z.object({
         includeItems: z
           .boolean()
           .optional()
           .describe("Whether to include list items"),
+        includeArchived: z
+          .boolean()
+          .optional()
+          .describe(
+            "Whether to include archived lists (default: false, only active lists)",
+          ),
       }),
       execute: dedupe("getLists", async (params) => {
         return await listService.getLists({
           userId,
           includeItems: params.includeItems ?? true,
+          includeArchived: params.includeArchived ?? false,
           limit: 20,
         });
       }),
@@ -1221,6 +1231,148 @@ export function createAISDKTools(
           ...stats,
           message: `You have ${stats.total} media attachment(s): ${stats.withOCR} with OCR, ${stats.linked} linked to items`,
         };
+      }),
+    }),
+    archiveReminder: tool({
+      description:
+        "Archive reminder (soft delete, status=cancelled). Triggers: archive, hide, don't delete.",
+      inputSchema: z.object({
+        searchQuery: z
+          .string()
+          .describe("Text to search for the reminder to archive"),
+      }),
+      execute: dedupe("archiveReminder", async (params) => {
+        const searchResult = await reminderService.searchReminders({
+          userId,
+          query: params.searchQuery,
+          limit: 1,
+        });
+        if (searchResult.results.length === 0) {
+          throw new Error("Could not find that reminder");
+        }
+        return await reminderService.archiveReminder({
+          userId,
+          reminderId: searchResult.results[0].id,
+        });
+      }),
+    }),
+    archiveList: tool({
+      description:
+        "Archive list (soft delete, keeps data). Triggers: archive list, hide list.",
+      inputSchema: z.object({
+        listName: z.string().describe("Name of the list to archive"),
+      }),
+      execute: dedupe("archiveList", async (params) => {
+        return await listService.archiveList({
+          userId,
+          listName: params.listName,
+        });
+      }),
+    }),
+    bulkCompleteItems: tool({
+      description:
+        "Mark multiple list items as completed at once. Triggers: complete all, mark all done, check off multiple.",
+      inputSchema: z.object({
+        listName: z.string().describe("Name of the list"),
+        itemIds: z
+          .array(z.string())
+          .describe("Array of item IDs to mark as completed"),
+      }),
+      execute: dedupe("bulkCompleteItems", async (params) => {
+        return await listService.bulkCompleteItems({
+          userId,
+          listName: params.listName,
+          itemIds: params.itemIds,
+        });
+      }),
+    }),
+    clearCompletedItems: tool({
+      description:
+        "Remove all completed items from list. Triggers: clear completed, remove done items, clean up list.",
+      inputSchema: z.object({
+        listName: z.string().describe("Name of the list to clear"),
+      }),
+      execute: dedupe("clearCompletedItems", async (params) => {
+        return await listService.clearCompletedItems({
+          userId,
+          listName: params.listName,
+        });
+      }),
+    }),
+    duplicateNote: tool({
+      description:
+        "Clone/copy a note. Triggers: duplicate note, copy note, clone note.",
+      inputSchema: z.object({
+        searchQuery: z
+          .string()
+          .describe("Text to search for the note to duplicate"),
+        newTitle: z
+          .string()
+          .optional()
+          .describe("Optional new title for the duplicate"),
+      }),
+      execute: dedupe("duplicateNote", async (params) => {
+        const searchResult = await notesService.searchNotes({
+          userId,
+          query: params.searchQuery,
+          limit: 1,
+          includeArchived: false,
+        });
+        if (searchResult.notes.length === 0) {
+          throw new Error("Could not find that note");
+        }
+        return await notesService.duplicateNote({
+          userId,
+          noteId: searchResult.notes[0].id,
+          newTitle: params.newTitle,
+        });
+      }),
+    }),
+    duplicateList: tool({
+      description:
+        "Clone/copy entire list with items. Triggers: duplicate list, copy list, clone list.",
+      inputSchema: z.object({
+        listName: z.string().describe("Name of the list to duplicate"),
+        newName: z
+          .string()
+          .optional()
+          .describe("Optional new name for the duplicate list"),
+      }),
+      execute: dedupe("duplicateList", async (params) => {
+        return await listService.duplicateList({
+          userId,
+          listName: params.listName,
+          newName: params.newName,
+        });
+      }),
+    }),
+    getListStats: tool({
+      description:
+        "Get statistics about user's lists. Triggers: list stats, how many lists, list summary.",
+      inputSchema: z.object({}),
+      execute: dedupe("getListStats", async () => {
+        return await listService.getListStats({ userId });
+      }),
+    }),
+    getActivityFeed: tool({
+      description:
+        "Get recent activity across reminders, lists, and notes. Triggers: activity, recent changes, what happened, history.",
+      inputSchema: z.object({
+        limit: z
+          .number()
+          .optional()
+          .describe("Maximum number of activities to return (default 20)"),
+        types: z
+          .array(z.enum(["reminder", "list", "note", "all"]))
+          .optional()
+          .describe("Filter by activity types (default: all)"),
+      }),
+      execute: dedupe("getActivityFeed", async (params) => {
+        return await activityService.getActivityFeed({
+          userId,
+          limit: params.limit || 20,
+          types: params.types || ["all"],
+        });
       }),
     }),
   };

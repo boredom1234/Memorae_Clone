@@ -72,6 +72,28 @@ export function detectIntent(message: string): string[] {
   ) {
     intents.push("media");
   }
+  if (/\b(archive|hide|soft delete|don't delete)\b/.test(lower)) {
+    intents.push("archive");
+  }
+  if (/\b(duplicate|copy|clone|make a copy)\b/.test(lower)) {
+    intents.push("duplicate");
+  }
+  if (/\b(complete all|mark all|bulk complete|check off all)\b/.test(lower)) {
+    intents.push("bulk_complete");
+  }
+  if (
+    /\b(clear completed|clean up|remove completed|remove done)\b/.test(lower)
+  ) {
+    intents.push("clear_completed");
+  }
+  if (/\b(stats|statistics|how many|analytics|insights)\b/.test(lower)) {
+    intents.push("stats");
+  }
+  if (
+    /\b(activity|recent changes|what happened|timeline|history)\b/.test(lower)
+  ) {
+    intents.push("activity");
+  }
   if (intents.length === 0) {
     intents.push("general");
   }
@@ -85,14 +107,20 @@ export function getToolCategories(): Record<string, string[]> {
     reminder_update: ["updateReminder", "snoozeReminder"],
     reminder_delete: ["deleteReminder"],
     reminder_complete: ["completeReminder"],
+    reminder_archive: ["archiveReminder"],
     list_create: ["createList", "addItemToList"],
     list_read: ["getLists", "getListItems", "searchLists"],
     list_update: ["updateListItem"],
     list_delete: ["deleteList", "removeItemFromList"],
+    list_archive: ["archiveList"],
+    list_bulk: ["bulkCompleteItems", "clearCompletedItems"],
+    list_duplicate: ["duplicateList"],
+    list_stats: ["getListStats"],
     note_create: ["createNote"],
     note_read: ["searchNotes", "listNotes"],
     note_update: ["updateNote"],
     note_delete: ["deleteNote"],
+    note_duplicate: ["duplicateNote"],
     settings: ["updateUserSettings", "setQuietHours"],
     notification: [
       "sendReminderToContact",
@@ -100,6 +128,7 @@ export function getToolCategories(): Record<string, string[]> {
       "sendCustomMessage",
     ],
     media: ["getMediaHistory", "searchMediaByText", "getMediaStats"],
+    activity: ["getActivityFeed"],
   };
 }
 export function mapIntentsToTools(intents: string[]): Set<string> {
@@ -189,6 +218,45 @@ export function mapIntentsToTools(intents: string[]): Set<string> {
         break;
       case "media":
         categories.media.forEach((t) => selectedToolNames.add(t));
+        break;
+      case "archive":
+        if (intents.includes("reminder")) {
+          categories.reminder_archive.forEach((t) => selectedToolNames.add(t));
+          categories.reminder_read.forEach((t) => selectedToolNames.add(t));
+        }
+        if (intents.includes("list")) {
+          categories.list_archive.forEach((t) => selectedToolNames.add(t));
+          categories.list_read.forEach((t) => selectedToolNames.add(t));
+        }
+        break;
+      case "duplicate":
+        if (intents.includes("list")) {
+          categories.list_duplicate.forEach((t) => selectedToolNames.add(t));
+          categories.list_read.forEach((t) => selectedToolNames.add(t));
+        }
+        if (intents.includes("note")) {
+          categories.note_duplicate.forEach((t) => selectedToolNames.add(t));
+          categories.note_read.forEach((t) => selectedToolNames.add(t));
+        }
+        break;
+      case "bulk_complete":
+        if (intents.includes("list")) {
+          categories.list_bulk.forEach((t) => selectedToolNames.add(t));
+          categories.list_read.forEach((t) => selectedToolNames.add(t));
+        }
+        break;
+      case "clear_completed":
+        if (intents.includes("list")) {
+          categories.list_bulk.forEach((t) => selectedToolNames.add(t));
+          categories.list_read.forEach((t) => selectedToolNames.add(t));
+        }
+        break;
+      case "stats":
+        categories.list_stats.forEach((t) => selectedToolNames.add(t));
+        categories.list_read.forEach((t) => selectedToolNames.add(t));
+        break;
+      case "activity":
+        categories.activity.forEach((t) => selectedToolNames.add(t));
         break;
       case "general":
       default:

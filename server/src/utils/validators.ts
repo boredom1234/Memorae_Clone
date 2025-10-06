@@ -204,6 +204,7 @@ export const updateListItemSchema = z.object({
 export const getListsSchema = z.object({
   userId: uuidSchema,
   includeItems: z.boolean().optional().default(false),
+  includeArchived: z.boolean().optional().default(false),
   limit: z.number().int().min(1).max(100).optional().default(50),
 });
 export const getListItemsSchema = z
@@ -339,6 +340,65 @@ export function validate<T>(schema: z.ZodSchema<T>, data: unknown): T {
     throw error;
   }
 }
+export const archiveReminderSchema = z.object({
+  userId: uuidSchema,
+  reminderId: uuidSchema,
+});
+export const archiveListSchema = z
+  .object({
+    userId: uuidSchema,
+    listId: uuidSchema.optional(),
+    listName: z.string().min(1).max(100).optional(),
+  })
+  .refine((data) => data.listId || data.listName, {
+    message: "Either listId or listName must be provided",
+  });
+export const bulkCompleteItemsSchema = z
+  .object({
+    userId: uuidSchema,
+    listId: uuidSchema.optional(),
+    listName: z.string().min(1).max(100).optional(),
+    itemIds: z.array(uuidSchema).min(1, "At least one item ID required"),
+  })
+  .refine((data) => data.listId || data.listName, {
+    message: "Either listId or listName must be provided",
+  });
+export const clearCompletedItemsSchema = z
+  .object({
+    userId: uuidSchema,
+    listId: uuidSchema.optional(),
+    listName: z.string().min(1).max(100).optional(),
+  })
+  .refine((data) => data.listId || data.listName, {
+    message: "Either listId or listName must be provided",
+  });
+export const duplicateNoteSchema = z.object({
+  userId: uuidSchema,
+  noteId: uuidSchema,
+  newTitle: z.string().min(1).max(200).optional(),
+});
+export const duplicateListSchema = z
+  .object({
+    userId: uuidSchema,
+    listId: uuidSchema.optional(),
+    listName: z.string().min(1).max(100).optional(),
+    newName: z.string().min(1).max(100).optional(),
+  })
+  .refine((data) => data.listId || data.listName, {
+    message: "Either listId or listName must be provided",
+  });
+export const getListStatsSchema = z.object({
+  userId: uuidSchema,
+});
+export const getActivityFeedSchema = z.object({
+  userId: uuidSchema,
+  limit: z.number().int().min(1).max(100).optional().default(20),
+  offset: z.number().int().min(0).optional().default(0),
+  types: z
+    .array(z.enum(["reminder", "list", "note", "all"]))
+    .optional()
+    .default(["all"]),
+});
 export function sanitizeString(input: string): string {
   return input.replace(/[%_\\]/g, "\\$&").trim();
 }
