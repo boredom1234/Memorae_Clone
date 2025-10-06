@@ -5,6 +5,7 @@ import { UtilityService } from "./utility-service";
 import { NotesService } from "./notes-service";
 import { NotificationService } from "./notification-service";
 import { MediaAttachmentService } from "./media-attachment-service";
+import { ActivityService } from "./activity-service";
 import { AppError } from "../utils/errors";
 import { logError, logInfo } from "../utils/logger";
 import { createAISDKTools, ToolServices } from "./tools/tool-definitions";
@@ -18,6 +19,7 @@ export class ToolsRegistry {
   private notesService: NotesService;
   private notificationService: NotificationService;
   private mediaService: MediaAttachmentService;
+  private activityService: ActivityService;
   constructor() {
     this.userService = new UserService();
     this.reminderService = new ReminderService();
@@ -26,6 +28,7 @@ export class ToolsRegistry {
     this.notesService = new NotesService();
     this.notificationService = new NotificationService();
     this.mediaService = new MediaAttachmentService();
+    this.activityService = new ActivityService();
   }
   getTools() {
     return {
@@ -166,6 +169,8 @@ export class ToolsRegistry {
         description: "Get all lists",
         parameters: {
           includeItems: "boolean (optional)",
+          includeArchived:
+            "boolean (optional) - set to true to include archived lists",
           limit: "number (optional)",
         },
         handler: this.listService.getLists.bind(this.listService),
@@ -195,6 +200,123 @@ export class ToolsRegistry {
           limit: "number (optional)",
         },
         handler: this.listService.searchLists.bind(this.listService),
+      },
+      archiveList: {
+        description: "Archive a list (soft delete)",
+        parameters: {
+          listId: "string (optional)",
+          listName: "string (optional)",
+        },
+        handler: this.listService.archiveList.bind(this.listService),
+      },
+      bulkCompleteItems: {
+        description: "Mark multiple list items as completed",
+        parameters: {
+          listId: "string (optional)",
+          listName: "string (optional)",
+          itemIds: "string[]",
+        },
+        handler: this.listService.bulkCompleteItems.bind(this.listService),
+      },
+      clearCompletedItems: {
+        description: "Remove all completed items from a list",
+        parameters: {
+          listId: "string (optional)",
+          listName: "string (optional)",
+        },
+        handler: this.listService.clearCompletedItems.bind(this.listService),
+      },
+      duplicateList: {
+        description: "Duplicate a list with all its items",
+        parameters: {
+          listId: "string (optional)",
+          listName: "string (optional)",
+          newName: "string (optional)",
+        },
+        handler: this.listService.duplicateList.bind(this.listService),
+      },
+      getListStats: {
+        description: "Get statistics about user's lists",
+        parameters: {},
+        handler: this.listService.getListStats.bind(this.listService),
+      },
+      archiveReminder: {
+        description: "Archive a reminder (soft delete)",
+        parameters: {
+          reminderId: "string",
+        },
+        handler: this.reminderService.archiveReminder.bind(
+          this.reminderService,
+        ),
+      },
+      createNote: {
+        description: "Create a new note",
+        parameters: {
+          content: "string",
+          title: "string (optional)",
+          category: "string (optional)",
+          tags: "string[] (optional)",
+          isPinned: "boolean (optional)",
+        },
+        handler: this.notesService.createNote.bind(this.notesService),
+      },
+      updateNote: {
+        description: "Update an existing note",
+        parameters: {
+          noteId: "string",
+          content: "string (optional)",
+          title: "string (optional)",
+          category: "string (optional)",
+          tags: "string[] (optional)",
+          isPinned: "boolean (optional)",
+        },
+        handler: this.notesService.updateNote.bind(this.notesService),
+      },
+      deleteNote: {
+        description: "Delete a note",
+        parameters: {
+          noteId: "string",
+        },
+        handler: this.notesService.deleteNote.bind(this.notesService),
+      },
+      searchNotes: {
+        description: "Search notes",
+        parameters: {
+          query: "string",
+          category: "string (optional)",
+          tags: "string[] (optional)",
+          limit: "number (optional)",
+        },
+        handler: this.notesService.searchNotes.bind(this.notesService),
+      },
+      listNotes: {
+        description: "List all notes",
+        parameters: {
+          category: "string (optional)",
+          tags: "string[] (optional)",
+          onlyPinned: "boolean (optional)",
+          limit: "number (optional)",
+        },
+        handler: this.notesService.listNotes.bind(this.notesService),
+      },
+      duplicateNote: {
+        description: "Duplicate a note",
+        parameters: {
+          noteId: "string",
+          newTitle: "string (optional)",
+        },
+        handler: this.notesService.duplicateNote.bind(this.notesService),
+      },
+      getActivityFeed: {
+        description: "Get recent activity across reminders, lists, and notes",
+        parameters: {
+          limit: "number (optional)",
+          offset: "number (optional)",
+          types: "Array<'reminder' | 'list' | 'note' | 'all'> (optional)",
+        },
+        handler: this.activityService.getActivityFeed.bind(
+          this.activityService,
+        ),
       },
       updateUserSettings: {
         description: "Update user settings",
@@ -257,6 +379,62 @@ export class ToolsRegistry {
         },
         handler: this.utilityService.getCurrentTime.bind(this.utilityService),
       },
+      sendReminderToContact: {
+        description: "Send reminder to another contact",
+        parameters: {
+          recipientNumber: "string",
+          recipientName: "string (optional)",
+          reminderText: "string",
+          reminderTime: "string",
+          fromUserName: "string (optional)",
+        },
+        handler: this.notificationService.sendReminderToContact.bind(
+          this.notificationService,
+        ),
+      },
+      getNotificationHistory: {
+        description: "Get notification history",
+        parameters: {
+          limit: "number (optional)",
+          offset: "number (optional)",
+          type: "'reminder' | 'shared' | 'all' (optional)",
+        },
+        handler: this.notificationService.getNotificationHistory.bind(
+          this.notificationService,
+        ),
+      },
+      sendCustomMessage: {
+        description: "Send custom formatted message",
+        parameters: {
+          message: "string",
+          formatting: "'plain' | 'markdown' (optional)",
+          buttons: "Array<{id: string, label: string}> (optional)",
+        },
+        handler: this.notificationService.sendCustomMessage.bind(
+          this.notificationService,
+        ),
+      },
+      getMediaHistory: {
+        description: "Get user's media attachments history",
+        parameters: {
+          mediaType: "'image' | 'audio' | 'video' | 'document' (optional)",
+          limit: "number (optional)",
+        },
+        handler: this.mediaService.getUserAttachments.bind(this.mediaService),
+      },
+      searchMediaByText: {
+        description: "Search media by extracted text",
+        parameters: {
+          query: "string",
+          limit: "number (optional)",
+        },
+        handler: this.mediaService.searchByText.bind(this.mediaService),
+      },
+      getMediaStats: {
+        description: "Get media attachment statistics",
+        parameters: {},
+        handler: this.mediaService.getAttachmentStats.bind(this.mediaService),
+      },
     };
   }
   async executeTool(toolName: string, params: any): Promise<any> {
@@ -315,6 +493,7 @@ export class ToolsRegistry {
       notesService: this.notesService,
       notificationService: this.notificationService,
       mediaService: this.mediaService,
+      activityService: this.activityService,
     };
     const toolsObj = createAISDKTools(userId, services, dedupe);
     (toolsObj as any).__stats = stats;

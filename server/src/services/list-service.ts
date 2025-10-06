@@ -10,6 +10,11 @@ import {
   getListItemsSchema,
   deleteListSchema,
   searchListsSchema,
+  archiveListSchema,
+  bulkCompleteItemsSchema,
+  clearCompletedItemsSchema,
+  duplicateListSchema,
+  getListStatsSchema,
   sanitizeString,
 } from "../utils/validators";
 import {
@@ -307,28 +312,32 @@ export class ListService {
   async getLists(params: {
     userId: string;
     includeItems?: boolean;
+    includeArchived?: boolean;
     limit?: number;
   }): Promise<{
     lists: Array<{
       id: string;
       name: string;
-      itemCount: number;
-      items?: Array<{
-        id: string;
-        content: string;
-        isCompleted: boolean;
-      }>;
+      description?: string;
+      icon?: string;
+      color?: string;
+      itemCount?: number;
+      items?: ListItem[];
+      isArchived?: boolean;
     }>;
     total: number;
   }> {
     const startTime = Date.now();
     try {
       const validatedParams = validate(getListsSchema, params);
-      const { data: lists, error } = await this.supabase
+      let query = this.supabase
         .from("lists")
         .select("*")
-        .eq("user_id", validatedParams.userId)
-        .eq("is_archived", false)
+        .eq("user_id", validatedParams.userId);
+      if (!validatedParams.includeArchived) {
+        query = query.eq("is_archived", false);
+      }
+      const { data: lists, error } = await query
         .order("sort_order", { ascending: true })
         .limit(validatedParams.limit || 50);
       if (error) {
@@ -364,16 +373,24 @@ export class ListService {
             return {
               id: list.id,
               name: list.name,
+              description: list.description,
+              icon: list.icon,
+              color: list.color,
               itemCount: count || 0,
               items,
+              isArchived: list.is_archived || false,
             };
           } catch (error) {
             logError("Failed to process list", error, { listId: list.id });
             return {
               id: list.id,
               name: list.name,
+              description: list.description,
+              icon: list.icon,
+              color: list.color,
               itemCount: 0,
               items: validatedParams.includeItems ? [] : undefined,
+              isArchived: list.is_archived || false,
             };
           }
         }),
@@ -602,6 +619,384 @@ export class ListService {
     } catch (error) {
       logError("Failed to search lists", error, { userId: params.userId });
       throw handleServiceError(error, "searchLists");
+    }
+  }
+  async archiveList(params: {
+    userId: string;
+    listId?: string;
+    listName?: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    const startTime = Date.now();
+    try {
+      const validatedParams = validate(archiveListSchema, params);
+      let listId = validatedParams.listId;
+      if (!listId && validatedParams.listName) {
+        listId = await this.findListByName(
+          validatedParams.userId,
+          validatedParams.listName,
+        );
+        if (!listId) {
+          throw new NotFoundError("List", validatedParams.listName);
+        }
+      }
+      if (!listId) {
+        throw new ValidationError("Either listId or listName must be provided");
+      }
+      const { data: existing, error: checkError } = await this.supabase
+        .from("lists")
+        .select("id, name")
+        .eq("id", listId)
+        .eq("user_id", validatedParams.userId)
+        .single();
+      if (checkError || !existing) {
+        throw new NotFoundError("List", listId);
+      }
+      const { error } = await this.supabase
+        .from("lists")
+        .update({
+          is_archived: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", listId)
+        .eq("user_id", validatedParams.userId);
+      if (error) {
+        throw error;
+      }
+      logAudit("ARCHIVE_LIST", validatedParams.userId, "list", {
+        listId,
+        name: existing.name,
+      });
+      logPerformance("archiveList", Date.now() - startTime);
+      return {
+        success: true,
+        message: `List "${existing.name}" archived successfully`,
+      };
+    } catch (error) {
+      logError("Failed to archive list", error, { userId: params.userId });
+      throw handleServiceError(error, "archiveList");
+    }
+  }
+  async bulkCompleteItems(params: {
+    userId: string;
+    listId?: string;
+    listName?: string;
+    itemIds: string[];
+  }): Promise<{
+    success: boolean;
+    completedCount: number;
+    message: string;
+  }> {
+    const startTime = Date.now();
+    try {
+      const validatedParams = validate(bulkCompleteItemsSchema, params);
+      let listId = validatedParams.listId;
+      if (!listId && validatedParams.listName) {
+        listId = await this.findListByName(
+          validatedParams.userId,
+          validatedParams.listName,
+        );
+        if (!listId) {
+          throw new NotFoundError("List", validatedParams.listName);
+        }
+      }
+      if (!listId) {
+        throw new ValidationError("Either listId or listName must be provided");
+      }
+      const { data: listCheck, error: checkError } = await this.supabase
+        .from("lists")
+        .select("id, user_id")
+        .eq("id", listId)
+        .single();
+      if (checkError || !listCheck) {
+        throw new NotFoundError("List", listId);
+      }
+      if (listCheck.user_id !== validatedParams.userId) {
+        throw new ValidationError("List does not belong to user");
+      }
+      const { data, error } = await this.supabase
+        .from("list_items")
+        .update({
+          is_completed: true,
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("list_id", listId)
+        .in("id", validatedParams.itemIds)
+        .select();
+      if (error) {
+        throw error;
+      }
+      const completedCount = data?.length || 0;
+      logAudit("BULK_COMPLETE_ITEMS", validatedParams.userId, "list", {
+        listId,
+        completedCount,
+      });
+      logPerformance("bulkCompleteItems", Date.now() - startTime);
+      return {
+        success: true,
+        completedCount,
+        message: `${completedCount} item(s) marked as completed`,
+      };
+    } catch (error) {
+      logError("Failed to bulk complete items", error, {
+        userId: params.userId,
+      });
+      throw handleServiceError(error, "bulkCompleteItems");
+    }
+  }
+  async clearCompletedItems(params: {
+    userId: string;
+    listId?: string;
+    listName?: string;
+  }): Promise<{
+    success: boolean;
+    deletedCount: number;
+    message: string;
+  }> {
+    const startTime = Date.now();
+    try {
+      const validatedParams = validate(clearCompletedItemsSchema, params);
+      let listId = validatedParams.listId;
+      if (!listId && validatedParams.listName) {
+        listId = await this.findListByName(
+          validatedParams.userId,
+          validatedParams.listName,
+        );
+        if (!listId) {
+          throw new NotFoundError("List", validatedParams.listName);
+        }
+      }
+      if (!listId) {
+        throw new ValidationError("Either listId or listName must be provided");
+      }
+      const { data: listCheck, error: checkError } = await this.supabase
+        .from("lists")
+        .select("id, user_id")
+        .eq("id", listId)
+        .single();
+      if (checkError || !listCheck) {
+        throw new NotFoundError("List", listId);
+      }
+      if (listCheck.user_id !== validatedParams.userId) {
+        throw new ValidationError("List does not belong to user");
+      }
+      const { data, error } = await this.supabase
+        .from("list_items")
+        .delete()
+        .eq("list_id", listId)
+        .eq("is_completed", true)
+        .select();
+      if (error) {
+        throw error;
+      }
+      const deletedCount = data?.length || 0;
+      logAudit("CLEAR_COMPLETED_ITEMS", validatedParams.userId, "list", {
+        listId,
+        deletedCount,
+      });
+      logPerformance("clearCompletedItems", Date.now() - startTime);
+      return {
+        success: true,
+        deletedCount,
+        message: `${deletedCount} completed item(s) removed`,
+      };
+    } catch (error) {
+      logError("Failed to clear completed items", error, {
+        userId: params.userId,
+      });
+      throw handleServiceError(error, "clearCompletedItems");
+    }
+  }
+  async duplicateList(params: {
+    userId: string;
+    listId?: string;
+    listName?: string;
+    newName?: string;
+  }): Promise<{
+    success: boolean;
+    listId: string;
+    message: string;
+  }> {
+    const startTime = Date.now();
+    try {
+      const validatedParams = validate(duplicateListSchema, params);
+      let listId = validatedParams.listId;
+      if (!listId && validatedParams.listName) {
+        listId = await this.findListByName(
+          validatedParams.userId,
+          validatedParams.listName,
+        );
+        if (!listId) {
+          throw new NotFoundError("List", validatedParams.listName);
+        }
+      }
+      if (!listId) {
+        throw new ValidationError("Either listId or listName must be provided");
+      }
+      const { data: originalList, error: listError } = await this.supabase
+        .from("lists")
+        .select("*")
+        .eq("id", listId)
+        .eq("user_id", validatedParams.userId)
+        .single();
+      if (listError || !originalList) {
+        throw new NotFoundError("List", listId);
+      }
+      const newName = validatedParams.newName || `${originalList.name} (Copy)`;
+      const { data: newList, error: createError } = await this.supabase
+        .from("lists")
+        .insert({
+          user_id: validatedParams.userId,
+          name: newName,
+          description: originalList.description,
+          icon: originalList.icon,
+          color: originalList.color,
+          is_archived: false,
+          sort_order: originalList.sort_order,
+        })
+        .select()
+        .single();
+      if (createError || !newList) {
+        throw createError || new Error("Failed to create duplicate list");
+      }
+      const { data: originalItems, error: itemsError } = await this.supabase
+        .from("list_items")
+        .select("*")
+        .eq("list_id", listId)
+        .order("position", { ascending: true });
+      if (itemsError) {
+        await this.supabase.from("lists").delete().eq("id", newList.id);
+        throw itemsError;
+      }
+      if (originalItems && originalItems.length > 0) {
+        const newItems = originalItems.map((item) => ({
+          list_id: newList.id,
+          content: item.content,
+          notes: item.notes,
+          is_completed: false,
+          position: item.position,
+        }));
+        const { error: insertItemsError } = await this.supabase
+          .from("list_items")
+          .insert(newItems);
+        if (insertItemsError) {
+          await this.supabase.from("lists").delete().eq("id", newList.id);
+          throw insertItemsError;
+        }
+      }
+      logAudit("DUPLICATE_LIST", validatedParams.userId, "list", {
+        originalListId: listId,
+        newListId: newList.id,
+        name: newName,
+      });
+      logPerformance("duplicateList", Date.now() - startTime);
+      return {
+        success: true,
+        listId: newList.id,
+        message: `List duplicated as "${newName}"`,
+      };
+    } catch (error) {
+      logError("Failed to duplicate list", error, { userId: params.userId });
+      throw handleServiceError(error, "duplicateList");
+    }
+  }
+  async getListStats(params: { userId: string }): Promise<{
+    totalLists: number;
+    totalItems: number;
+    completedItems: number;
+    completionRate: number;
+    mostActiveList: {
+      id: string;
+      name: string;
+      itemCount: number;
+    } | null;
+    recentlyUpdated: Array<{
+      id: string;
+      name: string;
+      updatedAt: string;
+    }>;
+  }> {
+    const startTime = Date.now();
+    try {
+      const validatedParams = validate(getListStatsSchema, params);
+      const { count: totalLists } = await this.supabase
+        .from("lists")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", validatedParams.userId)
+        .eq("is_archived", false);
+      const { data: lists } = await this.supabase
+        .from("lists")
+        .select("id, name, updated_at")
+        .eq("user_id", validatedParams.userId)
+        .eq("is_archived", false);
+      if (!lists || lists.length === 0) {
+        return {
+          totalLists: 0,
+          totalItems: 0,
+          completedItems: 0,
+          completionRate: 0,
+          mostActiveList: null,
+          recentlyUpdated: [],
+        };
+      }
+      const listIds = lists.map((l) => l.id);
+      const { count: totalItems } = await this.supabase
+        .from("list_items")
+        .select("*", { count: "exact", head: true })
+        .in("list_id", listIds);
+      const { count: completedItems } = await this.supabase
+        .from("list_items")
+        .select("*", { count: "exact", head: true })
+        .in("list_id", listIds)
+        .eq("is_completed", true);
+      const completionRate =
+        totalItems && totalItems > 0
+          ? Math.round(((completedItems || 0) / totalItems) * 100)
+          : 0;
+      const listItemCounts = await Promise.all(
+        lists.map(async (list) => {
+          const { count } = await this.supabase
+            .from("list_items")
+            .select("*", { count: "exact", head: true })
+            .eq("list_id", list.id);
+          return { id: list.id, name: list.name, itemCount: count || 0 };
+        }),
+      );
+      const mostActiveList =
+        listItemCounts.length > 0
+          ? listItemCounts.reduce((max, current) =>
+              current.itemCount > max.itemCount ? current : max,
+            )
+          : null;
+      const recentlyUpdated = lists
+        .sort(
+          (a, b) =>
+            new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+        )
+        .slice(0, 5)
+        .map((l) => ({
+          id: l.id,
+          name: l.name,
+          updatedAt: l.updated_at,
+        }));
+      logPerformance("getListStats", Date.now() - startTime);
+      return {
+        totalLists: totalLists || 0,
+        totalItems: totalItems || 0,
+        completedItems: completedItems || 0,
+        completionRate,
+        mostActiveList:
+          mostActiveList && mostActiveList.itemCount > 0
+            ? mostActiveList
+            : null,
+        recentlyUpdated,
+      };
+    } catch (error) {
+      logError("Failed to get list stats", error, { userId: params.userId });
+      throw handleServiceError(error, "getListStats");
     }
   }
 }

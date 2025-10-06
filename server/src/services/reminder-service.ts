@@ -11,6 +11,7 @@ import {
   searchRemindersSchema,
   getUpcomingRemindersSchema,
   batchCreateRemindersSchema,
+  archiveReminderSchema,
   sanitizeString,
 } from "../utils/validators";
 import {
@@ -666,6 +667,52 @@ export class ReminderService {
         userId: params.userId,
       });
       throw handleServiceError(error, "batchCreateReminders");
+    }
+  }
+  async archiveReminder(params: {
+    userId: string;
+    reminderId: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    const startTime = Date.now();
+    try {
+      const validatedParams = validate(archiveReminderSchema, params);
+      const { data: existing, error: checkError } = await this.supabase
+        .from("reminders")
+        .select("id, status, user_id, title")
+        .eq("id", validatedParams.reminderId)
+        .eq("user_id", validatedParams.userId)
+        .single();
+      if (checkError || !existing) {
+        throw new NotFoundError("Reminder", validatedParams.reminderId);
+      }
+      const { error } = await this.supabase
+        .from("reminders")
+        .update({
+          status: "cancelled",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", validatedParams.reminderId)
+        .eq("user_id", validatedParams.userId);
+      if (error) {
+        throw error;
+      }
+      logAudit("ARCHIVE_REMINDER", existing.user_id, "reminder", {
+        reminderId: validatedParams.reminderId,
+        title: existing.title,
+      });
+      logPerformance("archiveReminder", Date.now() - startTime);
+      return {
+        success: true,
+        message: "Reminder archived successfully",
+      };
+    } catch (error) {
+      logError("Failed to archive reminder", error, {
+        reminderId: params.reminderId,
+      });
+      throw handleServiceError(error, "archiveReminder");
     }
   }
 }
