@@ -10,7 +10,7 @@ import { AppError } from "../utils/errors";
 import { logError, logInfo } from "../utils/logger";
 import { createAISDKTools, ToolServices } from "./tools/tool-definitions";
 import { createDeduplicationWrapper } from "./tools/tool-deduplication";
-import { detectIntent, mapIntentsToTools } from "./tools/tool-intent-detection";
+
 export class ToolsRegistry {
   private userService: UserService;
   private reminderService: ReminderService;
@@ -20,6 +20,7 @@ export class ToolsRegistry {
   private notificationService: NotificationService;
   private mediaService: MediaAttachmentService;
   private activityService: ActivityService;
+
   constructor() {
     this.userService = new UserService();
     this.reminderService = new ReminderService();
@@ -30,6 +31,7 @@ export class ToolsRegistry {
     this.mediaService = new MediaAttachmentService();
     this.activityService = new ActivityService();
   }
+
   getTools() {
     return {
       createReminder: {
@@ -437,6 +439,7 @@ export class ToolsRegistry {
       },
     };
   }
+
   async executeTool(toolName: string, params: any): Promise<any> {
     try {
       logInfo(`Executing tool: ${toolName}`, { toolName, hasParams: !!params });
@@ -468,21 +471,27 @@ export class ToolsRegistry {
       );
     }
   }
+
   getUserService() {
     return this.userService;
   }
+
   getReminderService() {
     return this.reminderService;
   }
+
   getListService() {
     return this.listService;
   }
+
   getUtilityService() {
     return this.utilityService;
   }
+
   getNotesService() {
     return this.notesService;
   }
+
   getAISDKTools(userId: string) {
     const { dedupe, stats } = createDeduplicationWrapper();
     const services: ToolServices = {
@@ -499,26 +508,49 @@ export class ToolsRegistry {
     (toolsObj as any).__stats = stats;
     return toolsObj;
   }
-  getRelevantTools(userId: string, message: string): any {
-    const intents = detectIntent(message);
+  
+  /**
+   * NEW: Returns a simplified list of tool definitions for the router.
+   */
+  getToolDefinitions(userId: string): Array<{ name: string; description: string }> {
     const allTools = this.getAISDKTools(userId);
-    const selectedToolNames = mapIntentsToTools(intents);
-    const filteredTools: any = {};
-    for (const toolName of selectedToolNames) {
-      if (allTools[toolName]) {
-        filteredTools[toolName] = allTools[toolName];
+    const definitions = [];
+    for (const toolName in allTools) {
+      // Filter out the internal __stats property
+      if (toolName === '__stats') continue;
+      
+      const tool = allTools[toolName];
+      if (tool && tool.description) {
+        definitions.push({
+          name: toolName,
+          description: tool.description,
+        });
       }
     }
-    if ((allTools as any).__stats) {
-      (filteredTools as any).__stats = (allTools as any).__stats;
-    }
-    logInfo(
-      `Intent detection: ${intents.join(", ")} | Selected ${selectedToolNames.size} tools from ${Object.keys(allTools).length} total`,
-      { intents, toolCount: selectedToolNames.size },
-    );
-    return filteredTools;
+    return definitions;
   }
-  getAISDKToolsSubset(userId: string, intent: string): any {
-    return this.getAISDKTools(userId);
+
+  /**
+   * NEW: Gets the definition for a single, specific tool.
+   */
+  getSingleAISDKTool(userId: string, toolName: string): any {
+    const allTools = this.getAISDKTools(userId);
+    const selectedTool = allTools[toolName];
+
+    if (!selectedTool) {
+      return null;
+    }
+
+    const toolSet = {
+        [toolName]: selectedTool
+    };
+    
+    // Preserve the stats object if it exists
+    if ((allTools as any).__stats) {
+      (toolSet as any).__stats = (allTools as any).__stats;
+    }
+    
+    return toolSet;
   }
 }
+

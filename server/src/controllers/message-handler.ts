@@ -261,26 +261,58 @@ export class MessageController {
       timestamp: new Date(),
       messageId: context.messageId,
     });
-    const tools = this.tools.getRelevantTools(user.id, validatedText);
-    this.logger.info(`Tool keys: ${Object.keys(tools).join(", ")}`);
+
     this.logger.info(
       `Conversation history: ${conversationContext.messages.length} messages`,
     );
+
     try {
-      const result = await this.aiService.processMessageWithTools(
+      const result = await this.aiService.processMessage(
         validatedText,
         user.id,
         user.timezone,
-        tools,
+        this.tools,
         conversationContext.messages,
       );
+
       this.logger.info(`AI response: ${result.text}`);
       this.logger.info(`Tool calls: ${result.toolCalls.length}`);
       this.logger.info(`Tool results: ${result.toolResults?.length || 0}`);
-      const lastToolResult =
+      if (Array.isArray(result.toolResults)) {
+        try {
+          const toolResultShapes = result.toolResults.map((r: any, idx: number) => ({
+            index: idx,
+            toolName: r?.toolName,
+            keys: r && typeof r === "object" ? Object.keys(r) : null,
+          }));
+          this.logger.info({ toolResultShapes }, "Tool result shapes");
+        } catch {}
+      }
+      const lastToolEnvelope =
         result.toolResults && result.toolResults.length > 0
           ? result.toolResults[result.toolResults.length - 1]
           : null;
+      // Unwrap AISDK tool result envelope { toolName, args, result }
+      const lastToolResult =
+        lastToolEnvelope && typeof lastToolEnvelope === "object" && "result" in lastToolEnvelope
+          ? (lastToolEnvelope as any).result
+          : lastToolEnvelope;
+      this.logger.info(
+        {
+          toolName: (lastToolEnvelope as any)?.toolName,
+          envelopeKeys:
+            lastToolEnvelope && typeof lastToolEnvelope === "object"
+              ? Object.keys(lastToolEnvelope as any)
+              : null,
+          hasInnerResult:
+            !!(
+              lastToolEnvelope &&
+              typeof lastToolEnvelope === "object" &&
+              (lastToolEnvelope as any).result
+            ),
+        },
+        "Tool result envelope summary",
+      );
       if (lastToolResult?.needsSelection && lastToolResult.candidates) {
         conversationContext.candidateItems = lastToolResult.candidates.map(
           (c: any) => ({
@@ -352,11 +384,17 @@ export class MessageController {
         Array.isArray(result.toolResults) &&
         result.toolResults.length > 0
           ? this.responseFormatter.getResponseMessage(
-              result.toolResults[result.toolResults.length - 1],
+              lastToolEnvelope,
               user.timezone,
             )
           : result.text ||
             this.responseFormatter.getResponseMessage(result, user.timezone);
+      this.logger.info(
+        {
+          renderedTextPreview: (renderedText || "").slice(0, 160),
+        },
+        "Prepared rendered text",
+      );
       if (renderedText) {
         this.addToConversationContext(user.id, {
           role: "assistant",

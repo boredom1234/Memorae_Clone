@@ -1,42 +1,57 @@
 import { formatInZone } from "../../utils/time-utils";
 export class ResponseFormatter {
   getResponseMessage(result: any, timezone?: string): string {
-    if (!result) return "Done!";
-    if (result.text) {
-      return result.text;
+    // Unwrap AISDK tool result envelope if present: { toolName, args, result }
+    // Try multiple common envelope keys: result, toolResult, output, data
+    const unwrap = (obj: any) => {
+      if (!obj || typeof obj !== "object") return obj;
+      if ("result" in obj) return (obj as any).result;
+      if ("toolResult" in obj) return (obj as any).toolResult;
+      if ("output" in obj) return (obj as any).output;
+      if ("data" in obj) return (obj as any).data;
+      return obj;
+    };
+    const r = unwrap(result);
+
+    if (!r) return "I couldn't format that result.";
+    if ((r as any).text) {
+      return (r as any).text;
     }
-    if (result.message) return result.message;
-    if (result.reminders) {
-      if (result.reminders.length === 0) {
+    if ((r as any).message) return (r as any).message;
+    if ((r as any).reminders) {
+      const reminders = (r as any).reminders;
+      if (reminders.length === 0) {
         return "No reminders found.";
       }
-      return `📅 Your reminders:\n${result.reminders
-        .map((r: any, i: number) => {
+      return `📅 Your reminders:\n${reminders
+        .map((rem: any, i: number) => {
           const ts = timezone
-            ? formatInZone(r.reminderTime, timezone)
-            : new Date(r.reminderTime).toLocaleString();
-          return `${i + 1}. ${r.title} - ${ts}`;
+            ? formatInZone(rem.reminderTime, timezone)
+            : new Date(rem.reminderTime).toLocaleString();
+          return `${i + 1}. ${rem.title} - ${ts}`;
         })
         .join("\n")}`;
     }
-    if (result.results && Array.isArray(result.results)) {
-      if (result.results.length === 0) {
+    if ((r as any).results && Array.isArray((r as any).results)) {
+      const resultsArr = (r as any).results as any[];
+      if (resultsArr.length === 0) {
         return "No reminders found matching your search.";
       }
-      return `🔍 Found ${result.total} reminder(s):\n${result.results
-        .map((r: any, i: number) => {
+      return `🔍 Found ${(r as any).total} reminder(s):\n${resultsArr
+        .map((rem: any, i: number) => {
           const ts = timezone
-            ? formatInZone(r.reminderTime, timezone)
-            : new Date(r.reminderTime).toLocaleString();
-          return `${i + 1}. ${r.title} - ${ts}`;
+            ? formatInZone(rem.reminderTime, timezone)
+            : new Date(rem.reminderTime).toLocaleString();
+          return `${i + 1}. ${rem.title} - ${ts}`;
         })
         .join("\n")}`;
     }
-    if (result.lists) {
-      if (result.lists.length === 0) {
+    if ((r as any).lists) {
+      const lists = (r as any).lists as any[];
+      if (lists.length === 0) {
         return "No lists found.";
       }
-      return `📝 Your lists:\n${result.lists
+      return `📝 Your lists:\n${lists
         .map((l: any, i: number) => {
           const itemsText = l.items
             ? `\n${l.items
@@ -50,38 +65,76 @@ export class ResponseFormatter {
         })
         .join("\n\n")}`;
     }
-    if (result.items && Array.isArray(result.items)) {
-      if (result.items.length === 0) {
-        return `List "${result.listName || "Unknown"}" is empty.`;
+    if ((r as any).items && Array.isArray((r as any).items)) {
+      const items = (r as any).items as any[];
+      if (items.length === 0) {
+        return `List "${(r as any).listName || "Unknown"}" is empty.`;
       }
-      return `📝 ${result.listName}:\n${result.items
+      return `📝 ${(r as any).listName}:\n${items
         .map(
           (item: any, i: number) =>
             `${i + 1}. ${item.isCompleted ? "✅" : "⬜"} ${item.content}`,
         )
         .join("\n")}`;
     }
-    if (result.created !== undefined && result.failed !== undefined) {
-      return `✅ Created ${result.created} reminder(s)${result.failed > 0 ? `, ${result.failed} failed` : ""}`;
+    if ((r as any).created !== undefined && (r as any).failed !== undefined) {
+      return `✅ Created ${(r as any).created} reminder(s)${(r as any).failed > 0 ? `, ${(r as any).failed} failed` : ""}`;
     }
-    if (result.addedCount !== undefined) {
-      return `✅ Added ${result.addedCount} item(s) to list`;
+    if ((r as any).addedCount !== undefined) {
+      return `✅ Added ${(r as any).addedCount} item(s) to list`;
     }
-    if (result.removedCount !== undefined) {
-      return `✅ Removed ${result.removedCount} item(s) from list`;
+    if ((r as any).removedCount !== undefined) {
+      return `✅ Removed ${(r as any).removedCount} item(s) from list`;
     }
-    if (result.formattedTime && result.timezone) {
-      return `🕐 Current time: ${result.formattedTime}`;
+    if ((r as any).formattedTime && (r as any).timezone) {
+      return `🕐 Current time: ${(r as any).formattedTime}`;
     }
-    if (result.notes && Array.isArray(result.notes)) {
-      if (result.notes.length === 0) {
+    // User settings summary
+    if (
+      (r as any).timezone &&
+      (r as any).language &&
+      (((r as any).notificationPreferences !== undefined) ||
+        (r as any).defaultReminderTime !== undefined ||
+        (r as any).quietHours !== undefined)
+    ) {
+      const name = (r as any).name || "(not set)";
+      const tz = (r as any).timezone || "UTC";
+      const lang = (r as any).language || "en";
+      const defaultTime = (r as any).defaultReminderTime || "(not set)";
+      const np = (r as any).notificationPreferences || {};
+      const notifEnabled = np.enabled === true ? "enabled" : "disabled";
+      const advance = np.advanceNotice ?? "(default)";
+      const qh = (r as any).quietHours || {};
+      const qhEnabled = qh.enabled ? "enabled" : "disabled";
+      const qhWindow = qh.enabled
+        ? `${qh.startTime || "?"} - ${qh.endTime || "?"}`
+        : "";
+      const qhDays = qh.enabled && Array.isArray(qh.days) && qh.days.length > 0
+        ? ` (${qh.days.join(", ")})`
+        : "";
+      const calendars = (r as any).calendarConnections || [];
+      const calendarsText = calendars.length > 0 ? calendars.join(", ") : "none";
+      return (
+        `👤 Your settings:\n` +
+        `- Name: ${name}\n` +
+        `- Timezone: ${tz}\n` +
+        `- Language: ${lang}\n` +
+        `- Default reminder time: ${defaultTime}\n` +
+        `- Notifications: ${notifEnabled}${np.enabled ? ` (advance notice: ${advance} min)` : ""}\n` +
+        `- Quiet hours: ${qhEnabled}${qh.enabled ? ` (${qhWindow}${qhDays})` : ""}\n` +
+        `- Linked calendars: ${calendarsText}`
+      );
+    }
+    if ((r as any).notes && Array.isArray((r as any).notes)) {
+      const notes = (r as any).notes as any[];
+      if (notes.length === 0) {
         return "No notes found.";
       }
-      const totalText = result.total
-        ? ` (showing ${result.notes.length} of ${result.total})`
+      const totalText = (r as any).total
+        ? ` (showing ${notes.length} of ${(r as any).total})`
         : "";
-      let response = `📝 Found ${result.notes.length} note(s)${totalText}:\n`;
-      const formattedNotes = result.notes
+      let response = `📝 Found ${notes.length} note(s)${totalText}:\n`;
+      const formattedNotes = notes
         .map((note: any, i: number) => {
           const title = note.title ? `**${note.title}**` : "";
           const content =
@@ -97,15 +150,12 @@ export class ResponseFormatter {
         })
         .join("\n\n");
       response += formattedNotes;
-      if (result.total && result.total > result.notes.length) {
+      if ((r as any).total && (r as any).total > notes.length) {
         response += `\n\n💡 *Tip: Use more specific search terms or categories to narrow results*`;
       }
       if (response.length > 3500) {
-        const truncatedNotes = result.notes.slice(
-          0,
-          Math.floor(result.notes.length * 0.7),
-        );
-        const newResponse = `📝 Found ${result.notes.length} note(s)${totalText} (showing first ${truncatedNotes.length}):\n`;
+        const truncatedNotes = notes.slice(0, Math.floor(notes.length * 0.7));
+        const newResponse = `📝 Found ${notes.length} note(s)${totalText} (showing first ${truncatedNotes.length}):\n`;
         const truncatedFormatted = truncatedNotes
           .map((note: any, i: number) => {
             const title = note.title ? `**${note.title}**` : "";
@@ -117,24 +167,21 @@ export class ResponseFormatter {
             return `${i + 1}. ${pinned}${title}${title ? "\n   " : ""}${content}`;
           })
           .join("\n\n");
-        response =
-          newResponse +
-          truncatedFormatted +
-          "\n\n💡 *Use more specific search to see all results*";
+        response = newResponse + truncatedFormatted + "\n\n💡 *Use more specific search to see all results*";
       }
       return response;
     }
-    if (result.content && result.id) {
-      const title = result.title ? `**${result.title}**` : "";
+    if ((r as any).content && (r as any).id) {
+      const title = (r as any).title ? `**${(r as any).title}**` : "";
       const tags =
-        result.tags && result.tags.length > 0
-          ? ` #${result.tags.join(" #")}`
+        (r as any).tags && (r as any).tags.length > 0
+          ? ` #${(r as any).tags.join(" #")}`
           : "";
-      return `✅ Note saved!\n${title}${title ? "\n" : ""}${result.content}${tags}`;
+      return `✅ Note saved!\n${title}${title ? "\n" : ""}${(r as any).content}${tags}`;
     }
-    if (result.success === true) {
+    if ((r as any).success === true) {
       return "✅ Note deleted successfully!";
     }
-    return "Done!";
+    return "I couldn't format that result.";
   }
 }
