@@ -1,4 +1,5 @@
 import * as chrono from "chrono-node";
+import { DateTime } from "luxon";
 import {
   wallClockToUTCFromZone,
   formatInZone,
@@ -333,7 +334,7 @@ export class UtilityService {
       const formattedTime = formatInZone(
         utcISO,
         params.timezone,
-        "DATETIME_MED_WITH_SECONDS",
+        DateTime.DATETIME_MED_WITH_SECONDS,
       );
       return {
         currentTime: utcISO,

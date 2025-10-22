@@ -18,16 +18,13 @@ import { ConversationMessage } from "../types/conversation";
 import pino from "pino";
 import { ToolsRegistry } from "./tools-registry";
 import { routeToTool } from "./tools/tool-router";
-
 export class AIService {
   private logger = pino({ level: "info" });
   private defaultModel: any;
   private fallbackModels: any[] = [];
-
   constructor() {
     this.initializeModels();
   }
-
   private initializeModels() {
     this.defaultModel = this.getDefaultModel();
     this.fallbackModels = this.getFallbackModels();
@@ -35,12 +32,8 @@ export class AIService {
       `AI Service initialized with ${this.fallbackModels.length} fallback models`,
     );
   }
-
-  // Lightweight keyword-based fallback for routing
   private heuristicToolSelection(message: string): string {
     const text = message.toLowerCase();
-
-    // Reminders
     if (/(remind|set\s+.*reminder|schedule|alarm)/.test(text)) {
       return "createReminder";
     }
@@ -56,8 +49,6 @@ export class AIService {
     if (/(snooze|postpone|delay)/.test(text)) {
       return "snoozeReminder";
     }
-
-    // Lists
     if (/((show|what).*(my\s+)?lists|all my lists|show lists)/.test(text)) {
       return "getLists";
     }
@@ -70,9 +61,11 @@ export class AIService {
     if (/((what's|whats|show|list).*(on|in).+list)/.test(text)) {
       return "getListItems";
     }
-
-    // Notes
-    if (/(remember this|take a note|create note|\bnote\b|\bsave\b|\bstore\b)/.test(text)) {
+    if (
+      /(remember this|take a note|create note|\bnote\b|\bsave\b|\bstore\b)/.test(
+        text,
+      )
+    ) {
       return "createNote";
     }
     if (/((search|find).*(note|notes|memory|memories))/.test(text)) {
@@ -81,15 +74,11 @@ export class AIService {
     if (/((show|list).*(notes|memories))/.test(text)) {
       return "listNotes";
     }
-
-    // List stats
     if (/(stats|statistics|completion rate|how many lists)/.test(text)) {
       return "getListStats";
     }
-
     return "no_tool_needed";
   }
-
   private getDefaultModel() {
     const provider = config.ai.provider.toLowerCase();
     const model = config.ai.model;
@@ -183,7 +172,6 @@ export class AIService {
       return null;
     }
   }
-
   private getFallbackModels(): any[] {
     const fallbacks: any[] = [];
     const fallbackConfigs = [
@@ -261,7 +249,6 @@ export class AIService {
     }
     return fallbacks;
   }
-
   async processMessage(
     message: string,
     userId: string,
@@ -278,7 +265,6 @@ export class AIService {
       this.logger.error("No AI models configured");
       throw new Error("AI service not available - no models configured");
     }
-
     const modelsToTry = [
       { provider: "primary", instance: this.defaultModel },
       ...this.fallbackModels.map((f) => ({
@@ -286,16 +272,11 @@ export class AIService {
         instance: f.instance,
       })),
     ].filter((m) => m.instance);
-
-    // Get all tool definitions for the router
     const toolDefinitions = toolsRegistry.getToolDefinitions(userId);
-
-    // ===== Step 1: Route to the correct tool =====
     const selectedToolNameFromRouter = await routeToTool(
       message,
       toolDefinitions,
     );
-    // Guardrail: lightweight keyword heuristic if router declines
     let selectedToolName = selectedToolNameFromRouter;
     if (selectedToolNameFromRouter === "no_tool_needed") {
       const heuristic = this.heuristicToolSelection(message);
@@ -306,24 +287,24 @@ export class AIService {
         selectedToolName = heuristic;
       }
     }
-
     const messages = conversationHistory.map((msg) => ({
-      role: msg.role,
+      role: msg.role as "user" | "assistant",
       content: msg.content,
     }));
-
-    // ===== Step 2: Execute =====
-    // If no tool is needed, generate a conversational response.
     if (selectedToolName === "no_tool_needed") {
       this.logger.info(
         "Router determined no tool is needed. Generating conversational response.",
       );
       for (const modelConfig of modelsToTry) {
         try {
+          const messagesWithCurrent = [
+            ...messages,
+            { role: "user" as const, content: message },
+          ];
           const result = await generateText({
             model: modelConfig.instance,
             system: `You are a helpful AI assistant. Be friendly, concise, and helpful in your responses. Current user timezone is ${timezone}.`,
-            messages,
+            messages: messagesWithCurrent,
           });
           return { text: result.text, toolCalls: [], toolResults: [] };
         } catch (error: any) {
@@ -338,22 +319,22 @@ export class AIService {
         "All AI models failed to generate a conversational response.",
       );
     }
-
-    // If a tool is selected, prepare for execution.
     this.logger.info(`Executing selected tool: ${selectedToolName}`);
     const tools = toolsRegistry.getSingleAISDKTool(userId, selectedToolName);
-
     if (!tools || Object.keys(tools).length === 0) {
       this.logger.error(
         `Router selected tool "${selectedToolName}", but the tool could not be found or constructed.`,
       );
-      throw new Error(`Internal error: Could not find tool "${selectedToolName}".`);
+      throw new Error(
+        `Internal error: Could not find tool "${selectedToolName}".`,
+      );
     }
-
     let lastError: Error | null = null;
     for (const modelConfig of modelsToTry) {
       try {
-        this.logger.info(`Attempting tool execution with ${modelConfig.provider}`);
+        this.logger.info(
+          `Attempting tool execution with ${modelConfig.provider}`,
+        );
         const systemPrompt = `You are a helpful AI assistant for a reminder and task management system.
 Your task is to use the provided tool to fulfill the user's request, then provide a helpful response to the user.
 
@@ -366,21 +347,18 @@ Use it to process the user's request, then explain the results in a friendly, co
 Current user timezone: ${timezone}
 Current user ID: ${userId}
 Current time (UTC): ${new Date().toISOString()}`;
-
         const result = await generateText({
           model: modelConfig.instance,
           system: systemPrompt,
           messages,
           tools,
-          maxSteps: 5, // Reduced max steps as we are more targeted
+          maxSteps: 5,
         } as any);
-
         const toolStats = (tools as any).__stats;
         const toolsActuallyExecuted = toolStats?.executed === true;
         this.logger.info(
           `AI processed message with ${modelConfig.provider} - tool executed: ${toolsActuallyExecuted}`,
         );
-
         return {
           text: result.text,
           toolCalls: result.toolCalls,
@@ -396,10 +374,81 @@ Current time (UTC): ${new Date().toISOString()}`;
         continue;
       }
     }
-
     this.logger.error(
       { error: lastError?.message || "Unknown error" },
       "All AI models failed to process message with the selected tool",
+    );
+    throw new Error(
+      `AI service unavailable: ${lastError?.message || "All providers failed"}`,
+    );
+  }
+  async processMessageWithTools(
+    message: string,
+    userId: string,
+    timezone: string,
+    tools: any,
+    conversationHistory: ConversationMessage[] = [],
+  ): Promise<{
+    text: string;
+    toolCalls: any[];
+    toolResults: any[];
+    _toolsExecuted?: boolean;
+  }> {
+    if (!this.defaultModel && this.fallbackModels.length === 0) {
+      this.logger.error("No AI models configured");
+      throw new Error("AI service not available - no models configured");
+    }
+    const modelsToTry = [
+      { provider: "primary", instance: this.defaultModel },
+      ...this.fallbackModels.map((f) => ({
+        provider: f.provider,
+        instance: f.instance,
+      })),
+    ].filter((m) => m.instance);
+    const messages = conversationHistory.map((msg) => ({
+      role: msg.role,
+      content: msg.content,
+    }));
+    const messagesWithCurrent = [
+      ...messages,
+      { role: "user", content: message },
+    ];
+    let lastError: Error | null = null;
+    for (const modelConfig of modelsToTry) {
+      try {
+        const systemPrompt = `You are a helpful AI assistant for a reminder and task management system.
+Use the provided tool(s) when helpful to fulfill the user's request, then provide a concise summary.
+
+Current user timezone: ${timezone}
+Current user ID: ${userId}
+Current time (UTC): ${new Date().toISOString()}`;
+        const result = await generateText({
+          model: modelConfig.instance,
+          system: systemPrompt,
+          messages: messagesWithCurrent,
+          tools,
+          maxSteps: 5,
+        } as any);
+        const toolStats = (tools as any).__stats;
+        const toolsActuallyExecuted = toolStats?.executed === true;
+        return {
+          text: (result as any).text,
+          toolCalls: (result as any).toolCalls || [],
+          toolResults: (result as any).toolResults || [],
+          _toolsExecuted: toolsActuallyExecuted,
+        };
+      } catch (error: any) {
+        lastError = error;
+        this.logger.warn(
+          { error: error.message, provider: modelConfig.provider },
+          `Direct tool execution failed with ${modelConfig.provider}, trying next fallback`,
+        );
+        continue;
+      }
+    }
+    this.logger.error(
+      { error: lastError?.message || "Unknown error" },
+      "All AI models failed to process message with provided tools",
     );
     throw new Error(
       `AI service unavailable: ${lastError?.message || "All providers failed"}`,

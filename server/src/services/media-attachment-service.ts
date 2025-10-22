@@ -1,4 +1,4 @@
-import { supabase } from "../lib/supabase";
+import { getSupabaseClient } from "../lib/supabase";
 import pino from "pino";
 export interface MediaAttachment {
   id: string;
@@ -36,6 +36,7 @@ export interface LinkMediaParams {
 }
 export class MediaAttachmentService {
   private logger = pino({ level: "info" });
+  private supabase = getSupabaseClient();
   async saveAttachment(
     params: CreateMediaAttachmentParams,
   ): Promise<MediaAttachment> {
@@ -43,7 +44,7 @@ export class MediaAttachmentService {
       this.logger.info(
         `Saving media attachment: type=${params.mediaType}, user=${params.userId}`,
       );
-      const { data, error } = await supabase
+      const { data, error } = await this.supabase
         .from("media_attachments")
         .insert({
           user_id: params.userId,
@@ -87,7 +88,7 @@ export class MediaAttachmentService {
         this.logger.warn("No linking parameters provided");
         return;
       }
-      const { error } = await supabase
+      const { error } = await this.supabase
         .from("media_attachments")
         .update(updates)
         .eq("id", params.attachmentId);
@@ -120,7 +121,7 @@ export class MediaAttachmentService {
     total: number;
   }> {
     try {
-      let query = supabase
+      let query = this.supabase
         .from("media_attachments")
         .select("*", { count: "exact" })
         .eq("user_id", userId)
@@ -155,7 +156,7 @@ export class MediaAttachmentService {
     reminderId: string,
   ): Promise<MediaAttachment[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await this.supabase
         .from("media_attachments")
         .select("*")
         .eq("reminder_id", reminderId)
@@ -174,7 +175,7 @@ export class MediaAttachmentService {
     listItemId: string,
   ): Promise<MediaAttachment[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await this.supabase
         .from("media_attachments")
         .select("*")
         .eq("list_item_id", listItemId)
@@ -193,7 +194,7 @@ export class MediaAttachmentService {
   }
   async getAttachmentsByNote(noteId: string): Promise<MediaAttachment[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await this.supabase
         .from("media_attachments")
         .select("*")
         .eq("note_id", noteId)
@@ -217,7 +218,7 @@ export class MediaAttachmentService {
     },
   ): Promise<MediaAttachment[]> {
     try {
-      let query = supabase
+      let query = this.supabase
         .from("media_attachments")
         .select("*")
         .eq("user_id", userId)
@@ -246,7 +247,7 @@ export class MediaAttachmentService {
     limit: number = 10,
   ): Promise<MediaAttachment[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await this.supabase
         .from("media_attachments")
         .select("*")
         .eq("user_id", userId)
@@ -267,7 +268,7 @@ export class MediaAttachmentService {
   }
   async deleteAttachment(attachmentId: string): Promise<void> {
     try {
-      const { error } = await supabase
+      const { error } = await this.supabase
         .from("media_attachments")
         .delete()
         .eq("id", attachmentId);
@@ -288,7 +289,7 @@ export class MediaAttachmentService {
     linked: number;
   }> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await this.supabase
         .from("media_attachments")
         .select(
           "media_type, extracted_text, reminder_id, list_item_id, note_id",
@@ -304,7 +305,7 @@ export class MediaAttachmentService {
         withOCR: 0,
         linked: 0,
       };
-      data?.forEach((item) => {
+      data?.forEach((item: any) => {
         stats.byType[item.media_type] =
           (stats.byType[item.media_type] || 0) + 1;
         if (item.extracted_text) {

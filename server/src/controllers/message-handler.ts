@@ -215,7 +215,90 @@ export class MessageController {
           this.logger.info(
             `User selected item ${selection}: ${selected.title}`,
           );
-          conversationContext.candidateItems = undefined;
+          try {
+            const pending = conversationContext.pendingAction;
+            conversationContext.candidateItems = undefined;
+            if (pending && selected.id) {
+              const toolName =
+                (pending.params && pending.params.toolName) || "";
+              const toolArgs = (pending.params && pending.params.args) || {};
+              let result: any = null;
+              if (toolName === "updateReminder") {
+                let finalTime: string | undefined = toolArgs.reminderTime;
+                if (!finalTime && toolArgs.naturalTimeText) {
+                  try {
+                    const util = this.tools.getUtilityService();
+                    const parsed = util.parseNaturalLanguageDate({
+                      text: toolArgs.naturalTimeText,
+                      timezone: user.timezone,
+                    });
+                    const best = util.pickBestDate(parsed.extractedDates);
+                    if (best) finalTime = best;
+                  } catch {}
+                }
+                if (!finalTime && (toolArgs.title || toolArgs.priority)) {
+                }
+                result = await this.tools.executeTool("updateReminder", {
+                  userId: user.id,
+                  reminderId: selected.id,
+                  title: toolArgs.title,
+                  reminderTime: finalTime,
+                  priority: toolArgs.priority,
+                });
+              } else if (toolName === "deleteReminder") {
+                result = await this.tools.executeTool("deleteReminder", {
+                  userId: user.id,
+                  reminderId: selected.id,
+                });
+              } else if (toolName === "snoozeReminder") {
+                let snoozeUntil: string | undefined = toolArgs.snoozeUntil;
+                if (!snoozeUntil && toolArgs.naturalTimeText) {
+                  try {
+                    const util = this.tools.getUtilityService();
+                    const parsed = util.parseNaturalLanguageDate({
+                      text: toolArgs.naturalTimeText,
+                      timezone: user.timezone,
+                    });
+                    const best = util.pickBestDate(parsed.extractedDates);
+                    if (best) snoozeUntil = best;
+                  } catch {}
+                }
+                if (!snoozeUntil) {
+                  return {
+                    text: "When should I snooze it until? Please specify a time.",
+                  };
+                }
+                result = await this.tools.executeTool("snoozeReminder", {
+                  userId: user.id,
+                  reminderId: selected.id,
+                  snoozeUntil,
+                });
+              } else {
+                result = { text: `Selected ${selected.title}.` };
+              }
+              conversationContext.pendingAction = undefined;
+              const rendered = this.responseFormatter.getResponseMessage(
+                result,
+                user.timezone,
+              );
+              if (rendered) {
+                this.addToConversationContext(user.id, {
+                  role: "assistant",
+                  content: rendered,
+                  timestamp: new Date(),
+                });
+              }
+              return { text: rendered };
+            }
+          } catch (e) {
+            this.logger.error(
+              { error: e },
+              "Failed to execute pending action after selection",
+            );
+            return {
+              text: "Sorry, I couldn't complete that action after your selection.",
+            };
+          }
         }
       }
     }
@@ -227,7 +310,40 @@ export class MessageController {
       this.logger.info(
         `User confirmed action: ${conversationContext.needsConfirmation.action}`,
       );
-      conversationContext.needsConfirmation = undefined;
+      try {
+        const action = conversationContext.needsConfirmation.action;
+        const targetId = conversationContext.needsConfirmation.targetId;
+        let result: any = null;
+        if (action === "deleteReminder") {
+          result = await this.tools.executeTool("deleteReminder", {
+            userId: user.id,
+            reminderId: targetId,
+          });
+        } else if (action === "updateReminder") {
+          result = { text: "Update confirmed." };
+        } else if (action === "snoozeReminder") {
+          result = { text: "Snooze confirmed." };
+        } else {
+          result = { text: "Action confirmed." };
+        }
+        conversationContext.needsConfirmation = undefined;
+        const rendered = this.responseFormatter.getResponseMessage(
+          result,
+          user.timezone,
+        );
+        if (rendered) {
+          this.addToConversationContext(user.id, {
+            role: "assistant",
+            content: rendered,
+            timestamp: new Date(),
+          });
+        }
+        return { text: rendered };
+      } catch (e) {
+        this.logger.error({ error: e }, "Failed to execute confirmed action");
+        conversationContext.needsConfirmation = undefined;
+        return { text: "Sorry, I couldn't complete the confirmed action." };
+      }
     } else if (
       conversationContext.needsConfirmation &&
       /^(no|n|cancel|nope)$/i.test(lowerText)
@@ -261,11 +377,9 @@ export class MessageController {
       timestamp: new Date(),
       messageId: context.messageId,
     });
-
     this.logger.info(
       `Conversation history: ${conversationContext.messages.length} messages`,
     );
-
     try {
       const result = await this.aiService.processMessage(
         validatedText,
@@ -274,17 +388,18 @@ export class MessageController {
         this.tools,
         conversationContext.messages,
       );
-
       this.logger.info(`AI response: ${result.text}`);
       this.logger.info(`Tool calls: ${result.toolCalls.length}`);
       this.logger.info(`Tool results: ${result.toolResults?.length || 0}`);
       if (Array.isArray(result.toolResults)) {
         try {
-          const toolResultShapes = result.toolResults.map((r: any, idx: number) => ({
-            index: idx,
-            toolName: r?.toolName,
-            keys: r && typeof r === "object" ? Object.keys(r) : null,
-          }));
+          const toolResultShapes = result.toolResults.map(
+            (r: any, idx: number) => ({
+              index: idx,
+              toolName: r?.toolName,
+              keys: r && typeof r === "object" ? Object.keys(r) : null,
+            }),
+          );
           this.logger.info({ toolResultShapes }, "Tool result shapes");
         } catch {}
       }
@@ -292,9 +407,10 @@ export class MessageController {
         result.toolResults && result.toolResults.length > 0
           ? result.toolResults[result.toolResults.length - 1]
           : null;
-      // Unwrap AISDK tool result envelope { toolName, args, result }
       const lastToolResult =
-        lastToolEnvelope && typeof lastToolEnvelope === "object" && "result" in lastToolEnvelope
+        lastToolEnvelope &&
+        typeof lastToolEnvelope === "object" &&
+        "result" in lastToolEnvelope
           ? (lastToolEnvelope as any).result
           : lastToolEnvelope;
       this.logger.info(
@@ -304,12 +420,11 @@ export class MessageController {
             lastToolEnvelope && typeof lastToolEnvelope === "object"
               ? Object.keys(lastToolEnvelope as any)
               : null,
-          hasInnerResult:
-            !!(
-              lastToolEnvelope &&
-              typeof lastToolEnvelope === "object" &&
-              (lastToolEnvelope as any).result
-            ),
+          hasInnerResult: !!(
+            lastToolEnvelope &&
+            typeof lastToolEnvelope === "object" &&
+            (lastToolEnvelope as any).result
+          ),
         },
         "Tool result envelope summary",
       );
@@ -322,6 +437,20 @@ export class MessageController {
             type: c.type || "reminder",
           }),
         );
+        try {
+          const toolName = (lastToolEnvelope as any)?.toolName;
+          const args = (lastToolEnvelope as any)?.args;
+          let type: "delete" | "update" | "complete" | "snooze" = "update";
+          if (toolName === "deleteReminder") type = "delete";
+          else if (toolName === "snoozeReminder") type = "snooze";
+          else if (toolName === "completeReminder") type = "complete";
+          conversationContext.pendingAction = {
+            type,
+            targetType: "reminder",
+            params: { toolName, args },
+            timestamp: new Date(),
+          } as any;
+        } catch {}
         const selectionMessage = `${lastToolResult.message}\n\n${lastToolResult.candidates
           .map(
             (c: any, idx: number) =>
@@ -361,7 +490,7 @@ export class MessageController {
         };
       }
       const toolsWereExecuted = (result as any)._toolsExecuted === true;
-      if (result.toolsRequiredButMissing && !toolsWereExecuted) {
+      if (!toolsWereExecuted && result.toolCalls.length === 0) {
         this.logger.warn(
           `Action intent detected but no tool results. Asking for clarification.`,
         );

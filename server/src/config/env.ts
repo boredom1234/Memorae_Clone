@@ -68,7 +68,7 @@ function validateEnv() {
   }
   if (errors.length > 0) {
     console.error("❌ Environment validation failed:");
-    errors.forEach((error) => console.error(`  - ${error}`));
+    errors.forEach((error: string) => console.error(`  - ${error}`));
     console.error(
       "\nPlease check your .env file and ensure all required variables are set.",
     );

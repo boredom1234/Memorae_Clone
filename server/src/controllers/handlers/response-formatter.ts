@@ -1,8 +1,6 @@
 import { formatInZone } from "../../utils/time-utils";
 export class ResponseFormatter {
   getResponseMessage(result: any, timezone?: string): string {
-    // Unwrap AISDK tool result envelope if present: { toolName, args, result }
-    // Try multiple common envelope keys: result, toolResult, output, data
     const unwrap = (obj: any) => {
       if (!obj || typeof obj !== "object") return obj;
       if ("result" in obj) return (obj as any).result;
@@ -12,7 +10,6 @@ export class ResponseFormatter {
       return obj;
     };
     const r = unwrap(result);
-
     if (!r) return "I couldn't format that result.";
     if ((r as any).text) {
       return (r as any).text;
@@ -89,11 +86,10 @@ export class ResponseFormatter {
     if ((r as any).formattedTime && (r as any).timezone) {
       return `🕐 Current time: ${(r as any).formattedTime}`;
     }
-    // User settings summary
     if (
       (r as any).timezone &&
       (r as any).language &&
-      (((r as any).notificationPreferences !== undefined) ||
+      ((r as any).notificationPreferences !== undefined ||
         (r as any).defaultReminderTime !== undefined ||
         (r as any).quietHours !== undefined)
     ) {
@@ -109,11 +105,13 @@ export class ResponseFormatter {
       const qhWindow = qh.enabled
         ? `${qh.startTime || "?"} - ${qh.endTime || "?"}`
         : "";
-      const qhDays = qh.enabled && Array.isArray(qh.days) && qh.days.length > 0
-        ? ` (${qh.days.join(", ")})`
-        : "";
+      const qhDays =
+        qh.enabled && Array.isArray(qh.days) && qh.days.length > 0
+          ? ` (${qh.days.join(", ")})`
+          : "";
       const calendars = (r as any).calendarConnections || [];
-      const calendarsText = calendars.length > 0 ? calendars.join(", ") : "none";
+      const calendarsText =
+        calendars.length > 0 ? calendars.join(", ") : "none";
       return (
         `👤 Your settings:\n` +
         `- Name: ${name}\n` +
@@ -167,7 +165,10 @@ export class ResponseFormatter {
             return `${i + 1}. ${pinned}${title}${title ? "\n   " : ""}${content}`;
           })
           .join("\n\n");
-        response = newResponse + truncatedFormatted + "\n\n💡 *Use more specific search to see all results*";
+        response =
+          newResponse +
+          truncatedFormatted +
+          "\n\n💡 *Use more specific search to see all results*";
       }
       return response;
     }

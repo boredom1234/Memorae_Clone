@@ -1,47 +1,35 @@
-import { generateText } from 'ai';
-import { groq } from '@ai-sdk/groq';
-import { openai } from '@ai-sdk/openai';
-import { google } from '@ai-sdk/google';
-import { logInfo, logError, logWarn } from '../../utils/logger';
-import { config } from '../../config/env';
-
-// Pick a lightweight routing model with fallbacks
+import { generateText } from "ai";
+import { groq } from "@ai-sdk/groq";
+import { openai } from "@ai-sdk/openai";
+import { google } from "@ai-sdk/google";
+import { logInfo, logError, logWarn } from "../../utils/logger";
+import { config } from "../../config/env";
 function getRoutingModel() {
   try {
-    if (config.ai.groqApiKey) return groq('llama-3.1-8b-instant');
+    if (config.ai.groqApiKey) return groq("llama-3.1-8b-instant");
   } catch {}
   try {
-    if (config.ai.googleApiKey) return google('gemini-1.5-flash');
+    if (config.ai.googleApiKey) return google("gemini-1.5-flash");
   } catch {}
   try {
-    if (config.ai.openaiApiKey) return openai('gpt-4o-mini');
+    if (config.ai.openaiApiKey) return openai("gpt-4o-mini");
   } catch {}
-  // Last resort: attempt groq (may fail but caught by caller)
-  return groq('llama-3.1-8b-instant');
+  return groq("llama-3.1-8b-instant");
 }
-
 interface ToolDefinition {
   name: string;
   description: string;
 }
-
-/**
- * Selects the most appropriate tool to respond to a user query.
- *
- * @param userQuery The user's message.
- * @param toolDefinitions A list of available tools with their names and descriptions.
- * @returns The name of the selected tool, or 'no_tool_needed' if the query is conversational.
- */
 export async function routeToTool(
   userQuery: string,
   toolDefinitions: ToolDefinition[],
 ): Promise<string> {
-  logInfo('Routing query to a tool...', { query: userQuery.substring(0, 50) + '...' });
-
+  logInfo("Routing query to a tool...", {
+    query: userQuery.substring(0, 50) + "...",
+  });
   const toolList = toolDefinitions
     .map((tool) => `- ${tool.name}: ${tool.description}`)
-    .join('\n');
-
+    .join("\n");
   const prompt = `You are an expert AI router. Your task is to select the single most appropriate tool to handle the user's request.
 You must choose from the following list of tools:
 ${toolList}
@@ -62,43 +50,42 @@ Your response: { "toolName": "no_tool_needed" }
 
 User query: ${userQuery}
 Your response:`;
-
   try {
     const { text } = await generateText({
       model: getRoutingModel(),
       prompt: prompt,
       temperature: 0,
     });
-    let selectedTool = 'no_tool_needed';
+    let selectedTool = "no_tool_needed";
     try {
       const parsed = JSON.parse(text);
       selectedTool = parsed.toolName;
     } catch (e) {
-      // Fallback: attempt to extract last JSON object
       const match = text.match(/\{[\s\S]*\}/g);
       if (match && match.length > 0) {
         try {
           const parsed = JSON.parse(match[match.length - 1]);
-          selectedTool = parsed.toolName || 'no_tool_needed';
+          selectedTool = parsed.toolName || "no_tool_needed";
         } catch (e2) {
-          logWarn('Router JSON parse fallback failed; defaulting to no_tool_needed.');
-          selectedTool = 'no_tool_needed';
+          logWarn(
+            "Router JSON parse fallback failed; defaulting to no_tool_needed.",
+          );
+          selectedTool = "no_tool_needed";
         }
       } else {
-        logWarn('Router returned non-JSON; defaulting to no_tool_needed.');
+        logWarn("Router returned non-JSON; defaulting to no_tool_needed.");
       }
     }
-
     if (!selectedTool) {
-        logWarn('Tool router did not return a tool name. Defaulting to no_tool_needed.');
-        return 'no_tool_needed';
+      logWarn(
+        "Tool router did not return a tool name. Defaulting to no_tool_needed.",
+      );
+      return "no_tool_needed";
     }
-
     logInfo(`Router selected tool: ${selectedTool}`);
     return selectedTool;
   } catch (error) {
-    logError('Error in tool router LLM call', error, { userQuery });
-    // Fallback in case of routing error
-    return 'no_tool_needed';
+    logError("Error in tool router LLM call", error, { userQuery });
+    return "no_tool_needed";
   }
 }

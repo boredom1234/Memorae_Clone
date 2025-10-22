@@ -24,14 +24,20 @@ export function wallClockToUTCFromZone(date: Date, zone: string): string {
   }
   return dt.toUTC().toISO()!;
 }
-export function formatInZone(
-  iso: string,
-  zone: string,
-  fmt: string = DateTime.DATETIME_MED_WITH_SECONDS,
-): string {
+export function formatInZone(iso: string, zone: string, fmt?: any): string {
   const dt = DateTime.fromISO(iso, { setZone: true }).setZone(zone);
   if (!dt.isValid) return iso;
-  return dt.toFormat(typeof fmt === "string" ? fmt : (fmt as any));
+  try {
+    if (!fmt) {
+      return dt.toLocaleString(DateTime.DATETIME_MED_WITH_SECONDS);
+    }
+    if (typeof fmt === "string") {
+      return dt.toFormat(fmt);
+    }
+    return dt.toLocaleString(fmt);
+  } catch {
+    return dt.toLocaleString(DateTime.DATETIME_MED_WITH_SECONDS);
+  }
 }
 export function nowInZone(zone: string): DateTime {
   return DateTime.now().setZone(zone);
