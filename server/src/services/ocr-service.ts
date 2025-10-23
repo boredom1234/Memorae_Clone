@@ -127,7 +127,7 @@ export class OCRService {
 If it's a list, preserve the list structure. 
 If it's a document, maintain the formatting and structure.
 If it's a receipt or invoice, extract all items and amounts.
-Be thorough and accurate.`;
+Be thorough, friendly, and accurate.`;
       const finalPrompt = userPrompt || defaultPrompt;
       this.logger.info("Sending image to Mistral for OCR...");
       const result = await generateText({
@@ -232,7 +232,7 @@ Format your response as:
 [All text from the image]
 
 --- INTERPRETATION ---
-[Your interpretation based on the user's instruction]`;
+[Your friendly interpretation based on the user's instruction]`;
       const result = await generateText({
         model: this.model,
         messages: [

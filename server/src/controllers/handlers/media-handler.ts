@@ -114,7 +114,7 @@ ${processed.ocrText}
 --- USER REQUEST ---
 ${caption}
 
-Please help the user with their request based on the image content.`;
+Please help the user with their request based on the image content. Be friendly and helpful in your response.`;
         addToContext(user.id, "user", combinedPrompt, new Date());
         const tools = this.tools.getRelevantTools(user.id, caption);
         const aiResult = await this.aiService.processMessageWithTools(
@@ -478,7 +478,7 @@ ${combinedText}
 
 User instruction: "${instruction}"
 
-Please help the user with their request based on all the image content.`;
+Please help the user with their request based on all the image content. Be friendly and helpful in your response.`;
       this.logger.info(
         `Combined OCR text from ${contexts.length} images, total length: ${combinedText.length} characters`,
       );

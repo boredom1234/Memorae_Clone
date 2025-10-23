@@ -417,7 +417,7 @@ Current time (UTC): ${new Date().toISOString()}`;
     for (const modelConfig of modelsToTry) {
       try {
         const systemPrompt = `You are a helpful AI assistant for a reminder and task management system.
-Use the provided tool(s) when helpful to fulfill the user's request, then provide a concise summary.
+Use the provided tool(s) when helpful to fulfill the user's request, then provide a concise and friendly summary.
 
 Current user timezone: ${timezone}
 Current user ID: ${userId}

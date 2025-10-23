@@ -30,7 +30,7 @@ export async function routeToTool(
   const toolList = toolDefinitions
     .map((tool) => `- ${tool.name}: ${tool.description}`)
     .join("\n");
-  const prompt = `You are an expert AI router. Your task is to select the single most appropriate tool to handle the user's request.
+  const prompt = `You are an expert and friendly AI router. Your task is to select the single most appropriate tool to handle the user's request.
 You must choose from the following list of tools:
 ${toolList}
 

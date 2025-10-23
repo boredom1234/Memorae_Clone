@@ -48,7 +48,7 @@ export class TranslationService {
       );
       const result = await generateText({
         model: groq("llama-3.1-8b-instant"),
-        prompt: `You are a professional translator. Translate the following text to English. 
+        prompt: `You are a professional and friendly translator. Translate the following text to English. 
         
 IMPORTANT RULES:
 1. Only output the English translation, nothing else
