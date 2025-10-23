@@ -490,7 +490,11 @@ export class MessageController {
         };
       }
       const toolsWereExecuted = (result as any)._toolsExecuted === true;
-      if (!toolsWereExecuted && result.toolCalls.length === 0) {
+      if (
+        !toolsWereExecuted &&
+        result.toolCalls.length === 0 &&
+        (!result.text || result.text.trim().length === 0)
+      ) {
         this.logger.warn(
           `Action intent detected but no tool results. Asking for clarification.`,
         );

@@ -29,6 +29,35 @@ export class MediaHandler {
     this.transcriptionService = new TranscriptionService();
     this.translationService = new TranslationService();
   }
+  private isCommandLike(message: string): boolean {
+    const text = (message || "").toLowerCase().trim();
+    if (!text) return false;
+    if (text.endsWith("?")) {
+      if (
+        /^(can you|could you|please)\s+(add|create|set|schedule|remind|remove|delete|list|show)\b/.test(
+          text,
+        )
+      ) {
+      } else {
+        return false;
+      }
+    }
+    if (
+      /^(add|create|set|schedule|remind|remove|delete|list|show|make|note|remember)\b/.test(
+        text,
+      )
+    ) {
+      return true;
+    }
+    if (
+      /^(can you|could you|please)\s+(add|create|set|schedule|remind|remove|delete|list|show)\b/.test(
+        text,
+      )
+    ) {
+      return true;
+    }
+    return false;
+  }
   async handleImageMessage(
     context: MessageContext,
     user: User,
@@ -64,6 +93,10 @@ export class MediaHandler {
         this.logger.info(
           `User provided instruction: "${caption}". Processing with context...`,
         );
+        const translation =
+          await this.translationService.translateToEnglish(caption);
+        const captionForTools = translation.translatedText || caption;
+        const commandLike = this.isCommandLike(captionForTools);
         const processed = await this.ocrService.processImageWithInstruction(
           context.mediaBuffer,
           caption,
@@ -111,12 +144,17 @@ export class MediaHandler {
 --- IMAGE CONTENT ---
 ${processed.ocrText}
 
---- USER REQUEST ---
+--- USER REQUEST (original) ---
 ${caption}
+
+--- USER REQUEST (english) ---
+${captionForTools}
 
 Please help the user with their request based on the image content. Be friendly and helpful in your response.`;
         addToContext(user.id, "user", combinedPrompt, new Date());
-        const tools = this.tools.getRelevantTools(user.id, caption);
+        const tools = commandLike
+          ? this.tools.getRelevantTools(user.id, captionForTools)
+          : ({} as any);
         const aiResult = await this.aiService.processMessageWithTools(
           combinedPrompt,
           user.id,
@@ -305,7 +343,10 @@ Please help the user with their request based on the image content. Be friendly 
         this.logger.info(`Translated for processing: "${textForProcessing}"`);
       }
       addToContext(user.id, "user", transcribedText, new Date());
-      const tools = this.tools.getRelevantTools(user.id, textForProcessing);
+      const commandLike = this.isCommandLike(textForProcessing);
+      const tools = commandLike
+        ? this.tools.getRelevantTools(user.id, textForProcessing)
+        : ({} as any);
       const aiResult = await this.aiService.processMessageWithTools(
         textForProcessing,
         user.id,
@@ -472,18 +513,25 @@ Please help the user with their request based on the image content. Be friendly 
         };
       }
       const combinedText = ocrResults.join("\n\n");
+      const translation =
+        await this.translationService.translateToEnglish(instruction);
+      const instructionForTools = translation.translatedText || instruction;
+      const commandLike = this.isCommandLike(instructionForTools);
       const combinedPrompt = `I extracted text from ${contexts.length} images:
 
 ${combinedText}
 
-User instruction: "${instruction}"
+User instruction (original): "${instruction}"
+User instruction (english): "${instructionForTools}"
 
 Please help the user with their request based on all the image content. Be friendly and helpful in your response.`;
       this.logger.info(
         `Combined OCR text from ${contexts.length} images, total length: ${combinedText.length} characters`,
       );
       addToContext(user.id, "user", combinedPrompt, new Date());
-      const tools = this.tools.getRelevantTools(user.id, instruction);
+      const tools = commandLike
+        ? this.tools.getRelevantTools(user.id, instructionForTools)
+        : ({} as any);
       const aiResult = await this.aiService.processMessageWithTools(
         combinedPrompt,
         user.id,

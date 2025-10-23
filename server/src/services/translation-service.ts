@@ -7,13 +7,51 @@ export class TranslationService {
   isAvailable(): boolean {
     return !!config.ai.groqApiKey;
   }
-  private isEnglish(text: string): boolean {
+  private asciiEnglishLike(text: string): boolean {
     const asciiChars = text.split("").filter((char) => {
       const code = char.charCodeAt(0);
       return code >= 32 && code <= 126;
     }).length;
-    const ratio = asciiChars / text.length;
-    return ratio > 0.8;
+    const ratio = asciiChars / Math.max(1, text.length);
+    return ratio > 0.95;
+  }
+  async detectLanguage(text: string): Promise<{
+    lang: string;
+    confidence?: number;
+    method: "llm" | "ascii-fallback" | "unknown";
+  }> {
+    if (!text || text.trim().length === 0) {
+      return { lang: "en", method: "unknown" };
+    }
+    if (this.isAvailable()) {
+      try {
+        const { text: out } = await generateText({
+          model: groq("llama-3.1-8b-instant"),
+          prompt:
+            'Detect the language of the following text and output ONLY a lowercase ISO 639-1 code (e.g., "en", "es", "fr", "de", "hi"). If uncertain, guess the closest.\n\nText:\n' +
+            text +
+            "\n\ncode:",
+          temperature: 0,
+        });
+        const code = out
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z]/g, "");
+        if (code.length === 2) {
+          return { lang: code, confidence: 0.8, method: "llm" };
+        }
+      } catch (error: any) {
+        this.logger.warn(
+          { error: error?.message },
+          "LLM language detection failed; falling back to ASCII heuristic",
+        );
+      }
+    }
+    return {
+      lang: this.asciiEnglishLike(text) ? "en" : "und",
+      confidence: 0.3,
+      method: "ascii-fallback",
+    };
   }
   async translateToEnglish(text: string): Promise<{
     success: boolean;
@@ -33,8 +71,10 @@ export class TranslationService {
       };
     }
     try {
-      if (this.isEnglish(text)) {
-        this.logger.info("Text appears to be in English, skipping translation");
+      const detection = await this.detectLanguage(text);
+      const lang = detection.lang || "und";
+      if (lang === "en") {
+        this.logger.info("Detected English language, skipping translation");
         return {
           success: true,
           translatedText: text,
@@ -72,7 +112,7 @@ English translation:`,
         translatedText,
         originalText: text,
         wasTranslated: true,
-        detectedLanguage: "non-en",
+        detectedLanguage: lang,
       };
     } catch (error: any) {
       this.logger.error({ error }, "Failed to translate text");
