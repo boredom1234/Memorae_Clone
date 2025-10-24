@@ -99,6 +99,9 @@ export class UtilityService {
         const text = normalizedText.toLowerCase();
         const hasRelativeCue =
           /(in|from now|after|within|later|following)\b/.test(text);
+        
+        // Also check for "and" patterns that indicate multiple units
+        const hasMultipleUnits = /\d+\s*\w+\s*and\s*\d+\s*\w+/.test(text);
         logWarn("Chrono parsing failed, trying fallback regex", {
           originalText: validatedParams.text,
           normalizedText,
@@ -133,6 +136,7 @@ export class UtilityService {
         }
         logWarn("Fallback regex parsing results", {
           hasRelativeCue,
+          hasMultipleUnits,
           years,
           months,
           weeks,
@@ -142,7 +146,7 @@ export class UtilityService {
           totalDuration: years + months + weeks + days + hours + minutes,
         });
         if (
-          hasRelativeCue &&
+          (hasRelativeCue || hasMultipleUnits) &&
           years + months + weeks + days + hours + minutes > 0
         ) {
           const futureDate = DateTime.fromJSDate(referenceDate, {
@@ -169,24 +173,44 @@ export class UtilityService {
             { pattern: /in\s*(\d+)\s*hours?/i, unit: "hours" },
             { pattern: /in\s*(\d+)\s*minutes?/i, unit: "minutes" },
             { pattern: /in\s*(\d+)\s*days?/i, unit: "days" },
+            // Complex patterns with multiple units
+            { 
+              pattern: /(\d+)\s*(hrs?|hours?)\s*(?:and\s*)?(\d+)\s*(mins?|minutes?)\s*from\s*now/i, 
+              unit: "complex_hours_minutes" 
+            },
+            { 
+              pattern: /(\d+)\s*(hrs?|hours?)\s*(?:and\s*)?(\d+)\s*(mins?|minutes?)/i, 
+              unit: "complex_hours_minutes" 
+            },
           ];
           for (const { pattern, unit } of commonPatterns) {
             const match = normalizedText.match(pattern);
             if (match) {
-              const val = parseFloat(match[1]);
               logWarn("Common pattern matched", {
                 pattern: pattern.source,
-                val,
+                match: match,
                 unit,
               });
-              const duration =
-                unit === "hours"
-                  ? { hours: val }
-                  : unit === "minutes"
-                    ? { minutes: val }
-                    : unit === "days"
-                      ? { days: val }
-                      : {};
+              
+              let duration = {};
+              
+              if (unit === "complex_hours_minutes") {
+                // Handle patterns like "1hr and 37 mins from now"
+                const hours = parseFloat(match[1]);
+                const minutes = parseFloat(match[3]);
+                duration = { hours, minutes };
+              } else {
+                const val = parseFloat(match[1]);
+                duration =
+                  unit === "hours"
+                    ? { hours: val }
+                    : unit === "minutes"
+                      ? { minutes: val }
+                      : unit === "days"
+                        ? { days: val }
+                        : {};
+              }
+              
               const futureDate = DateTime.fromJSDate(referenceDate, {
                 zone: validatedParams.timezone,
               })
