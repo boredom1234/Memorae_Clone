@@ -7,7 +7,7 @@ import {
   setQuietHoursSchema,
 } from "../utils/validators";
 import { handleServiceError, NotFoundError } from "../utils/errors";
-import { logInfo, logError, logAudit, logPerformance } from "../utils/logger";
+import { logError, logAudit, logPerformance } from "../utils/logger";
 export class UserService {
   private supabase = getSupabaseClient();
   async findOrCreateUser(

@@ -1,7 +1,7 @@
 import { getSupabaseClient } from "../lib/supabase";
 import { getWhatsAppManager } from "./runtime";
 import { UserService } from "./user-service";
-import { ReminderService } from "./reminder-service";
+import { ReminderService } from "./reminders/reminder.service";
 import pino from "pino";
 export type SendReminderToContactParams = {
   senderUserId: string;

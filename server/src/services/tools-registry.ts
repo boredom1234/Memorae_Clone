@@ -1,8 +1,13 @@
 import { UserService } from "./user-service";
-import { ReminderService } from "./reminder-service";
-import { ListService } from "./list-service";
+import { ReminderService } from "./reminders/reminder.service";
+import { ReminderActionsService } from "./reminders/actions.service";
+import { ReminderQueryService } from "./reminders/query.service";
+import { ListService } from "./list/list.service";
+import { ListItemService } from "./list/item.service";
+import { ListQueryService } from "./list/query.service";
 import { UtilityService } from "./utility-service";
-import { NotesService } from "./notes-service";
+import { NotesService } from "./notes/notes.service";
+import { NotesQueryService } from "./notes/query.service";
 import { NotificationService } from "./notification-service";
 import { MediaAttachmentService } from "./media-attachment-service";
 import { ActivityService } from "./activity-service";
@@ -13,18 +18,28 @@ import { createDeduplicationWrapper } from "./tools/tool-deduplication";
 export class ToolsRegistry {
   private userService: UserService;
   private reminderService: ReminderService;
+  private reminderActionsService: ReminderActionsService;
+  private reminderQueryService: ReminderQueryService;
   private listService: ListService;
+  private listItemService: ListItemService;
+  private listQueryService: ListQueryService;
   private utilityService: UtilityService;
   private notesService: NotesService;
+  private notesQueryService: NotesQueryService;
   private notificationService: NotificationService;
   private mediaService: MediaAttachmentService;
   private activityService: ActivityService;
   constructor() {
     this.userService = new UserService();
     this.reminderService = new ReminderService();
+    this.reminderActionsService = new ReminderActionsService();
+    this.reminderQueryService = new ReminderQueryService();
     this.listService = new ListService();
+    this.listItemService = new ListItemService();
+    this.listQueryService = new ListQueryService();
     this.utilityService = new UtilityService();
     this.notesService = new NotesService();
+    this.notesQueryService = new NotesQueryService();
     this.notificationService = new NotificationService();
     this.mediaService = new MediaAttachmentService();
     this.activityService = new ActivityService();
@@ -75,7 +90,7 @@ export class ToolsRegistry {
           offset: "number (optional)",
           sortBy: "'time' | 'priority' | 'created' (optional)",
         },
-        handler: this.reminderService.listReminders.bind(this.reminderService),
+        handler: this.reminderQueryService.listReminders.bind(this.reminderQueryService),
       },
       snoozeReminder: {
         description: "Snooze a reminder",
@@ -84,15 +99,15 @@ export class ToolsRegistry {
           snoozeUntil: "string (ISO 8601)",
           snoozeDuration: "number (optional)",
         },
-        handler: this.reminderService.snoozeReminder.bind(this.reminderService),
+        handler: this.reminderActionsService.snoozeReminder.bind(this.reminderActionsService),
       },
       completeReminder: {
         description: "Mark a reminder as completed",
         parameters: {
           reminderId: "string",
         },
-        handler: this.reminderService.completeReminder.bind(
-          this.reminderService,
+        handler: this.reminderActionsService.completeReminder.bind(
+          this.reminderActionsService,
         ),
       },
       getUpcomingReminders: {
@@ -101,8 +116,8 @@ export class ToolsRegistry {
           timeframe: "'today' | 'tomorrow' | 'week' | 'month'",
           limit: "number (optional)",
         },
-        handler: this.reminderService.getUpcomingReminders.bind(
-          this.reminderService,
+        handler: this.reminderQueryService.getUpcomingReminders.bind(
+          this.reminderQueryService,
         ),
       },
       searchReminders: {
@@ -112,8 +127,8 @@ export class ToolsRegistry {
           filters: "object (optional)",
           limit: "number (optional)",
         },
-        handler: this.reminderService.searchReminders.bind(
-          this.reminderService,
+        handler: this.reminderQueryService.searchReminders.bind(
+          this.reminderQueryService,
         ),
       },
       batchCreateReminders: {
@@ -142,7 +157,7 @@ export class ToolsRegistry {
           listName: "string (optional)",
           items: "string[]",
         },
-        handler: this.listService.addItemToList.bind(this.listService),
+        handler: this.listItemService.addItemToList.bind(this.listItemService),
       },
       removeItemFromList: {
         description: "Remove items from a list",
@@ -152,7 +167,7 @@ export class ToolsRegistry {
           itemIds: "string[] (optional)",
           itemText: "string (optional)",
         },
-        handler: this.listService.removeItemFromList.bind(this.listService),
+        handler: this.listItemService.removeItemFromList.bind(this.listItemService),
       },
       updateListItem: {
         description: "Update a list item",
@@ -162,7 +177,7 @@ export class ToolsRegistry {
           isCompleted: "boolean (optional)",
           position: "number (optional)",
         },
-        handler: this.listService.updateListItem.bind(this.listService),
+        handler: this.listItemService.updateListItem.bind(this.listItemService),
       },
       getLists: {
         description: "Get all lists",
@@ -172,7 +187,7 @@ export class ToolsRegistry {
             "boolean (optional) - set to true to include archived lists",
           limit: "number (optional)",
         },
-        handler: this.listService.getLists.bind(this.listService),
+        handler: this.listQueryService.getLists.bind(this.listQueryService),
       },
       getListItems: {
         description: "Get items from a list",
@@ -181,7 +196,7 @@ export class ToolsRegistry {
           listName: "string (optional)",
           includeCompleted: "boolean (optional)",
         },
-        handler: this.listService.getListItems.bind(this.listService),
+        handler: this.listQueryService.getListItems.bind(this.listQueryService),
       },
       deleteList: {
         description: "Delete a list",
@@ -198,7 +213,7 @@ export class ToolsRegistry {
           searchIn: "'list-names' | 'items' | 'both' (optional)",
           limit: "number (optional)",
         },
-        handler: this.listService.searchLists.bind(this.listService),
+        handler: this.listQueryService.searchLists.bind(this.listQueryService),
       },
       archiveList: {
         description: "Archive a list (soft delete)",
@@ -215,7 +230,7 @@ export class ToolsRegistry {
           listName: "string (optional)",
           itemIds: "string[]",
         },
-        handler: this.listService.bulkCompleteItems.bind(this.listService),
+        handler: this.listItemService.bulkCompleteItems.bind(this.listItemService),
       },
       clearCompletedItems: {
         description: "Remove all completed items from a list",
@@ -223,7 +238,7 @@ export class ToolsRegistry {
           listId: "string (optional)",
           listName: "string (optional)",
         },
-        handler: this.listService.clearCompletedItems.bind(this.listService),
+        handler: this.listItemService.clearCompletedItems.bind(this.listItemService),
       },
       duplicateList: {
         description: "Duplicate a list with all its items",
@@ -237,7 +252,7 @@ export class ToolsRegistry {
       getListStats: {
         description: "Get statistics about user's lists",
         parameters: {},
-        handler: this.listService.getListStats.bind(this.listService),
+        handler: this.listQueryService.getListStats.bind(this.listQueryService),
       },
       archiveReminder: {
         description: "Archive a reminder (soft delete)",
@@ -286,7 +301,7 @@ export class ToolsRegistry {
           tags: "string[] (optional)",
           limit: "number (optional)",
         },
-        handler: this.notesService.searchNotes.bind(this.notesService),
+        handler: this.notesQueryService.searchNotes.bind(this.notesQueryService),
       },
       listNotes: {
         description: "List all notes",
@@ -296,7 +311,7 @@ export class ToolsRegistry {
           onlyPinned: "boolean (optional)",
           limit: "number (optional)",
         },
-        handler: this.notesService.listNotes.bind(this.notesService),
+        handler: this.notesQueryService.listNotes.bind(this.notesQueryService),
       },
       duplicateNote: {
         description: "Duplicate a note",
@@ -455,7 +470,7 @@ export class ToolsRegistry {
           limit: "number (optional)",
           offset: "number (optional)",
         },
-        handler: this.reminderService.listOverdueReminders.bind(this.reminderService),
+        handler: this.reminderQueryService.listOverdueReminders.bind(this.reminderQueryService),
       },
       snoozeReminderByText: {
         description: "Snooze using natural language like 'tomorrow morning'",
@@ -464,7 +479,7 @@ export class ToolsRegistry {
           text: "string",
           timezone: "string",
         },
-        handler: this.reminderService.snoozeReminderByText.bind(this.reminderService),
+        handler: this.reminderActionsService.snoozeReminderByText.bind(this.reminderActionsService),
       },
       bulkUpdateReminderStatus: {
         description: "Update status for multiple reminders",
@@ -472,7 +487,7 @@ export class ToolsRegistry {
           reminderIds: "string[]",
           status: "'completed' | 'cancelled' | 'pending'",
         },
-        handler: this.reminderService.bulkUpdateStatus.bind(this.reminderService),
+        handler: this.reminderActionsService.bulkUpdateStatus.bind(this.reminderActionsService),
       },
       retryNotification: {
         description: "Retry a failed notification (reset fields, increment retry)",
@@ -539,7 +554,7 @@ export class ToolsRegistry {
           itemId: "string",
           targetListId: "string",
         },
-        handler: this.listService.moveItemToList.bind(this.listService),
+        handler: this.listItemService.moveItemToList.bind(this.listItemService),
       },
       reorderListItems: {
         description: "Reorder a list's items via positions",
@@ -547,7 +562,7 @@ export class ToolsRegistry {
           listId: "string",
           orderedItemIds: "string[]",
         },
-        handler: this.listService.reorderListItems.bind(this.listService),
+        handler: this.listItemService.reorderListItems.bind(this.listItemService),
       },
       pinNote: {
         description: "Toggle note is_pinned",
@@ -619,8 +634,20 @@ export class ToolsRegistry {
   getReminderService() {
     return this.reminderService;
   }
+  getReminderActionsService() {
+    return this.reminderActionsService;
+  }
+  getReminderQueryService() {
+    return this.reminderQueryService;
+  }
   getListService() {
     return this.listService;
+  }
+  getListItemService() {
+    return this.listItemService;
+  }
+  getListQueryService() {
+    return this.listQueryService;
   }
   getUtilityService() {
     return this.utilityService;
@@ -628,14 +655,22 @@ export class ToolsRegistry {
   getNotesService() {
     return this.notesService;
   }
+  getNotesQueryService() {
+    return this.notesQueryService;
+  }
   getAISDKTools(userId: string) {
     const { dedupe, stats } = createDeduplicationWrapper();
     const services: ToolServices = {
       userService: this.userService,
       reminderService: this.reminderService,
+      reminderActionsService: this.reminderActionsService,
+      reminderQueryService: this.reminderQueryService,
       listService: this.listService,
+      listItemService: this.listItemService,
+      listQueryService: this.listQueryService,
       utilityService: this.utilityService,
       notesService: this.notesService,
+      notesQueryService: this.notesQueryService,
       notificationService: this.notificationService,
       mediaService: this.mediaService,
       activityService: this.activityService,
