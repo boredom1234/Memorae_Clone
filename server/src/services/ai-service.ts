@@ -401,6 +401,7 @@ export class AIService {
     timezone: string,
     toolsRegistry: ToolsRegistry,
     conversationHistory: ConversationMessage[] = [],
+    summary?: string,
   ): Promise<{
     text: string;
     toolCalls: any[];
@@ -474,12 +475,14 @@ Your capabilities:
 Current context:
 - User timezone: ${timezone}
 - Current time: ${new Date().toISOString()}
+${summary ? `- Conversation summary (condensed prior messages):\n${summary}` : ""}
 
 Important:
 - Be warm and conversational, not robotic
 - If the user seems to want to create/modify data but the request is unclear, ask friendly follow-up questions
 - Never claim you performed an action (created/updated/deleted) unless you actually did
-- For ambiguous action requests, clarify what they want first`,
+- For ambiguous action requests, clarify what they want first
+- If the user refers to earlier messages, use the conversation summary and history; if insufficient, ask them to restate.`,
             messages: messagesWithCurrent,
           });
           return { text: result.text, toolCalls: [], toolResults: [] };
@@ -583,6 +586,7 @@ Tool category: ${
 Context:
 - User timezone: ${timezone}
 - Current time: ${new Date().toISOString()}
+${summary ? `- Conversation summary (condensed prior messages):\n${summary}` : ""}
 
 IMPORTANT: Be helpful and proactive. If the user clearly wants something done, do it. Only ask for clarification if the request is genuinely ambiguous.`
           : `You are Memorae, a helpful and friendly AI assistant. Be conversational, warm, and helpful.
@@ -593,7 +597,8 @@ Respond naturally and helpfully. Be friendly and engaging, not robotic.
 
 Context:
 - User timezone: ${timezone}
-- Current time: ${new Date().toISOString()}`;
+- Current time: ${new Date().toISOString()}
+${summary ? `- Conversation summary (condensed prior messages):\n${summary}` : ""}`;
         const effectiveTools = willUseTools ? tools : ({} as any);
         const result = await generateText({
           model: modelConfig.instance,
@@ -676,6 +681,7 @@ Context:
     timezone: string,
     tools: any,
     conversationHistory: ConversationMessage[] = [],
+    summary?: string,
   ): Promise<{
     text: string;
     toolCalls: any[];
@@ -718,7 +724,8 @@ Guidance:
 
 Current user timezone: ${timezone}
 Current user ID: ${userId}
-Current time (UTC): ${new Date().toISOString()}`;
+Current time (UTC): ${new Date().toISOString()}
+${summary ? `Conversation summary (condensed prior messages):\n${summary}` : ""}`;
         const result = await generateText({
           model: modelConfig.instance,
           system: systemPrompt,

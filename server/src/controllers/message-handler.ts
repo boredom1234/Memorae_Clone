@@ -149,11 +149,19 @@ export class MessageController {
   }
   private getConversationContext(userId: string): ConversationContext {
     if (!this.conversationContexts.has(userId)) {
+      const maxMessagesEnv =
+        process.env.MAX_CONTEXT_MESSAGES ||
+        process.env.CHAT_HISTORY_MAX_MESSAGES ||
+        process.env.MEMORAE_MAX_CONTEXT;
+      const computedMax = Math.max(
+        10,
+        Math.min(100, parseInt(maxMessagesEnv || "40", 10)),
+      );
       this.conversationContexts.set(userId, {
         userId,
         messages: [],
         lastActivity: new Date(),
-        maxMessages: 20,
+        maxMessages: computedMax,
       });
     }
     const context = this.conversationContexts.get(userId)!;
@@ -167,9 +175,36 @@ export class MessageController {
     const context = this.getConversationContext(userId);
     context.messages.push(message);
     if (context.messages.length > context.maxMessages) {
+      const overflow = context.messages.length - context.maxMessages;
+      const dropped = context.messages.slice(0, overflow);
+      context.summary = this.mergeSummary(context.summary, dropped);
       context.messages = context.messages.slice(-context.maxMessages);
     }
     context.lastActivity = new Date();
+  }
+
+  private mergeSummary(
+    existing: string | undefined,
+    dropped: ConversationMessage[],
+  ): string {
+    try {
+      const lines = dropped.map((m) => {
+        const role = m.role === "user" ? "User" : "Assistant";
+        let content = (m.content || "").replace(/\s+/g, " ").trim();
+        if (content.length > 160) content = content.slice(0, 160) + "…";
+        return `- ${role}: ${content}`;
+      });
+      const newSummary = lines.join("\n");
+      const combined = (existing ? existing + "\n" : "") + newSummary;
+      const maxChars = 4000;
+      if (combined.length > maxChars) {
+        return combined.slice(combined.length - maxChars);
+      }
+      return combined;
+    } catch {
+      // Fallback: keep previous summary unchanged on error
+      return existing || "";
+    }
   }
   cleanup(): void {
     if (this.cacheCleanupInterval) {
@@ -387,6 +422,7 @@ export class MessageController {
         user.timezone,
         this.tools,
         conversationContext.messages,
+        conversationContext.summary,
       );
       this.logger.info(`AI response: ${result.text}`);
       this.logger.info(`Tool calls: ${result.toolCalls.length}`);

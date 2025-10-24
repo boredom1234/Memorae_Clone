@@ -161,6 +161,7 @@ Please help the user with their request based on the image content. Be friendly 
           user.timezone,
           tools,
           conversationContext.messages,
+          conversationContext.summary,
         );
         const renderedText =
           aiResult.toolResults &&
@@ -353,6 +354,7 @@ Please help the user with their request based on the image content. Be friendly 
         user.timezone,
         tools,
         conversationContext.messages,
+        conversationContext.summary,
       );
       const renderedText =
         aiResult.toolResults &&
@@ -538,6 +540,7 @@ Please help the user with their request based on all the image content. Be frien
         user.timezone,
         tools,
         conversationContext.messages,
+        conversationContext.summary,
       );
       const renderedText =
         aiResult.toolResults &&

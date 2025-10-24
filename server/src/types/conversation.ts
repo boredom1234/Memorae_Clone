@@ -9,6 +9,7 @@ export interface ConversationContext {
   messages: ConversationMessage[];
   lastActivity: Date;
   maxMessages: number;
+  summary?: string;
   onboarding?: {
     step: number;
     collected: {
