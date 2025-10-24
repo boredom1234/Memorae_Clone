@@ -47,7 +47,7 @@ export function createNotificationAITools(
             params.reminderTime || (ctx.originalMessage as string) || "";
           if (textToParse.trim().length === 0) {
             throw new Error(
-              "Could not determine reminder time. Please specify a date/time."
+              "Could not determine reminder time. Please specify a date/time.",
             );
           }
           const parsed = await utilityService.parseNaturalLanguageDate({
@@ -56,7 +56,7 @@ export function createNotificationAITools(
           });
           if (!parsed.success || parsed.extractedDates.length === 0) {
             throw new Error(
-              `Could not parse reminder time from \"${textToParse.substring(0, 50)}\". Please specify a clear date/time.`
+              `Could not parse reminder time from \"${textToParse.substring(0, 50)}\". Please specify a clear date/time.`,
             );
           }
           iso = parsed.extractedDates[0].parsedDate;

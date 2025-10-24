@@ -97,7 +97,7 @@ export function createListAITools(
         listName: z
           .string()
           .describe(
-            "Name of the list - ALWAYS extract from user message (e.g., 'shopping', 'groceries', 'todo', 'work'). If not specified, try to infer or default to 'General'."
+            "Name of the list - ALWAYS extract from user message (e.g., 'shopping', 'groceries', 'todo', 'work'). If not specified, try to infer or default to 'General'.",
           ),
         items: z
           .array(z.string())
@@ -120,8 +120,7 @@ export function createListAITools(
           for (const pattern of patterns) {
             const match = msg.match(pattern);
             if (match && match[1]) {
-              listName =
-                match[1].charAt(0).toUpperCase() + match[1].slice(1);
+              listName = match[1].charAt(0).toUpperCase() + match[1].slice(1);
               break;
             }
           }
@@ -253,7 +252,7 @@ export function createListAITools(
             error.message?.includes("not found")
           ) {
             throw new Error(
-              `Could not find list \"${params.listName}\". Check the list name and try again.`
+              `Could not find list \"${params.listName}\". Check the list name and try again.`,
             );
           }
           throw error;

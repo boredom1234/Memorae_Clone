@@ -692,7 +692,10 @@ export class ToolsRegistry {
   }
   getAISDKTools(
     userId: string,
-    context?: { originalMessage?: string; timezone?: string },
+    context?: {
+      originalMessage?: string;
+      timezone?: string;
+    },
   ) {
     const { dedupe, stats } = createDeduplicationWrapper(context);
     const services: ToolServices = {
@@ -735,7 +738,10 @@ export class ToolsRegistry {
   getSingleAISDKTool(
     userId: string,
     toolName: string,
-    context?: { originalMessage?: string; timezone?: string },
+    context?: {
+      originalMessage?: string;
+      timezone?: string;
+    },
   ): any {
     const allTools = this.getAISDKTools(userId, context);
     const selectedTool = allTools[toolName];

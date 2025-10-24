@@ -33,7 +33,10 @@ export class AIService {
     conversationHistory: ConversationMessage[] = [],
   ): string {
     const text = message.trim().toLowerCase();
-    const timeframeMap: Record<string, "today" | "tomorrow" | "week" | "month"> = {
+    const timeframeMap: Record<
+      string,
+      "today" | "tomorrow" | "week" | "month"
+    > = {
       today: "today",
       "today's": "today",
       tomorrow: "tomorrow",
@@ -47,9 +50,15 @@ export class AIService {
       new RegExp(`^${k}$`).test(text),
     );
     if (timeframeOnly) {
-      const prev = [...conversationHistory].reverse().find((m) => m.role === "user" || m.role === "assistant");
+      const prev = [...conversationHistory]
+        .reverse()
+        .find((m) => m.role === "user" || m.role === "assistant");
       const prevText = prev?.content?.toLowerCase() || "";
-      if (/reminder|upcoming|what.*reminders|show.*reminders|list.*reminders/.test(prevText)) {
+      if (
+        /reminder|upcoming|what.*reminders|show.*reminders|list.*reminders/.test(
+          prevText,
+        )
+      ) {
         return `reminders for ${timeframeMap[timeframeOnly]}`;
       }
     }
@@ -620,13 +629,16 @@ Context:
           );
         }
         let finalText = result.text;
-        if ((!finalText || finalText.trim().length === 0) && (result.toolResults?.length || 0) > 0) {
+        if (
+          (!finalText || finalText.trim().length === 0) &&
+          (result.toolResults?.length || 0) > 0
+        ) {
           try {
             const first = (result.toolResults as any[])[0];
             const output = first?.output ?? first;
             if (output?.message) finalText = output.message;
             else if (output?.success === false && output?.error) {
-              finalText = `I couldn't complete that: ${output.message || 'validation failed'}. Please clarify the time or details.`;
+              finalText = `I couldn't complete that: ${output.message || "validation failed"}. Please clarify the time or details.`;
             } else if (output?.success === true) {
               finalText = `Done.`;
             }

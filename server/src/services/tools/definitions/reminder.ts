@@ -60,7 +60,6 @@ export function createReminderAITools(
         const ctx = (params as any)._context || {};
         const tz = ctx.timezone || settings?.timezone || "UTC";
         let finalTime = params.reminderTime;
-        // Always attempt to parse when we don't have a final time yet.
         if (params.naturalTimeText || !finalTime) {
           const textToParse =
             params.naturalTimeText ||

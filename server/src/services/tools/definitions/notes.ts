@@ -169,7 +169,7 @@ export function createNotesAITools(
         });
         if (searchResult.notes.length === 0) {
           throw new Error(
-            `Could not find any notes matching "${params.searchQuery}"`
+            `Could not find any notes matching "${params.searchQuery}"`,
           );
         }
         if (searchResult.notes.length > 1) {
@@ -213,14 +213,13 @@ export function createNotesAITools(
         });
         if (searchResult.notes.length === 0) {
           throw new Error(
-            `Could not find any notes matching "${params.searchQuery}"`
+            `Could not find any notes matching "${params.searchQuery}"`,
           );
         }
         if (searchResult.notes.length > 1) {
           return {
             needsSelection: true,
-            message:
-              "I found multiple notes. Which one do you want to delete?",
+            message: "I found multiple notes. Which one do you want to delete?",
             candidates: searchResult.notes.map((n: any, idx: number) => ({
               id: n.id,
               number: idx + 1,
@@ -254,7 +253,7 @@ export function createNotesAITools(
         });
         if (searchResult.notes.length === 0) {
           throw new Error(
-            `Could not find any notes matching "${params.searchQuery}"`
+            `Could not find any notes matching "${params.searchQuery}"`,
           );
         }
         if (searchResult.notes.length > 1) {

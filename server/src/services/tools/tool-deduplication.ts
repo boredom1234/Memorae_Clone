@@ -21,8 +21,6 @@ export function createDeduplicationWrapper(context?: {
   };
   const canonicalizeForKey = (name: string, params: any) => {
     const p = normalize(params || {});
-    // Remove transient context fields from dedupe key so the same logical
-    // request dedupes even if context (like originalMessage) differs.
     try {
       if (p && typeof p === "object" && "_context" in p) {
         delete (p as any)._context;
