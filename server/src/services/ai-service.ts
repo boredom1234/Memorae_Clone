@@ -52,6 +52,13 @@ export class AIService {
       ) {
         return true;
       }
+      if (
+        /^(my|upcoming|today'?s?|tomorrow'?s?).*(reminder|list|note|task)/.test(
+          text,
+        )
+      ) {
+        return true;
+      }
     }
     if (
       /^(add|create|set|schedule|remind|remove|delete|list|show|make|note|remember|update|change|edit|move|complete|finish|done|mark|snooze|postpone|delay|search|find|get|display|view|check)\b/.test(
@@ -79,14 +86,17 @@ export class AIService {
       return "createReminder";
     }
     if (
-      /^(show|list|view|display|get)\s+(my\s+)?(all\s+)?reminders?\b(?!.*\b(today|tomorrow|week|month)\b)/.test(
+      /^(show|list|view|display|get)\s+(my\s+)?(all\s+)?reminders?\b(?!.*\b(today|tomorrow|week|month|upcoming)\b)/.test(
+        text,
+      ) ||
+      /^my\s+reminders?\b(?!.*\b(today|tomorrow|week|month|upcoming|for)\b)/i.test(
         text,
       )
     ) {
       return "listReminders";
     }
     if (
-      /(what\s+reminders?.*(today|tomorrow|this\s+week|this\s+month)|reminders?\s+(for\s+)?(today|tomorrow|this\s+week|this\s+month)|(today|tomorrow|this\s+week|this\s+month).*reminders?)/.test(
+      /(what\s+reminders?.*(today|tomorrow|this\s+week|this\s+month)|reminders?\s+(for\s+)?(today|tomorrow|this\s+week|this\s+month)|(today|tomorrow|this\s+week|this\s+month).*reminders?|upcoming\s+reminders?|my\s+upcoming\s+reminders?|today'?s?\s+reminders?)/.test(
         text,
       )
     ) {
