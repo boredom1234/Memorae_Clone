@@ -509,6 +509,7 @@ Your approach:
 
 2. **Extract ALL relevant details** from the user's message:
    - Times, dates, priorities from context
+   - For reminders: ALWAYS extract time info (use "now", "in 1 minute" if no explicit time given)
    - Infer reasonable defaults when appropriate
    - Use natural language understanding liberally
 

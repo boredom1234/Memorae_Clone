@@ -16,20 +16,20 @@ export function createReminderAITools(
   return {
     createReminder: tool({
       description:
-        "Create a new reminder for a specific date/time. Use when user wants to be reminded about something. Supports both one-time and recurring reminders (daily, weekly, monthly). Examples: 'remind me to X', 'set a reminder', 'notify me about', 'alert me when', 'schedule reminder'.",
+        "Create a new reminder for a specific date/time. Use when user wants to be reminded about something. Supports both one-time and recurring reminders (daily, weekly, monthly). Examples: 'remind me to X', 'set a reminder', 'notify me about', 'alert me when', 'schedule reminder'. ALWAYS extract time information from the user's message - either provide reminderTime or naturalTimeText.",
       inputSchema: z.object({
         title: z.string().describe("The reminder title/description"),
         reminderTime: z
           .string()
           .optional()
           .describe(
-            "ISO 8601 datetime string when the reminder should trigger. Optional if naturalTimeText is provided.",
+            "ISO 8601 datetime string when the reminder should trigger. Provide this OR naturalTimeText.",
           ),
         naturalTimeText: z
           .string()
           .optional()
           .describe(
-            'Natural language time description (e.g., "tomorrow at 3pm", "in 30 minutes", "next Monday 9am"). Server will parse this using user timezone.',
+            'Natural language time description extracted from user message (e.g., "tomorrow at 3pm", "in 30 minutes", "next Monday 9am", "now"). STRONGLY PREFERRED over reminderTime - always try to extract this from the user\'s message. For recurring reminders without explicit time, use "now" or "in 1 minute".',
           ),
         isRecurring: z
           .boolean()
@@ -59,24 +59,34 @@ export function createReminderAITools(
         const settings = await userService.getUserSettings(userId);
         const tz = settings?.timezone || "UTC";
         let finalTime = params.reminderTime;
-        if (params.naturalTimeText || !finalTime) {
+        if (params.naturalTimeText || (!finalTime && !params.isRecurring)) {
           const textToParse =
             params.naturalTimeText || params.reminderTime || "";
-          const parsed = utilityService.parseNaturalLanguageDate({
-            text: textToParse,
-            timezone: tz,
-          });
-          if (parsed.success && parsed.extractedDates.length > 0) {
-            const bestDate = utilityService.pickBestDate(parsed.extractedDates);
-            if (bestDate) {
-              finalTime = bestDate;
+          if (textToParse.trim().length > 0) {
+            const parsed = utilityService.parseNaturalLanguageDate({
+              text: textToParse,
+              timezone: tz,
+            });
+            if (parsed.success && parsed.extractedDates.length > 0) {
+              const bestDate = utilityService.pickBestDate(
+                parsed.extractedDates,
+              );
+              if (bestDate) {
+                finalTime = bestDate;
+              }
             }
           }
         }
         if (!finalTime) {
-          throw new Error(
-            "Could not determine reminder time. Please specify a valid date/time.",
-          );
+          if (params.isRecurring) {
+            const now = new Date();
+            now.setMinutes(now.getMinutes() + 1);
+            finalTime = now.toISOString();
+          } else {
+            throw new Error(
+              "Could not determine reminder time. Please specify a valid date/time.",
+            );
+          }
         }
         const parsedDate = new Date(finalTime);
         if (isNaN(parsedDate.getTime())) {
