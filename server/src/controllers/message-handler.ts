@@ -182,7 +182,6 @@ export class MessageController {
     }
     context.lastActivity = new Date();
   }
-
   private mergeSummary(
     existing: string | undefined,
     dropped: ConversationMessage[],
@@ -202,7 +201,6 @@ export class MessageController {
       }
       return combined;
     } catch {
-      // Fallback: keep previous summary unchanged on error
       return existing || "";
     }
   }

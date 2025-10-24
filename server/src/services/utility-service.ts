@@ -18,14 +18,11 @@ export class UtilityService {
   private normalizeTimeText(text: string): string {
     try {
       let t = text || "";
-      // Insert a space between numbers and letters: e.g., "1hour" -> "1 hour"
       t = t.replace(/(\d)([a-zA-Z])/g, "$1 $2");
-      // Normalize common abbreviations
       t = t
         .replace(/\bhrs?\b/gi, "hours")
         .replace(/\bmins?\b/gi, "minutes")
         .replace(/\bsecs?\b/gi, "seconds");
-      // Collapse whitespace
       t = t.replace(/\s+/g, " ").trim();
       return t;
     } catch {
@@ -58,15 +55,26 @@ export class UtilityService {
         throw new ValidationError("Invalid reference date");
       }
       const normalizedText = this.normalizeTimeText(validatedParams.text);
+      logWarn("Attempting to parse date", {
+        originalText: validatedParams.text,
+        normalizedText,
+        timezone: validatedParams.timezone,
+      });
       const results = chrono.parse(normalizedText, referenceDate);
+      logWarn("Chrono parse results", {
+        resultsCount: results.length,
+        results: results.map((r) => ({
+          text: r.text,
+          start: r.start.date(),
+          isCertainDay: r.start.isCertain("day"),
+          isCertainHour: r.start.isCertain("hour"),
+        })),
+      });
       let extractedDates = results
         .map((result) => {
           try {
             const date = result.start.date();
             const isAbsolute = result.start.isCertain("day");
-            // For absolute wall-clock phrases (e.g., "tomorrow 5pm"), interpret in user's timezone.
-            // For relative phrases (e.g., "in 90 minutes", "1 hour from now"), Chrono already returns
-            // an absolute Date; use it directly to avoid double timezone interpretation.
             const utcISO = isAbsolute
               ? wallClockToUTCFromZone(date, validatedParams.timezone)
               : date.toISOString();
@@ -87,13 +95,17 @@ export class UtilityService {
           }
         })
         .filter((d): d is NonNullable<typeof d> => d !== null);
-
       if (extractedDates.length === 0) {
         const text = normalizedText.toLowerCase();
-        const hasRelativeCue = /(in|from now|after|within|later|following)\b/.test(
-          text,
-        );
-        const durRegex = /(\d+(?:\.\d+)?)\s*(years?|yrs?|y|months?|mos?|mo|mths?|mth|weeks?|wks?|wk|w|days?|d|hours?|hrs?|hr|h|minutes?|mins?|min|m)/g;
+        const hasRelativeCue =
+          /(in|from now|after|within|later|following)\b/.test(text);
+        logWarn("Chrono parsing failed, trying fallback regex", {
+          originalText: validatedParams.text,
+          normalizedText,
+          hasRelativeCue,
+        });
+        const durRegex =
+          /(\d+(?:\.\d+)?)\s*(years?|yrs?|y|months?|mos?|mo|mths?|mth|weeks?|wks?|wk|w|days?|d|hours?|hrs?|hr|h|minutes?|mins?|min|m)\b/gi;
         let match: RegExpExecArray | null;
         let years = 0,
           months = 0,
@@ -104,20 +116,42 @@ export class UtilityService {
         while ((match = durRegex.exec(text)) !== null) {
           const val = parseFloat(match[1]);
           const unit = match[2];
-          if (/^y(ears?)?$|yrs?$/.test(unit)) years += val;
-          else if (/^mo(nths?)?$|mos?$|mths?$|mth$/.test(unit)) months += val;
-          else if (/^w(eeks?)?$|wks?$|wk$/.test(unit)) weeks += val;
-          else if (/^d(ays?)?$/.test(unit)) days += val;
-          else if (/^h(ours?)?$|hrs?$|hr$/.test(unit)) hours += val;
-          else if (/^m(in(utes?)?)?$|mins?$/.test(unit)) minutes += val;
+          const unitLower = unit.toLowerCase();
+          logWarn("Regex match found", {
+            val,
+            unit,
+            unitLower,
+            fullMatch: match[0],
+          });
+          if (/^y(ears?)?$|yrs?$/.test(unitLower)) years += val;
+          else if (/^mo(nths?)?$|mos?$|mths?$|mth$/.test(unitLower))
+            months += val;
+          else if (/^w(eeks?)?$|wks?$|wk$/.test(unitLower)) weeks += val;
+          else if (/^d(ays?)?$/.test(unitLower)) days += val;
+          else if (/^h(ours?)?$|hrs?$|hr$/.test(unitLower)) hours += val;
+          else if (/^m(in(utes?)?)?$|mins?$/.test(unitLower)) minutes += val;
         }
-        if (hasRelativeCue && (years + months + weeks + days + hours + minutes > 0)) {
+        logWarn("Fallback regex parsing results", {
+          hasRelativeCue,
+          years,
+          months,
+          weeks,
+          days,
+          hours,
+          minutes,
+          totalDuration: years + months + weeks + days + hours + minutes,
+        });
+        if (
+          hasRelativeCue &&
+          years + months + weeks + days + hours + minutes > 0
+        ) {
           const futureDate = DateTime.fromJSDate(referenceDate, {
             zone: validatedParams.timezone,
           })
             .plus({ years, months, weeks, days, hours, minutes })
             .toUTC()
             .toISO();
+          logWarn("Generated future date from fallback", { futureDate });
           if (futureDate) {
             extractedDates.push({
               originalText: validatedParams.text,
@@ -125,6 +159,54 @@ export class UtilityService {
               confidence: 0.8,
               type: "relative",
             });
+          }
+        }
+        if (extractedDates.length === 0) {
+          const commonPatterns = [
+            { pattern: /(\d+)\s*hours?\s*from\s*now/i, unit: "hours" },
+            { pattern: /(\d+)\s*minutes?\s*from\s*now/i, unit: "minutes" },
+            { pattern: /(\d+)\s*days?\s*from\s*now/i, unit: "days" },
+            { pattern: /in\s*(\d+)\s*hours?/i, unit: "hours" },
+            { pattern: /in\s*(\d+)\s*minutes?/i, unit: "minutes" },
+            { pattern: /in\s*(\d+)\s*days?/i, unit: "days" },
+          ];
+          for (const { pattern, unit } of commonPatterns) {
+            const match = normalizedText.match(pattern);
+            if (match) {
+              const val = parseFloat(match[1]);
+              logWarn("Common pattern matched", {
+                pattern: pattern.source,
+                val,
+                unit,
+              });
+              const duration =
+                unit === "hours"
+                  ? { hours: val }
+                  : unit === "minutes"
+                    ? { minutes: val }
+                    : unit === "days"
+                      ? { days: val }
+                      : {};
+              const futureDate = DateTime.fromJSDate(referenceDate, {
+                zone: validatedParams.timezone,
+              })
+                .plus(duration)
+                .toUTC()
+                .toISO();
+              if (futureDate) {
+                extractedDates.push({
+                  originalText: validatedParams.text,
+                  parsedDate: futureDate,
+                  confidence: 0.9,
+                  type: "relative",
+                });
+                logWarn("Generated date from common pattern", {
+                  futureDate,
+                  duration,
+                });
+                break;
+              }
+            }
           }
         }
       }
