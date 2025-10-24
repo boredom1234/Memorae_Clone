@@ -108,16 +108,15 @@ Your response:`;
       );
       return "no_tool_needed";
     }
-    
-    // Validate that the selected tool actually exists in the definitions
     if (selectedTool !== "no_tool_needed") {
-      const toolExists = toolDefinitions.some(t => t.name === selectedTool);
+      const toolExists = toolDefinitions.some((t) => t.name === selectedTool);
       if (!toolExists) {
-        logWarn(`Router selected invalid tool: ${selectedTool}. Available tools: ${toolDefinitions.map(t => t.name).join(', ')}`);
+        logWarn(
+          `Router selected invalid tool: ${selectedTool}. Available tools: ${toolDefinitions.map((t) => t.name).join(", ")}`,
+        );
         return "no_tool_needed";
       }
     }
-    
     logInfo(`Router selected tool: ${selectedTool}`);
     return selectedTool;
   } catch (error) {

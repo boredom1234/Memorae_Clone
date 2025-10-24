@@ -90,7 +90,9 @@ export class ToolsRegistry {
           offset: "number (optional)",
           sortBy: "'time' | 'priority' | 'created' (optional)",
         },
-        handler: this.reminderQueryService.listReminders.bind(this.reminderQueryService),
+        handler: this.reminderQueryService.listReminders.bind(
+          this.reminderQueryService,
+        ),
       },
       snoozeReminder: {
         description: "Snooze a reminder",
@@ -99,7 +101,9 @@ export class ToolsRegistry {
           snoozeUntil: "string (ISO 8601)",
           snoozeDuration: "number (optional)",
         },
-        handler: this.reminderActionsService.snoozeReminder.bind(this.reminderActionsService),
+        handler: this.reminderActionsService.snoozeReminder.bind(
+          this.reminderActionsService,
+        ),
       },
       completeReminder: {
         description: "Mark a reminder as completed",
@@ -167,7 +171,9 @@ export class ToolsRegistry {
           itemIds: "string[] (optional)",
           itemText: "string (optional)",
         },
-        handler: this.listItemService.removeItemFromList.bind(this.listItemService),
+        handler: this.listItemService.removeItemFromList.bind(
+          this.listItemService,
+        ),
       },
       updateListItem: {
         description: "Update a list item",
@@ -230,7 +236,9 @@ export class ToolsRegistry {
           listName: "string (optional)",
           itemIds: "string[]",
         },
-        handler: this.listItemService.bulkCompleteItems.bind(this.listItemService),
+        handler: this.listItemService.bulkCompleteItems.bind(
+          this.listItemService,
+        ),
       },
       clearCompletedItems: {
         description: "Remove all completed items from a list",
@@ -238,7 +246,9 @@ export class ToolsRegistry {
           listId: "string (optional)",
           listName: "string (optional)",
         },
-        handler: this.listItemService.clearCompletedItems.bind(this.listItemService),
+        handler: this.listItemService.clearCompletedItems.bind(
+          this.listItemService,
+        ),
       },
       duplicateList: {
         description: "Duplicate a list with all its items",
@@ -301,7 +311,9 @@ export class ToolsRegistry {
           tags: "string[] (optional)",
           limit: "number (optional)",
         },
-        handler: this.notesQueryService.searchNotes.bind(this.notesQueryService),
+        handler: this.notesQueryService.searchNotes.bind(
+          this.notesQueryService,
+        ),
       },
       listNotes: {
         description: "List all notes",
@@ -462,7 +474,9 @@ export class ToolsRegistry {
           reminderId: "string",
           newReminderTime: "string (ISO 8601)",
         },
-        handler: this.reminderService.rescheduleReminder.bind(this.reminderService),
+        handler: this.reminderService.rescheduleReminder.bind(
+          this.reminderService,
+        ),
       },
       listOverdueReminders: {
         description: "Get pending reminders with reminder_time < now",
@@ -470,7 +484,9 @@ export class ToolsRegistry {
           limit: "number (optional)",
           offset: "number (optional)",
         },
-        handler: this.reminderQueryService.listOverdueReminders.bind(this.reminderQueryService),
+        handler: this.reminderQueryService.listOverdueReminders.bind(
+          this.reminderQueryService,
+        ),
       },
       snoozeReminderByText: {
         description: "Snooze using natural language like 'tomorrow morning'",
@@ -479,7 +495,9 @@ export class ToolsRegistry {
           text: "string",
           timezone: "string",
         },
-        handler: this.reminderActionsService.snoozeReminderByText.bind(this.reminderActionsService),
+        handler: this.reminderActionsService.snoozeReminderByText.bind(
+          this.reminderActionsService,
+        ),
       },
       bulkUpdateReminderStatus: {
         description: "Update status for multiple reminders",
@@ -487,28 +505,37 @@ export class ToolsRegistry {
           reminderIds: "string[]",
           status: "'completed' | 'cancelled' | 'pending'",
         },
-        handler: this.reminderActionsService.bulkUpdateStatus.bind(this.reminderActionsService),
+        handler: this.reminderActionsService.bulkUpdateStatus.bind(
+          this.reminderActionsService,
+        ),
       },
       retryNotification: {
-        description: "Retry a failed notification (reset fields, increment retry)",
+        description:
+          "Retry a failed notification (reset fields, increment retry)",
         parameters: {
           notificationId: "string",
         },
-        handler: this.notificationService.retryNotification.bind(this.notificationService),
+        handler: this.notificationService.retryNotification.bind(
+          this.notificationService,
+        ),
       },
       getFailedNotifications: {
         description: "Fetch failed notification entries for remediation",
         parameters: {
           limit: "number (optional)",
         },
-        handler: this.notificationService.getFailedNotifications.bind(this.notificationService),
+        handler: this.notificationService.getFailedNotifications.bind(
+          this.notificationService,
+        ),
       },
       bulkRetryFailedNotifications: {
         description: "Retry multiple failed by IDs",
         parameters: {
           notificationIds: "string[]",
         },
-        handler: this.notificationService.bulkRetryFailed.bind(this.notificationService),
+        handler: this.notificationService.bulkRetryFailed.bind(
+          this.notificationService,
+        ),
       },
       linkMediaAttachment: {
         description: "Link attachment to an entity via FK",
@@ -562,7 +589,9 @@ export class ToolsRegistry {
           listId: "string",
           orderedItemIds: "string[]",
         },
-        handler: this.listItemService.reorderListItems.bind(this.listItemService),
+        handler: this.listItemService.reorderListItems.bind(
+          this.listItemService,
+        ),
       },
       pinNote: {
         description: "Toggle note is_pinned",
@@ -585,10 +614,13 @@ export class ToolsRegistry {
         parameters: {
           recurrenceRule: "string",
         },
-        handler: this.utilityService.validateRecurrenceRule.bind(this.utilityService),
+        handler: this.utilityService.validateRecurrenceRule.bind(
+          this.utilityService,
+        ),
       },
       globalSearch: {
-        description: "Unified search across reminders, user_notes, lists, list_items, media_attachments",
+        description:
+          "Unified search across reminders, user_notes, lists, list_items, media_attachments",
         parameters: {
           query: "string",
           limit: "number (optional)",
@@ -714,26 +746,19 @@ export class ToolsRegistry {
   getRelevantTools(userId: string, _text?: string): any {
     const allTools = this.getAISDKTools(userId);
     const text = (_text || "").toLowerCase().trim();
-    // If no text provided, return all
     if (!text) return allTools;
-
     const selected: any = {};
     const add = (name: string) => {
       const tool = (allTools as any)[name];
       if (tool) (selected as any)[name] = tool;
     };
-
-    // Notes intent
     if (
       /(remember this\b|\bremember\b|take a note\b|make a note\b|\bnote this\b|\bnote:\b|save this\b|store this\b|create (a )?note\b)/.test(
         text,
       )
     ) {
       add("createNote");
-      // Keep it focused to encourage correct tool use
     }
-
-    // Reminders intent
     if (
       /(remind me\b|set (a )?reminder\b|schedule (a )?(reminder|alarm)\b|wake me\b)/.test(
         text,
@@ -741,8 +766,6 @@ export class ToolsRegistry {
     ) {
       add("createReminder");
     }
-
-    // Lists intent
     if (/\b(show|what are|list)\s+(my\s+)?lists\b/.test(text)) {
       add("getLists");
     }
@@ -752,24 +775,18 @@ export class ToolsRegistry {
     if (/(remove|delete|take off)\s+.+\s+from\s+.+\s+list\b/.test(text)) {
       add("removeItemFromList");
     }
-
-    // Notes read ops
     if (/^(search|find)\s+(note|notes|memory|memories)\b/.test(text)) {
       add("searchNotes");
     }
     if (/\b(show|list)\s+(notes|memories)\b/.test(text)) {
       add("listNotes");
     }
-
-    // If we selected at least one tool, return the filtered set plus __stats
     if (Object.keys(selected).length > 0) {
       if ((allTools as any).__stats) {
         (selected as any).__stats = (allTools as any).__stats;
       }
       return selected;
     }
-
-    // Fallback: return all tools
     return allTools;
   }
 }

@@ -11,11 +11,14 @@ import {
   NotFoundError,
   ValidationError,
 } from "../../utils/errors";
-import { logInfo, logError, logAudit, logPerformance } from "../../utils/logger";
-
+import {
+  logInfo,
+  logError,
+  logAudit,
+  logPerformance,
+} from "../../utils/logger";
 export class ListService {
   private supabase = getSupabaseClient();
-
   public async findListByName(
     userId: string,
     listName: string,
@@ -25,11 +28,9 @@ export class ListService {
       .select("id, name")
       .eq("user_id", userId)
       .eq("is_archived", false);
-
     if (!lists || lists.length === 0) {
       return undefined;
     }
-
     const normalizeListName = (name: string) => {
       return name
         .toLowerCase()
@@ -37,13 +38,10 @@ export class ListService {
         .replace(/\s+/g, " ")
         .trim();
     };
-
     const searchName = normalizeListName(listName);
-
     let matchedList = lists.find(
       (list) => normalizeListName(list.name) === searchName,
     );
-
     if (!matchedList) {
       matchedList = lists.find(
         (list) =>
@@ -51,10 +49,8 @@ export class ListService {
           searchName.includes(normalizeListName(list.name)),
       );
     }
-
     return matchedList ? matchedList.id : undefined;
   }
-
   async createList(params: {
     userId: string;
     name: string;
@@ -71,7 +67,6 @@ export class ListService {
     try {
       const validatedParams = validate(createListSchema, params);
       logInfo("Creating list", { userId: params.userId, name: params.name });
-
       const { data: list, error } = await this.supabase
         .from("lists")
         .insert({
@@ -83,14 +78,12 @@ export class ListService {
         })
         .select()
         .single();
-
       if (error) {
         throw error;
       }
       if (!list) {
         throw new Error("No data returned from insert operation");
       }
-
       if (validatedParams.items && validatedParams.items.length > 0) {
         const items = validatedParams.items.map((content, index) => ({
           list_id: list.id,
@@ -105,13 +98,11 @@ export class ListService {
           throw new Error(`Failed to add items to list: ${itemsError.message}`);
         }
       }
-
       logAudit("CREATE_LIST", validatedParams.userId, "list", {
         listId: list.id,
         name: list.name,
       });
       logPerformance("createList", Date.now() - startTime);
-
       return {
         success: true,
         listId: list.id,
@@ -125,12 +116,14 @@ export class ListService {
       throw handleServiceError(error, "createList");
     }
   }
-
   async deleteList(params: {
     userId: string;
     listId?: string;
     listName?: string;
-  }): Promise<{ success: boolean; message: string }> {
+  }): Promise<{
+    success: boolean;
+    message: string;
+  }> {
     const startTime = Date.now();
     try {
       const validatedParams = validate(deleteListSchema, params);
@@ -144,38 +137,31 @@ export class ListService {
           throw new NotFoundError("List", validatedParams.listName);
         }
       }
-
       if (!listId) {
         throw new ValidationError("Either listId or listName must be provided");
       }
-
       const { data: existing, error: checkError } = await this.supabase
         .from("lists")
         .select("id, name")
         .eq("id", listId)
         .eq("user_id", validatedParams.userId)
         .single();
-
       if (checkError || !existing) {
         throw new NotFoundError("List", listId);
       }
-
       const { error } = await this.supabase
         .from("lists")
         .delete()
         .eq("id", listId)
         .eq("user_id", validatedParams.userId);
-
       if (error) {
         throw error;
       }
-
       logAudit("DELETE_LIST", validatedParams.userId, "list", {
         listId,
         name: existing.name,
       });
       logPerformance("deleteList", Date.now() - startTime);
-
       return {
         success: true,
         message: "List deleted successfully",
@@ -185,12 +171,14 @@ export class ListService {
       throw handleServiceError(error, "deleteList");
     }
   }
-
   async archiveList(params: {
     userId: string;
     listId?: string;
     listName?: string;
-  }): Promise<{ success: boolean; message: string }> {
+  }): Promise<{
+    success: boolean;
+    message: string;
+  }> {
     const startTime = Date.now();
     try {
       const validatedParams = validate(archiveListSchema, params);
@@ -204,22 +192,18 @@ export class ListService {
           throw new NotFoundError("List", validatedParams.listName);
         }
       }
-
       if (!listId) {
         throw new ValidationError("Either listId or listName must be provided");
       }
-
       const { data: existing, error: checkError } = await this.supabase
         .from("lists")
         .select("id, name")
         .eq("id", listId)
         .eq("user_id", validatedParams.userId)
         .single();
-
       if (checkError || !existing) {
         throw new NotFoundError("List", listId);
       }
-
       const { error } = await this.supabase
         .from("lists")
         .update({
@@ -228,17 +212,14 @@ export class ListService {
         })
         .eq("id", listId)
         .eq("user_id", validatedParams.userId);
-
       if (error) {
         throw error;
       }
-
       logAudit("ARCHIVE_LIST", validatedParams.userId, "list", {
         listId,
         name: existing.name,
       });
       logPerformance("archiveList", Date.now() - startTime);
-
       return {
         success: true,
         message: `List "${existing.name}" archived successfully`,
@@ -248,13 +229,16 @@ export class ListService {
       throw handleServiceError(error, "archiveList");
     }
   }
-
   async duplicateList(params: {
     userId: string;
     listId?: string;
     listName?: string;
     newName?: string;
-  }): Promise<{ success: boolean; listId: string; message: string }> {
+  }): Promise<{
+    success: boolean;
+    listId: string;
+    message: string;
+  }> {
     const startTime = Date.now();
     try {
       const validatedParams = validate(duplicateListSchema, params);
@@ -268,24 +252,19 @@ export class ListService {
           throw new NotFoundError("List", validatedParams.listName);
         }
       }
-
       if (!listId) {
         throw new ValidationError("Either listId or listName must be provided");
       }
-
       const { data: originalList, error: listError } = await this.supabase
         .from("lists")
         .select("*")
         .eq("id", listId)
         .eq("user_id", validatedParams.userId)
         .single();
-
       if (listError || !originalList) {
         throw new NotFoundError("List", listId);
       }
-
       const newName = validatedParams.newName || `${originalList.name} (Copy)`;
-
       const { data: newList, error: createError } = await this.supabase
         .from("lists")
         .insert({
@@ -299,22 +278,18 @@ export class ListService {
         })
         .select()
         .single();
-
       if (createError || !newList) {
         throw createError || new Error("Failed to create duplicate list");
       }
-
       const { data: originalItems, error: itemsError } = await this.supabase
         .from("list_items")
         .select("*")
         .eq("list_id", listId)
         .order("position", { ascending: true });
-
       if (itemsError) {
         await this.supabase.from("lists").delete().eq("id", newList.id);
         throw itemsError;
       }
-
       if (originalItems && originalItems.length > 0) {
         const newItems = originalItems.map((item) => ({
           list_id: newList.id,
@@ -331,14 +306,12 @@ export class ListService {
           throw insertItemsError;
         }
       }
-
       logAudit("DUPLICATE_LIST", validatedParams.userId, "list", {
         originalListId: listId,
         newListId: newList.id,
         name: newName,
       });
       logPerformance("duplicateList", Date.now() - startTime);
-
       return {
         success: true,
         listId: newList.id,

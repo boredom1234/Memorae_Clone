@@ -11,7 +11,6 @@ export interface UserNote {
   createdAt: string;
   updatedAt: string;
 }
-
 export interface CreateNoteParams {
   userId: string;
   content: string;
@@ -20,7 +19,6 @@ export interface CreateNoteParams {
   category?: string;
   isPinned?: boolean;
 }
-
 export interface UpdateNoteParams {
   userId: string;
   noteId: string;
@@ -31,7 +29,6 @@ export interface UpdateNoteParams {
   isPinned?: boolean;
   isArchived?: boolean;
 }
-
 export interface SearchNotesParams {
   userId: string;
   query: string;
@@ -41,7 +38,6 @@ export interface SearchNotesParams {
   limit?: number;
   offset?: number;
 }
-
 export interface ListNotesParams {
   userId: string;
   category?: string;
@@ -53,16 +49,14 @@ export interface ListNotesParams {
   sortBy?: "created" | "updated" | "title";
   sortOrder?: "asc" | "desc";
 }
-
 export interface NotesStats {
-    total: number;
-    categories: {
-      [key: string]: number;
-    };
-    pinned: number;
-    recent: number;
+  total: number;
+  categories: {
+    [key: string]: number;
+  };
+  pinned: number;
+  recent: number;
 }
-
 export interface NoteWithMedia extends UserNote {
   media: Array<{
     id: string;

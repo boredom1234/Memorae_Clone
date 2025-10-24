@@ -1,49 +1,37 @@
-import {
-  tool
-} from "ai";
-import {
-  z
-} from "zod";
-import {
-  DedupeFunction,
-  ToolServices,
-} from "../tool-definitions";
-
+import { tool } from "ai";
+import { z } from "zod";
+import { DedupeFunction, ToolServices } from "../tool-definitions";
 export function createListAITools(
   userId: string,
   services: ToolServices,
-  dedupe: DedupeFunction
+  dedupe: DedupeFunction,
 ) {
   const { listService, listItemService, listQueryService } = services;
-
   return {
     createList: tool({
       description:
         "Create a new empty list or with initial items. Use when user wants to start a new list. Examples: 'create a shopping list', 'make a new todo list', 'start a list for X', 'new list called Y'. Automatically suggests icons and colors based on list name/purpose.",
       inputSchema: z.object({
         name: z.string().describe("Name of the list"),
-        description:
-          z
-            .string()
-            .optional()
-            .describe(
-              "Description of the list - ALWAYS try to infer purpose from context (e.g., 'Shopping list for groceries', 'Tasks for work project')"
-            ),
+        description: z
+          .string()
+          .optional()
+          .describe(
+            "Description of the list - ALWAYS try to infer purpose from context (e.g., 'Shopping list for groceries', 'Tasks for work project')",
+          ),
         items: z.array(z.string()).optional().describe("Initial items to add"),
-        icon:
-          z
-            .string()
-            .optional()
-            .describe(
-              "Icon/emoji for the list - infer from list type (🛒 for shopping, ✅ for todo, 📝 for notes, 🎯 for goals, etc.)"
-            ),
-        color:
-          z
-            .string()
-            .optional()
-            .describe(
-              "Color for the list - suggest based on category (blue for work, green for shopping, red for urgent, etc.)"
-            ),
+        icon: z
+          .string()
+          .optional()
+          .describe(
+            "Icon/emoji for the list - infer from list type (🛒 for shopping, ✅ for todo, 📝 for notes, 🎯 for goals, etc.)",
+          ),
+        color: z
+          .string()
+          .optional()
+          .describe(
+            "Color for the list - suggest based on category (blue for work, green for shopping, red for urgent, etc.)",
+          ),
       }),
       execute: dedupe("createList", async (params) => {
         const listData: any = { ...params };
@@ -107,15 +95,13 @@ export function createListAITools(
         "Add one or more items to an existing list. If the list doesn't exist, it will be created automatically. Use when user wants to add items to a list. Examples: 'add X to Y list', 'put X on my list', 'include X in shopping list'. Max 50 items per call.",
       inputSchema: z.object({
         listName: z.string().describe("Name of the list"),
-        items:
-          z
-            .array(z.string())
-            .describe("Items to add to the list (max 50)"),
-        notes:
-          z
-            .string()
-            .optional()
-            .describe("Optional notes/context for the items being added"),
+        items: z
+          .array(z.string())
+          .describe("Items to add to the list (max 50)"),
+        notes: z
+          .string()
+          .optional()
+          .describe("Optional notes/context for the items being added"),
       }),
       execute: dedupe("addItemToList", async (params) => {
         if (params.items.length > 50) {
@@ -187,18 +173,16 @@ export function createListAITools(
       description:
         "Show all lists the user has created. Use when user wants to see their lists. Examples: 'show my lists', 'what lists do I have', 'display all lists', 'list my lists'. By default shows active lists only, can optionally include archived ones.",
       inputSchema: z.object({
-        includeItems:
-          z
-            .boolean()
-            .optional()
-            .describe("Whether to include list items"),
-        includeArchived:
-          z
-            .boolean()
-            .optional()
-            .describe(
-              "Whether to include archived lists (default: false, only active lists)"
-            ),
+        includeItems: z
+          .boolean()
+          .optional()
+          .describe("Whether to include list items"),
+        includeArchived: z
+          .boolean()
+          .optional()
+          .describe(
+            "Whether to include archived lists (default: false, only active lists)",
+          ),
       }),
       execute: dedupe("getLists", async (params) => {
         return await listQueryService.getLists({
@@ -214,11 +198,10 @@ export function createListAITools(
         "Get all items from a specific list by name. Use when user asks about contents of a particular list. Examples: 'what's on my shopping list?', 'show grocery list items', 'what's in my todo list', 'view my work list'.",
       inputSchema: z.object({
         listName: z.string().describe("Name of the list to get items from"),
-        includeCompleted:
-          z
-            .boolean()
-            .optional()
-            .describe("Whether to include completed items"),
+        includeCompleted: z
+          .boolean()
+          .optional()
+          .describe("Whether to include completed items"),
       }),
       execute: dedupe("getListItems", async (params) => {
         return await listQueryService.getListItems({
@@ -249,11 +232,10 @@ export function createListAITools(
       inputSchema: z.object({
         listName: z.string().describe("Name of the list containing the item"),
         itemText: z.string().describe("Text to search for the item to update"),
-        isCompleted:
-          z
-            .boolean()
-            .optional()
-            .describe("Mark item as completed or not"),
+        isCompleted: z
+          .boolean()
+          .optional()
+          .describe("Mark item as completed or not"),
         newContent: z.string().optional().describe("New content for the item"),
       }),
       execute: dedupe("updateListItem", async (params) => {
@@ -263,11 +245,11 @@ export function createListAITools(
           includeCompleted: true,
         });
         const item = listItems.items.find((i) =>
-          i.content.toLowerCase().includes(params.itemText.toLowerCase())
+          i.content.toLowerCase().includes(params.itemText.toLowerCase()),
         );
         if (!item) {
           throw new Error(
-            `Could not find item "${params.itemText}" in list "${params.listName}"`
+            `Could not find item "${params.itemText}" in list "${params.listName}"`,
           );
         }
         return await listItemService.updateListItem({
@@ -295,11 +277,10 @@ export function createListAITools(
         "Search all lists/items. Triggers: find, search, where is, look for.",
       inputSchema: z.object({
         query: z.string().describe("Search query"),
-        searchIn:
-          z
-            .enum(["list-names", "items", "both"])
-            .optional()
-            .describe("Where to search"),
+        searchIn: z
+          .enum(["list-names", "items", "both"])
+          .optional()
+          .describe("Where to search"),
         limit: z.number().optional().describe("Maximum results"),
       }),
       execute: dedupe("searchLists", async (params) => {
@@ -329,10 +310,9 @@ export function createListAITools(
         "Mark multiple list items as completed at once. Triggers: complete all, mark all done, check off multiple.",
       inputSchema: z.object({
         listName: z.string().describe("Name of the list"),
-        itemIds:
-          z
-            .array(z.string())
-            .describe("Array of item IDs to mark as completed"),
+        itemIds: z
+          .array(z.string())
+          .describe("Array of item IDs to mark as completed"),
       }),
       execute: dedupe("bulkCompleteItems", async (params) => {
         return await listItemService.bulkCompleteItems({
@@ -360,11 +340,10 @@ export function createListAITools(
         "Clone/copy entire list with items. Triggers: duplicate list, copy list, clone list.",
       inputSchema: z.object({
         listName: z.string().describe("Name of the list to duplicate"),
-        newName:
-          z
-            .string()
-            .optional()
-            .describe("Optional new name for the duplicate list"),
+        newName: z
+          .string()
+          .optional()
+          .describe("Optional new name for the duplicate list"),
       }),
       execute: dedupe("duplicateList", async (params) => {
         return await listService.duplicateList({

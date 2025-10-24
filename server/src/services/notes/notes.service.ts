@@ -3,10 +3,8 @@ import { AppError } from "../../utils/errors";
 import { logError, logInfo } from "../../utils/logger";
 import { validate, duplicateNoteSchema } from "../../utils/validators";
 import { UserNote, CreateNoteParams, UpdateNoteParams } from "./types";
-
 export class NotesService {
   private supabase = getSupabaseClient();
-
   async createNote(params: CreateNoteParams): Promise<UserNote> {
     try {
       logInfo("Creating note", {
@@ -43,7 +41,6 @@ export class NotesService {
         : new AppError("Failed to create note", 500, "CREATE_NOTE_ERROR");
     }
   }
-
   async updateNote(params: UpdateNoteParams): Promise<UserNote> {
     try {
       logInfo("Updating note", {
@@ -62,7 +59,6 @@ export class NotesService {
       if (params.isPinned !== undefined) updateData.is_pinned = params.isPinned;
       if (params.isArchived !== undefined)
         updateData.is_archived = params.isArchived;
-
       const { data, error } = await this.supabase
         .from("user_notes")
         .update(updateData)
@@ -70,7 +66,6 @@ export class NotesService {
         .eq("user_id", params.userId)
         .select()
         .single();
-
       if (error) {
         logError("Failed to update note", error, params);
         throw new AppError("Failed to update note", 500, "UPDATE_NOTE_ERROR");
@@ -87,11 +82,12 @@ export class NotesService {
         : new AppError("Failed to update note", 500, "UPDATE_NOTE_ERROR");
     }
   }
-
   async deleteNote(
     userId: string,
     noteId: string,
-  ): Promise<{ success: boolean }> {
+  ): Promise<{
+    success: boolean;
+  }> {
     try {
       logInfo("Deleting note", { noteId, userId });
       const { error } = await this.supabase
@@ -112,45 +108,68 @@ export class NotesService {
         : new AppError("Failed to delete note", 500, "DELETE_NOTE_ERROR");
     }
   }
-
   async pinNote(params: {
     userId: string;
     noteId: string;
     isPinned: boolean;
-  }): Promise<{ success: boolean; message: string }> {
+  }): Promise<{
+    success: boolean;
+    message: string;
+  }> {
     try {
       const { error } = await getSupabaseClient()
         .from("user_notes")
-        .update({ is_pinned: params.isPinned, updated_at: new Date().toISOString() })
+        .update({
+          is_pinned: params.isPinned,
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", params.noteId)
         .eq("user_id", params.userId);
       if (error) throw error;
-      return { success: true, message: params.isPinned ? "Note pinned" : "Note unpinned" };
+      return {
+        success: true,
+        message: params.isPinned ? "Note pinned" : "Note unpinned",
+      };
     } catch (error) {
       logError("Failed to pin/unpin note", error, params);
-      throw error instanceof AppError ? error : new AppError("Failed to update note pin status", 500, "PIN_NOTE_ERROR");
+      throw error instanceof AppError
+        ? error
+        : new AppError(
+            "Failed to update note pin status",
+            500,
+            "PIN_NOTE_ERROR",
+          );
     }
   }
-
   async archiveNote(params: {
     userId: string;
     noteId: string;
     isArchived: boolean;
-  }): Promise<{ success: boolean; message: string }> {
+  }): Promise<{
+    success: boolean;
+    message: string;
+  }> {
     try {
       const { error } = await getSupabaseClient()
         .from("user_notes")
-        .update({ is_archived: params.isArchived, updated_at: new Date().toISOString() })
+        .update({
+          is_archived: params.isArchived,
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", params.noteId)
         .eq("user_id", params.userId);
       if (error) throw error;
-      return { success: true, message: params.isArchived ? "Note archived" : "Note unarchived" };
+      return {
+        success: true,
+        message: params.isArchived ? "Note archived" : "Note unarchived",
+      };
     } catch (error) {
       logError("Failed to archive/unarchive note", error, params);
-      throw error instanceof AppError ? error : new AppError("Failed to archive note", 500, "ARCHIVE_NOTE_ERROR");
+      throw error instanceof AppError
+        ? error
+        : new AppError("Failed to archive note", 500, "ARCHIVE_NOTE_ERROR");
     }
   }
-
   async duplicateNote(params: {
     userId: string;
     noteId: string;
@@ -162,22 +181,18 @@ export class NotesService {
         userId: validatedParams.userId,
         noteId: validatedParams.noteId,
       });
-
       const { data: originalNote, error: fetchError } = await this.supabase
         .from("user_notes")
         .select("*")
         .eq("id", validatedParams.noteId)
         .eq("user_id", validatedParams.userId)
         .single();
-
       if (fetchError || !originalNote) {
         throw new AppError("Note not found", 404, "NOTE_NOT_FOUND");
       }
-
       const newTitle =
         validatedParams.newTitle ||
         (originalNote.title ? `${originalNote.title} (Copy)` : "Copy of note");
-
       const { data: newNote, error: createError } = await this.supabase
         .from("user_notes")
         .insert({
@@ -191,7 +206,6 @@ export class NotesService {
         })
         .select()
         .single();
-
       if (createError || !newNote) {
         logError("Failed to duplicate note", createError, validatedParams);
         throw new AppError(
@@ -200,7 +214,6 @@ export class NotesService {
           "DUPLICATE_NOTE_ERROR",
         );
       }
-
       logInfo("Note duplicated successfully", {
         originalNoteId: validatedParams.noteId,
         newNoteId: newNote.id,
@@ -213,7 +226,6 @@ export class NotesService {
         : new AppError("Failed to duplicate note", 500, "DUPLICATE_NOTE_ERROR");
     }
   }
-
   public mapDatabaseNote(dbNote: any): UserNote {
     return {
       id: dbNote.id,

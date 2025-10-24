@@ -1,17 +1,12 @@
 import { tool } from "ai";
 import { z } from "zod";
-import {
-  DedupeFunction,
-  ToolServices,
-} from "../tool-definitions";
-
+import { DedupeFunction, ToolServices } from "../tool-definitions";
 export function createUtilityAITools(
   userId: string,
   services: ToolServices,
-  dedupe: DedupeFunction
+  dedupe: DedupeFunction,
 ) {
   const { utilityService, userService } = services;
-
   return {
     getCurrentTime: tool({
       description:

@@ -1,17 +1,12 @@
 import { tool } from "ai";
 import { z } from "zod";
-import {
-  DedupeFunction,
-  ToolServices,
-} from "../tool-definitions";
-
+import { DedupeFunction, ToolServices } from "../tool-definitions";
 export function createNotesAITools(
   userId: string,
   services: ToolServices,
-  dedupe: DedupeFunction
+  dedupe: DedupeFunction,
 ) {
   const { notesService, notesQueryService } = services;
-
   return {
     createNote: tool({
       description:
@@ -20,34 +15,30 @@ export function createNotesAITools(
         content: z
           .string()
           .describe("The information/note content to remember"),
-        title:
-          z
-            .string()
-            .optional()
-            .describe(
-              "Optional title for the note - ALWAYS try to generate a descriptive title from the content"
-            ),
-        category:
-          z
-            .string()
-            .optional()
-            .describe(
-              "Category like 'personal', 'work', 'general', 'shopping', 'health', 'finance' - infer from content context"
-            ),
-        tags:
-          z
-            .array(z.string())
-            .optional()
-            .describe(
-              "Optional tags for organization - extract relevant keywords from content as tags"
-            ),
-        isPinned:
-          z
-            .boolean()
-            .optional()
-            .describe(
-              "Mark as important/pinned - set to true if user says 'important', 'remember this', 'don\'t forget'"
-            ),
+        title: z
+          .string()
+          .optional()
+          .describe(
+            "Optional title for the note - ALWAYS try to generate a descriptive title from the content",
+          ),
+        category: z
+          .string()
+          .optional()
+          .describe(
+            "Category like 'personal', 'work', 'general', 'shopping', 'health', 'finance' - infer from content context",
+          ),
+        tags: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Optional tags for organization - extract relevant keywords from content as tags",
+          ),
+        isPinned: z
+          .boolean()
+          .optional()
+          .describe(
+            "Mark as important/pinned - set to true if user says 'important', 'remember this', 'don\'t forget'",
+          ),
       }),
       execute: dedupe("createNote", async (params) => {
         let title = params.title;
@@ -129,11 +120,10 @@ export function createNotesAITools(
       inputSchema: z.object({
         category: z.string().optional().describe("Filter by category"),
         tags: z.array(z.string()).optional().describe("Filter by tags"),
-        onlyPinned:
-          z
-            .boolean()
-            .optional()
-            .describe("Show only pinned/important notes"),
+        onlyPinned: z
+          .boolean()
+          .optional()
+          .describe("Show only pinned/important notes"),
         limit: z.number().optional().describe("Maximum results to return"),
       }),
       execute: dedupe("listNotes", async (params) => {
@@ -153,10 +143,9 @@ export function createNotesAITools(
       description:
         "Modify existing note. Triggers: update, change, modify, edit, correct.",
       inputSchema: z.object({
-        searchQuery:
-          z
-            .string()
-            .describe("Text to search for the note to update"),
+        searchQuery: z
+          .string()
+          .describe("Text to search for the note to update"),
         content: z.string().optional().describe("New content for the note"),
         title: z.string().optional().describe("New title for the note"),
         category: z.string().optional().describe("New category"),
@@ -188,10 +177,9 @@ export function createNotesAITools(
       description:
         "Delete note permanently. Triggers: delete, remove, forget, clear.",
       inputSchema: z.object({
-        searchQuery:
-          z
-            .string()
-            .describe("Text to search for the note to delete"),
+        searchQuery: z
+          .string()
+          .describe("Text to search for the note to delete"),
       }),
       execute: dedupe("deleteNote", async (params) => {
         const searchResult = await notesQueryService.searchNotes({
@@ -210,15 +198,13 @@ export function createNotesAITools(
       description:
         "Clone/copy a note. Triggers: duplicate note, copy note, clone note.",
       inputSchema: z.object({
-        searchQuery:
-          z
-            .string()
-            .describe("Text to search for the note to duplicate"),
-        newTitle:
-          z
-            .string()
-            .optional()
-            .describe("Optional new title for the duplicate"),
+        searchQuery: z
+          .string()
+          .describe("Text to search for the note to duplicate"),
+        newTitle: z
+          .string()
+          .optional()
+          .describe("Optional new title for the duplicate"),
       }),
       execute: dedupe("duplicateNote", async (params) => {
         const searchResult = await notesQueryService.searchNotes({

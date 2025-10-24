@@ -1,18 +1,12 @@
-
 import { tool } from "ai";
 import { z } from "zod";
-import {
-  DedupeFunction,
-  ToolServices,
-} from "../tool-definitions";
-
+import { DedupeFunction, ToolServices } from "../tool-definitions";
 export function createUserAITools(
   userId: string,
   services: ToolServices,
-  dedupe: DedupeFunction
+  dedupe: DedupeFunction,
 ) {
   const { userService } = services;
-
   return {
     getUserSettings: tool({
       description:
@@ -36,7 +30,7 @@ export function createUserAITools(
           .string()
           .optional()
           .describe(
-            'Timezone (e.g., "America/New_York", "UTC", "Asia/Kolkata")'
+            'Timezone (e.g., "America/New_York", "UTC", "Asia/Kolkata")',
           ),
         language: z
           .string()
@@ -69,7 +63,7 @@ export function createUserAITools(
           .nullable()
           .optional()
           .describe(
-            'Quiet hours start time in HH:MM (e.g., "22:00"). Set to null to clear.'
+            'Quiet hours start time in HH:MM (e.g., "22:00"). Set to null to clear.',
           ),
         quietHoursEnd: z
           .string()
@@ -77,7 +71,7 @@ export function createUserAITools(
           .nullable()
           .optional()
           .describe(
-            'Quiet hours end time in HH:MM (e.g., "07:00"). Set to null to clear.'
+            'Quiet hours end time in HH:MM (e.g., "07:00"). Set to null to clear.',
           ),
         quietHoursDays: z
           .array(
@@ -89,12 +83,12 @@ export function createUserAITools(
               "friday",
               "saturday",
               "sunday",
-            ])
+            ]),
           )
           .nullable()
           .optional()
           .describe(
-            'Days for quiet hours (e.g., ["monday", "tuesday"]). Set to null to clear.'
+            'Days for quiet hours (e.g., ["monday", "tuesday"]). Set to null to clear.',
           ),
       }),
       execute: dedupe("updateUserSettings", async (params) => {
@@ -125,7 +119,7 @@ export function createUserAITools(
           params.enabled,
           params.startTime || "22:00",
           params.endTime || "07:00",
-          params.days
+          params.days,
         );
       }),
     }),

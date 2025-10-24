@@ -19,7 +19,6 @@ import { createUtilityAITools } from "./definitions/utility";
 import { createNotificationAITools } from "./definitions/notification";
 import { createMediaAITools } from "./definitions/media";
 import { createActivityAITools } from "./definitions/activity";
-
 export interface ToolServices {
   userService: UserService;
   reminderService: ReminderService;
@@ -35,16 +34,14 @@ export interface ToolServices {
   mediaService: MediaAttachmentService;
   activityService: ActivityService;
 }
-
 export type DedupeFunction = <T>(
   name: string,
-  fn: (params: any) => Promise<T>
+  fn: (params: any) => Promise<T>,
 ) => (params: any) => Promise<T>;
-
 export function createAISDKTools(
   userId: string,
   services: ToolServices,
-  dedupe: DedupeFunction
+  dedupe: DedupeFunction,
 ) {
   return {
     ...createReminderAITools(userId, services, dedupe),

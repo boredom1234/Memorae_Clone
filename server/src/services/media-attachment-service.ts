@@ -72,7 +72,10 @@ export class MediaAttachmentService {
       throw error;
     }
   }
-  async unlinkAttachment(attachmentId: string): Promise<{ success: boolean; message: string }> {
+  async unlinkAttachment(attachmentId: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
     try {
       const { error } = await this.supabase
         .from("media_attachments")
@@ -89,37 +92,54 @@ export class MediaAttachmentService {
       throw error;
     }
   }
-
-  async transcribeAttachment(attachmentId: string): Promise<{ success: boolean; message: string }> {
+  async transcribeAttachment(attachmentId: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
     try {
-      this.logger.info(`Transcribe request for attachment ${attachmentId} - queued for future processing`);
-      return { success: true, message: "Transcription queued (not yet implemented)" };
+      this.logger.info(
+        `Transcribe request for attachment ${attachmentId} - queued for future processing`,
+      );
+      return {
+        success: true,
+        message: "Transcription queued (not yet implemented)",
+      };
     } catch (error: any) {
       this.logger.error({ error }, "Error queuing transcription");
       throw error;
     }
   }
-
-  async ocrAttachment(attachmentId: string): Promise<{ success: boolean; message: string }> {
+  async ocrAttachment(attachmentId: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
     try {
-      this.logger.info(`OCR request for attachment ${attachmentId} - queued for future processing`);
+      this.logger.info(
+        `OCR request for attachment ${attachmentId} - queued for future processing`,
+      );
       return { success: true, message: "OCR queued (not yet implemented)" };
     } catch (error: any) {
       this.logger.error({ error }, "Error queuing OCR");
       throw error;
     }
   }
-
-  async extractEntities(attachmentId: string): Promise<{ success: boolean; message: string }> {
+  async extractEntities(attachmentId: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
     try {
-      this.logger.info(`Entity extraction request for attachment ${attachmentId} - queued`);
-      return { success: true, message: "Entity extraction queued (not yet implemented)" };
+      this.logger.info(
+        `Entity extraction request for attachment ${attachmentId} - queued`,
+      );
+      return {
+        success: true,
+        message: "Entity extraction queued (not yet implemented)",
+      };
     } catch (error: any) {
       this.logger.error({ error }, "Error queuing entity extraction");
       throw error;
     }
   }
-
   async linkToItem(params: LinkMediaParams): Promise<void> {
     try {
       const updates: any = {};

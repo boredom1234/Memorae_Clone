@@ -1,18 +1,12 @@
-
 import { tool } from "ai";
 import { z } from "zod";
-import {
-  DedupeFunction,
-  ToolServices,
-} from "../tool-definitions";
-
+import { DedupeFunction, ToolServices } from "../tool-definitions";
 export function createNotificationAITools(
   userId: string,
   services: ToolServices,
-  dedupe: DedupeFunction
+  dedupe: DedupeFunction,
 ) {
   const { notificationService, utilityService, userService } = services;
-
   return {
     sendReminderToContact: tool({
       description:
@@ -35,7 +29,7 @@ export function createNotificationAITools(
           .string()
           .min(1)
           .describe(
-            "ISO 8601 datetime or natural language time (e.g., 'tomorrow 10am')"
+            "ISO 8601 datetime or natural language time (e.g., 'tomorrow 10am')",
           ),
         fromUserName: z
           .string()

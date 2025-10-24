@@ -1,17 +1,18 @@
 import { tool } from "ai";
 import { z } from "zod";
-import {
-  DedupeFunction,
-  ToolServices,
-} from "../tool-definitions";
-
+import { DedupeFunction, ToolServices } from "../tool-definitions";
 export function createReminderAITools(
   userId: string,
   services: ToolServices,
-  dedupe: DedupeFunction
+  dedupe: DedupeFunction,
 ) {
-  const { reminderService, reminderActionsService, reminderQueryService, userService, utilityService } = services;
-
+  const {
+    reminderService,
+    reminderActionsService,
+    reminderQueryService,
+    userService,
+    utilityService,
+  } = services;
   return {
     createReminder: tool({
       description:
@@ -22,13 +23,13 @@ export function createReminderAITools(
           .string()
           .optional()
           .describe(
-            "ISO 8601 datetime string when the reminder should trigger. Optional if naturalTimeText is provided."
+            "ISO 8601 datetime string when the reminder should trigger. Optional if naturalTimeText is provided.",
           ),
         naturalTimeText: z
           .string()
           .optional()
           .describe(
-            'Natural language time description (e.g., "tomorrow at 3pm", "in 30 minutes", "next Monday 9am"). Server will parse this using user timezone.'
+            'Natural language time description (e.g., "tomorrow at 3pm", "in 30 minutes", "next Monday 9am"). Server will parse this using user timezone.',
           ),
         isRecurring: z
           .boolean()
@@ -39,19 +40,19 @@ export function createReminderAITools(
           .string()
           .optional()
           .describe(
-            'Recurrence rule. Accepts either plain English (e.g., "daily", "every 2 weeks", "weekdays") OR iCalendar RRULE (e.g., "FREQ=MONTHLY;BYDAY=SA;BYSETPOS=2,4" for 2nd and 4th Saturday).'
+            'Recurrence rule. Accepts either plain English (e.g., "daily", "every 2 weeks", "weekdays") OR iCalendar RRULE (e.g., "FREQ=MONTHLY;BYDAY=SA;BYSETPOS=2,4" for 2nd and 4th Saturday).',
           ),
         notes: z
           .string()
           .optional()
           .describe(
-            "Additional notes - ALWAYS try to extract context from the user's message to fill this field"
+            "Additional notes - ALWAYS try to extract context from the user's message to fill this field",
           ),
         priority: z
           .enum(["low", "medium", "high"])
           .optional()
           .describe(
-            "Priority level - infer from urgency keywords (urgent/ASAP/important=high, later/sometime=low, default=medium)"
+            "Priority level - infer from urgency keywords (urgent/ASAP/important=high, later/sometime=low, default=medium)",
           ),
       }),
       execute: dedupe("createReminder", async (params) => {
@@ -74,7 +75,7 @@ export function createReminderAITools(
         }
         if (!finalTime) {
           throw new Error(
-            "Could not determine reminder time. Please specify a valid date/time."
+            "Could not determine reminder time. Please specify a valid date/time.",
           );
         }
         const parsedDate = new Date(finalTime);
@@ -126,7 +127,7 @@ export function createReminderAITools(
         });
         if (searchResult.results.length === 0) {
           throw new Error(
-            "Could not find any reminders matching that description."
+            "Could not find any reminders matching that description.",
           );
         }
         if (searchResult.results.length > 1) {
@@ -170,7 +171,7 @@ export function createReminderAITools(
           : undefined;
         if (!normalizedTitle && !finalTime && !params.priority) {
           throw new Error(
-            "Please specify what you want to update (title, time, or priority)."
+            "Please specify what you want to update (title, time, or priority).",
           );
         }
         return await reminderService.updateReminder({
@@ -198,7 +199,7 @@ export function createReminderAITools(
         });
         if (searchResult.results.length === 0) {
           throw new Error(
-            "Could not find any reminders matching that description."
+            "Could not find any reminders matching that description.",
           );
         }
         if (searchResult.results.length > 1) {
@@ -297,13 +298,13 @@ export function createReminderAITools(
           .string()
           .optional()
           .describe(
-            "ISO 8601 datetime when the reminder should trigger after snoozing"
+            "ISO 8601 datetime when the reminder should trigger after snoozing",
           ),
         naturalTimeText: z
           .string()
           .optional()
           .describe(
-            'Natural language time (e.g., "in 10 minutes", "tomorrow 3pm")'
+            'Natural language time (e.g., "in 10 minutes", "tomorrow 3pm")',
           ),
       }),
       execute: dedupe("snoozeReminder", async (params) => {
@@ -316,7 +317,7 @@ export function createReminderAITools(
         });
         if (searchResult.results.length === 0) {
           throw new Error(
-            "Could not find any reminders matching that description."
+            "Could not find any reminders matching that description.",
           );
         }
         if (searchResult.results.length > 1) {
@@ -348,7 +349,7 @@ export function createReminderAITools(
         }
         if (!finalTime) {
           throw new Error(
-            "Please specify when to snooze until (e.g., 'in 10 minutes', 'tomorrow 3pm')."
+            "Please specify when to snooze until (e.g., 'in 10 minutes', 'tomorrow 3pm').",
           );
         }
         const parsedDate = new Date(finalTime);
@@ -359,7 +360,7 @@ export function createReminderAITools(
           userId,
           reminderId: searchResult.results[0].id,
           snoozeUntil: finalTime,
-          snoozeDuration: 0
+          snoozeDuration: 0,
         });
       }),
     }),
@@ -394,7 +395,7 @@ export function createReminderAITools(
               reminderTime: z
                 .string()
                 .describe(
-                  "ISO 8601 datetime string when the reminder should trigger"
+                  "ISO 8601 datetime string when the reminder should trigger",
                 ),
               isRecurring: z
                 .boolean()
@@ -404,9 +405,9 @@ export function createReminderAITools(
                 .string()
                 .optional()
                 .describe(
-                  'Recurrence rule in plain English or RRULE. Examples: "daily" or "FREQ=WEEKLY;BYDAY=MO,WE,FR".'
+                  'Recurrence rule in plain English or RRULE. Examples: "daily" or "FREQ=WEEKLY;BYDAY=MO,WE,FR".',
                 ),
-            })
+            }),
           )
           .describe("Array of reminders to create"),
       }),

@@ -15,39 +15,35 @@ export interface Reminder {
   created_at: string;
   updated_at: string;
 }
-
 export interface ReminderCreationParams {
-    userId: string;
-    title: string;
-    reminderTime: string;
-    timezone: string;
-    isRecurring: boolean;
-    recurrenceRule?: string;
-    notes?: string;
-    priority?: "low" | "medium" | "high";
+  userId: string;
+  title: string;
+  reminderTime: string;
+  timezone: string;
+  isRecurring: boolean;
+  recurrenceRule?: string;
+  notes?: string;
+  priority?: "low" | "medium" | "high";
 }
-
 export interface ReminderUpdateParams {
-    userId: string;
-    reminderId: string;
-    title?: string;
-    reminderTime?: string;
-    isRecurring?: boolean;
-    recurrenceRule?: string;
-    notes?: string;
-    priority?: "low" | "medium" | "high";
+  userId: string;
+  reminderId: string;
+  title?: string;
+  reminderTime?: string;
+  isRecurring?: boolean;
+  recurrenceRule?: string;
+  notes?: string;
+  priority?: "low" | "medium" | "high";
 }
-
 export interface UpcomingReminder {
-    id: string;
-    title: string;
-    reminderTime: string;
-    timeUntil: string;
+  id: string;
+  title: string;
+  reminderTime: string;
+  timeUntil: string;
 }
-
 export interface SearchResult {
-    id: string;
-    title: string;
-    reminderTime: string;
-    relevanceScore: number;
+  id: string;
+  title: string;
+  reminderTime: string;
+  relevanceScore: number;
 }

@@ -10,7 +10,6 @@ export interface List {
   created_at: string;
   updated_at: string;
 }
-
 export interface ListItem {
   id: string;
   list_id: string;
@@ -23,34 +22,31 @@ export interface ListItem {
   created_at: string;
   updated_at: string;
 }
-
 export interface ListWithItems extends List {
-    items?: ListItem[];
-    itemCount?: number;
+  items?: ListItem[];
+  itemCount?: number;
 }
-
 export interface SearchResult {
-    type: "list" | "item";
-    listId: string;
-    listName: string;
-    itemId?: string;
-    itemContent?: string;
-    relevanceScore: number;
+  type: "list" | "item";
+  listId: string;
+  listName: string;
+  itemId?: string;
+  itemContent?: string;
+  relevanceScore: number;
 }
-
 export interface ListStats {
-    totalLists: number;
-    totalItems: number;
-    completedItems: number;
-    completionRate: number;
-    mostActiveList: {
-      id: string;
-      name: string;
-      itemCount: number;
-    } | null;
-    recentlyUpdated: Array<{
-      id: string;
-      name: string;
-      updatedAt: string;
-    }>;
+  totalLists: number;
+  totalItems: number;
+  completedItems: number;
+  completionRate: number;
+  mostActiveList: {
+    id: string;
+    name: string;
+    itemCount: number;
+  } | null;
+  recentlyUpdated: Array<{
+    id: string;
+    name: string;
+    updatedAt: string;
+  }>;
 }

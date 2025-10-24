@@ -227,9 +227,9 @@ export class NotificationService {
     if (insErr) throw insErr;
     return { success: ok, messageId: inserted.id };
   }
-
-  async retryNotification(notificationId: string): Promise<{ success: boolean }>
-  {
+  async retryNotification(notificationId: string): Promise<{
+    success: boolean;
+  }> {
     const { data: notif, error } = await this.supabase
       .from("notification_history")
       .select("id, retry_count, status")
@@ -250,21 +250,22 @@ export class NotificationService {
     if (updErr) throw updErr;
     return { success: true };
   }
-
-  async getFailedNotifications(limit: number = 50): Promise<{ notifications: any[] }>
-  {
+  async getFailedNotifications(limit: number = 50): Promise<{
+    notifications: any[];
+  }> {
     const { data, error } = await this.supabase
       .from("notification_history")
       .select("*")
-      .in("status", ["failed", "permanently_failed"]) 
+      .in("status", ["failed", "permanently_failed"])
       .order("created_at", { ascending: false })
       .limit(limit);
     if (error) throw error;
     return { notifications: data || [] };
   }
-
-  async bulkRetryFailed(notificationIds: string[]): Promise<{ success: boolean; updated: number }>
-  {
+  async bulkRetryFailed(notificationIds: string[]): Promise<{
+    success: boolean;
+    updated: number;
+  }> {
     if (!notificationIds || notificationIds.length === 0) {
       return { success: true, updated: 0 };
     }
@@ -279,7 +280,6 @@ export class NotificationService {
       .in("id", notificationIds)
       .select("id, retry_count");
     if (error) throw error;
-    // Increment retry_count individually to avoid race conditions
     let updated = 0;
     for (const row of data || []) {
       const { error: e } = await this.supabase

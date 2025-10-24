@@ -61,9 +61,10 @@ export class TranslationService {
     detectedLanguage?: string;
     error?: string;
   }> {
-    // Quick ASCII check first - if mostly ASCII, assume English and skip translation
     if (this.asciiEnglishLike(text)) {
-      this.logger.info("Text appears to be English (ASCII check), skipping translation");
+      this.logger.info(
+        "Text appears to be English (ASCII check), skipping translation",
+      );
       return {
         success: true,
         translatedText: text,
@@ -72,7 +73,6 @@ export class TranslationService {
         detectedLanguage: "en",
       };
     }
-    
     if (!this.isAvailable()) {
       return {
         success: true,
@@ -82,7 +82,6 @@ export class TranslationService {
         error: "Translation service not available, using original text",
       };
     }
-    
     try {
       const detection = await this.detectLanguage(text);
       const lang = detection.lang || "und";

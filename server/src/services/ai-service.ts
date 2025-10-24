@@ -32,157 +32,138 @@ export class AIService {
     this.defaultModel = this.getDefaultModel();
     this.fallbackModels = this.getFallbackModels();
     this.logger.info(
-      `AI Service initialized with ${this.fallbackModels.length} fallback models`
+      `AI Service initialized with ${this.fallbackModels.length} fallback models`,
     );
   }
   private isCommandLike(message: string): boolean {
     const text = message.toLowerCase().trim();
-    
-    // Allow questions that start with action words
     if (text.endsWith("?")) {
       if (
         /^(can you|could you|please|will you|would you)\s+(add|create|set|schedule|remind|remove|delete|list|show|update|change|move|mark|complete|snooze|search|find|get)\b/.test(
-          text
+          text,
         )
       ) {
         return true;
       }
-      // Questions like "what's on my list?" or "what reminders do I have?"
       if (
         /^(what|which|show|list|display|tell)\b.*(list|reminder|note|item|task|memory)/.test(
-          text
+          text,
         )
       ) {
         return true;
       }
     }
-    
-    // Direct commands
     if (
       /^(add|create|set|schedule|remind|remove|delete|list|show|make|note|remember|update|change|edit|move|complete|finish|done|mark|snooze|postpone|delay|search|find|get|display|view|check)\b/.test(
-        text
+        text,
       )
     ) {
       return true;
     }
-    
-    // Polite requests
     if (
       /^(can you|could you|please|will you|would you|i want to|i need to|i'd like to)\s+(add|create|set|schedule|remind|remove|delete|list|show|update|change|mark)\b/.test(
-        text
+        text,
       )
     ) {
       return true;
     }
-    
     return false;
   }
   private heuristicToolSelection(message: string): string {
     const text = message.toLowerCase().trim();
-    
-    // Reminders - Create
     if (
       /^(remind (me|us)\b|remind me to\b|set (a )?reminder\b|schedule (a )?(reminder|alarm)\b|wake me\b|alert me\b|notify me\b)/.test(
-        text
+        text,
       )
     ) {
       return "createReminder";
     }
-    
-    // Reminders - List/View
     if (
       /^(show|list|view|display|get)\s+(my\s+)?(all\s+)?reminders?\b(?!.*\b(today|tomorrow|week|month)\b)/.test(
-        text
+        text,
       )
     ) {
       return "listReminders";
     }
-    
-    // Reminders - Upcoming with timeframe
     if (
       /(what\s+reminders?.*(today|tomorrow|this\s+week|this\s+month)|reminders?\s+(for\s+)?(today|tomorrow|this\s+week|this\s+month)|(today|tomorrow|this\s+week|this\s+month).*reminders?)/.test(
-        text
+        text,
       )
     ) {
       return "getUpcomingReminders";
     }
-    
-    // Reminders - Snooze
     if (/^(snooze|postpone|delay|push back)\b/.test(text)) {
       return "snoozeReminder";
     }
-    
-    // Reminders - Delete
     if (/^(delete|remove|cancel|clear)\s+(the\s+)?reminder\b/.test(text)) {
       return "deleteReminder";
     }
-    
-    // Reminders - Update
-    if (/^(change|update|edit|modify|reschedule|move)\s+(the\s+)?reminder\b/.test(text)) {
+    if (
+      /^(change|update|edit|modify|reschedule|move)\s+(the\s+)?reminder\b/.test(
+        text,
+      )
+    ) {
       return "updateReminder";
     }
-    
-    // Lists - Show all lists
     if (/^(show|what are|list|display|get)\s+(my\s+)?lists\b/.test(text)) {
       return "getLists";
     }
-    
-    // Lists - Create new list
     if (/^(create|make|start|new)\s+(a\s+)?list\b/.test(text)) {
       return "createList";
     }
-    
-    // Lists - Add items
-    if (/^(add|put|include|insert)\s+.+\s+(to|into|onto|in)\s+.+\s+list\b/.test(text)) {
+    if (
+      /^(add|put|include|insert)\s+.+\s+(to|into|onto|in)\s+.+\s+list\b/.test(
+        text,
+      )
+    ) {
       return "addItemToList";
     }
-    
-    // Lists - Remove items
-    if (/^(remove|delete|take off|clear)\s+.+\s+from\s+.+\s+list\b/.test(text)) {
+    if (
+      /^(remove|delete|take off|clear)\s+.+\s+from\s+.+\s+list\b/.test(text)
+    ) {
       return "removeItemFromList";
     }
-    
-    // Lists - Get items from specific list
-    if (/^(what('| i)?s|show|list|display|view|get)\s+(on|in)\s+(my\s+)?.+\s+list\b/.test(text)) {
+    if (
+      /^(what('| i)?s|show|list|display|view|get)\s+(on|in)\s+(my\s+)?.+\s+list\b/.test(
+        text,
+      )
+    ) {
       return "getListItems";
     }
-    
-    // Notes - Create
     if (
       /^(remember (this|that)|take a note|make (a )?note|create (a )?note|note:|note this|save (this|that)|store (this|that)|keep track)/.test(
-        text
+        text,
       )
     ) {
       return "createNote";
     }
-    
-    // Notes - Search
-    if (/^(search|find|look for|what did i)\s+(note|notes|memory|memories|save)\b/.test(text)) {
+    if (
+      /^(search|find|look for|what did i)\s+(note|notes|memory|memories|save)\b/.test(
+        text,
+      )
+    ) {
       return "searchNotes";
     }
-    
-    // Notes - List all
-    if (/^(show|list|display|get)\s+(my\s+)?(all\s+)?(notes|memories)\b/.test(text)) {
+    if (
+      /^(show|list|display|get)\s+(my\s+)?(all\s+)?(notes|memories)\b/.test(
+        text,
+      )
+    ) {
       return "listNotes";
     }
-    
-    // Stats
     if (/\b(stats|statistics|completion rate|how many lists)\b/.test(text)) {
       return "getListStats";
     }
-    
     return "no_tool_needed";
   }
   private isStateChangingTool(toolName: string): boolean {
     return [
-      // Reminders
       "createReminder",
       "batchCreateReminders",
       "updateReminder",
       "deleteReminder",
       "snoozeReminder",
       "completeReminder",
-      // Lists
       "createList",
       "addItemToList",
       "removeItemFromList",
@@ -192,7 +173,6 @@ export class AIService {
       "bulkCompleteItems",
       "clearCompletedItems",
       "duplicateList",
-      // Notes
       "createNote",
       "updateNote",
       "deleteNote",
@@ -274,7 +254,7 @@ export class AIService {
             throw new Error("Azure OpenAI not fully configured");
           }
           this.logger.info(
-            `Using Azure OpenAI (${config.ai.azureDeploymentName})`
+            `Using Azure OpenAI (${config.ai.azureDeploymentName})`,
           );
           return azure(config.ai.azureDeploymentName);
         case "vertex":
@@ -359,11 +339,11 @@ export class AIService {
           instance: model,
         });
         this.logger.info(
-          `Added fallback: ${fallbackConfig.provider} (${fallbackConfig.model})`
+          `Added fallback: ${fallbackConfig.provider} (${fallbackConfig.model})`,
         );
       } catch (error) {
         this.logger.warn(
-          `Failed to configure fallback ${fallbackConfig.provider}: ${error}`
+          `Failed to configure fallback ${fallbackConfig.provider}: ${error}`,
         );
       }
     }
@@ -374,7 +354,7 @@ export class AIService {
     userId: string,
     timezone: string,
     toolsRegistry: ToolsRegistry,
-    conversationHistory: ConversationMessage[] = []
+    conversationHistory: ConversationMessage[] = [],
   ): Promise<{
     text: string;
     toolCalls: any[];
@@ -392,14 +372,13 @@ export class AIService {
         instance: f.instance,
       })),
     ].filter((m) => m.instance);
-    const translation = await this.translationService.translateToEnglish(
-      message
-    );
+    const translation =
+      await this.translationService.translateToEnglish(message);
     const textForProcessing = translation.translatedText || message;
     const toolDefinitions = toolsRegistry.getToolDefinitions(userId);
     const selectedToolNameFromRouter = await routeToTool(
       textForProcessing,
-      toolDefinitions
+      toolDefinitions,
     );
     const commandLike = this.isCommandLike(textForProcessing);
     let selectedToolName = selectedToolNameFromRouter;
@@ -409,7 +388,7 @@ export class AIService {
         const maybeTool = toolsRegistry.getSingleAISDKTool(userId, heuristic);
         if (maybeTool && Object.keys(maybeTool).length > 0) {
           this.logger.info(
-            `Router returned no_tool_needed; heuristic selected ${heuristic}`
+            `Router returned no_tool_needed; heuristic selected ${heuristic}`,
           );
           selectedToolName = heuristic;
         }
@@ -421,7 +400,7 @@ export class AIService {
     }));
     if (selectedToolName === "no_tool_needed") {
       this.logger.info(
-        "No tool will be used. Generating conversational response."
+        "No tool will be used. Generating conversational response.",
       );
       for (const modelConfig of modelsToTry) {
         try {
@@ -454,29 +433,29 @@ Important:
         } catch (error: any) {
           this.logger.warn(
             { error: error.message, provider: modelConfig.provider },
-            `Conversational request failed with ${modelConfig.provider}, trying next fallback`
+            `Conversational request failed with ${modelConfig.provider}, trying next fallback`,
           );
           continue;
         }
       }
       throw new Error(
-        "All AI models failed to generate a conversational response."
+        "All AI models failed to generate a conversational response.",
       );
     }
-    // If router selected a tool (not no_tool_needed), trust that decision and use it
     const willUseTools = selectedToolName !== "no_tool_needed";
-    
     if (willUseTools) {
-      this.logger.info(`Tool router selected: ${selectedToolName} - will provide to LLM`);
+      this.logger.info(
+        `Tool router selected: ${selectedToolName} - will provide to LLM`,
+      );
     } else {
       this.logger.info(
-        `No tool selected by router. Using conversational response.`
+        `No tool selected by router. Using conversational response.`,
       );
     }
     const tools = toolsRegistry.getSingleAISDKTool(userId, selectedToolName);
     if (!tools || Object.keys(tools).length === 0) {
       this.logger.error(
-        `Selected tool "${selectedToolName}" not available. Falling back to conversational response.`
+        `Selected tool "${selectedToolName}" not available. Falling back to conversational response.`,
       );
       for (const modelConfig of modelsToTry) {
         try {
@@ -495,7 +474,7 @@ Important: You do not have tool access for this request. Do NOT claim you create
         } catch (error: any) {
           this.logger.warn(
             { error: error.message, provider: modelConfig.provider },
-            `Conversational fallback failed with ${modelConfig.provider}, trying next fallback`
+            `Conversational fallback failed with ${modelConfig.provider}, trying next fallback`,
           );
         }
       }
@@ -504,7 +483,7 @@ Important: You do not have tool access for this request. Do NOT claim you create
     for (const modelConfig of modelsToTry) {
       try {
         this.logger.info(
-          `Attempting tool execution with ${modelConfig.provider}`
+          `Attempting tool execution with ${modelConfig.provider}`,
         );
         const systemPrompt = willUseTools
           ? `You are Memorae, a helpful and friendly AI assistant for task and memory management.
@@ -551,7 +530,7 @@ Respond naturally and helpfully. Be friendly and engaging, not robotic.
 
 Context:
 - User timezone: ${timezone}
-- Current time: ${new Date().toISOString()}`;;
+- Current time: ${new Date().toISOString()}`;
         const effectiveTools = willUseTools ? tools : ({} as any);
         const result = await generateText({
           model: modelConfig.instance,
@@ -565,7 +544,6 @@ Context:
         } as any);
         const toolStats = (effectiveTools as any).__stats;
         const toolsActuallyExecuted = toolStats?.executed === true;
-        
         this.logger.info(
           {
             provider: modelConfig.provider,
@@ -573,23 +551,20 @@ Context:
             toolCallsCount: result.toolCalls?.length || 0,
             toolResultsCount: result.toolResults?.length || 0,
             hasText: !!result.text,
-            textPreview: result.text?.substring(0, 100)
+            textPreview: result.text?.substring(0, 100),
           },
-          `AI processed message with ${modelConfig.provider}`
+          `AI processed message with ${modelConfig.provider}`,
         );
-        
-        // If tool was provided but not executed, log warning
         if (willUseTools && !toolsActuallyExecuted) {
           this.logger.warn(
             {
               selectedTool: selectedToolName,
               textLength: textForProcessing.length,
-              hasToolCalls: result.toolCalls?.length > 0
+              hasToolCalls: result.toolCalls?.length > 0,
             },
-            `Tool ${selectedToolName} was provided but not executed by LLM`
+            `Tool ${selectedToolName} was provided but not executed by LLM`,
           );
         }
-        
         return {
           text: result.text,
           toolCalls: result.toolCalls,
@@ -600,17 +575,17 @@ Context:
         lastError = error;
         this.logger.warn(
           { error: error.message, provider: modelConfig.provider },
-          `Tool execution failed with ${modelConfig.provider}, trying next fallback`
+          `Tool execution failed with ${modelConfig.provider}, trying next fallback`,
         );
         continue;
       }
     }
     this.logger.error(
       { error: lastError?.message || "Unknown error" },
-      "All AI models failed to process message with the selected tool"
+      "All AI models failed to process message with the selected tool",
     );
     throw new Error(
-      `AI service unavailable: ${lastError?.message || "All providers failed"}`
+      `AI service unavailable: ${lastError?.message || "All providers failed"}`,
     );
   }
   async processMessageWithTools(
@@ -618,7 +593,7 @@ Context:
     userId: string,
     timezone: string,
     tools: any,
-    conversationHistory: ConversationMessage[] = []
+    conversationHistory: ConversationMessage[] = [],
   ): Promise<{
     text: string;
     toolCalls: any[];
@@ -640,9 +615,8 @@ Context:
       role: msg.role,
       content: msg.content,
     }));
-    const translation = await this.translationService.translateToEnglish(
-      message
-    );
+    const translation =
+      await this.translationService.translateToEnglish(message);
     const textForProcessing = translation.translatedText || message;
     const effectiveTools = tools;
     const messagesWithCurrent = [
@@ -682,17 +656,17 @@ Current time (UTC): ${new Date().toISOString()}`;
         lastError = error;
         this.logger.warn(
           { error: error.message, provider: modelConfig.provider },
-          `Direct tool execution failed with ${modelConfig.provider}, trying next fallback`
+          `Direct tool execution failed with ${modelConfig.provider}, trying next fallback`,
         );
         continue;
       }
     }
     this.logger.error(
       { error: lastError?.message || "Unknown error" },
-      "All AI models failed to process message with provided tools"
+      "All AI models failed to process message with provided tools",
     );
     throw new Error(
-      `AI service unavailable: ${lastError?.message || "All providers failed"}`
+      `AI service unavailable: ${lastError?.message || "All providers failed"}`,
     );
   }
 }
