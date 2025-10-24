@@ -645,6 +645,44 @@ export class NotesService {
           );
     }
   }
+  async pinNote(params: {
+    userId: string;
+    noteId: string;
+    isPinned: boolean;
+  }): Promise<{ success: boolean; message: string }> {
+    try {
+      const { error } = await getSupabaseClient()
+        .from("user_notes")
+        .update({ is_pinned: params.isPinned, updated_at: new Date().toISOString() })
+        .eq("id", params.noteId)
+        .eq("user_id", params.userId);
+      if (error) throw error;
+      return { success: true, message: params.isPinned ? "Note pinned" : "Note unpinned" };
+    } catch (error) {
+      logError("Failed to pin/unpin note", error, params);
+      throw error instanceof AppError ? error : new AppError("Failed to update note pin status", 500, "PIN_NOTE_ERROR");
+    }
+  }
+
+  async archiveNote(params: {
+    userId: string;
+    noteId: string;
+    isArchived: boolean;
+  }): Promise<{ success: boolean; message: string }> {
+    try {
+      const { error } = await getSupabaseClient()
+        .from("user_notes")
+        .update({ is_archived: params.isArchived, updated_at: new Date().toISOString() })
+        .eq("id", params.noteId)
+        .eq("user_id", params.userId);
+      if (error) throw error;
+      return { success: true, message: params.isArchived ? "Note archived" : "Note unarchived" };
+    } catch (error) {
+      logError("Failed to archive/unarchive note", error, params);
+      throw error instanceof AppError ? error : new AppError("Failed to archive note", 500, "ARCHIVE_NOTE_ERROR");
+    }
+  }
+
   async duplicateNote(params: {
     userId: string;
     noteId: string;

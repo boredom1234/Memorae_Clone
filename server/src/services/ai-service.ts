@@ -32,119 +32,172 @@ export class AIService {
     this.defaultModel = this.getDefaultModel();
     this.fallbackModels = this.getFallbackModels();
     this.logger.info(
-      `AI Service initialized with ${this.fallbackModels.length} fallback models`,
+      `AI Service initialized with ${this.fallbackModels.length} fallback models`
     );
   }
   private isCommandLike(message: string): boolean {
     const text = message.toLowerCase().trim();
+    
+    // Allow questions that start with action words
     if (text.endsWith("?")) {
       if (
-        /^(can you|could you|please)\s+(add|create|set|schedule|remind|remove|delete|list|show)\b/.test(
-          text,
+        /^(can you|could you|please|will you|would you)\s+(add|create|set|schedule|remind|remove|delete|list|show|update|change|move|mark|complete|snooze|search|find|get)\b/.test(
+          text
         )
       ) {
-      } else {
-        return false;
+        return true;
+      }
+      // Questions like "what's on my list?" or "what reminders do I have?"
+      if (
+        /^(what|which|show|list|display|tell)\b.*(list|reminder|note|item|task|memory)/.test(
+          text
+        )
+      ) {
+        return true;
       }
     }
+    
+    // Direct commands
     if (
-      /^(add|create|set|schedule|remind|remove|delete|list|show|make|note|remember)\b/.test(
-        text,
+      /^(add|create|set|schedule|remind|remove|delete|list|show|make|note|remember|update|change|edit|move|complete|finish|done|mark|snooze|postpone|delay|search|find|get|display|view|check)\b/.test(
+        text
       )
     ) {
       return true;
     }
+    
+    // Polite requests
     if (
-      /^(can you|could you|please)\s+(add|create|set|schedule|remind|remove|delete|list|show)\b/.test(
-        text,
+      /^(can you|could you|please|will you|would you|i want to|i need to|i'd like to)\s+(add|create|set|schedule|remind|remove|delete|list|show|update|change|mark)\b/.test(
+        text
       )
     ) {
       return true;
     }
+    
     return false;
   }
   private heuristicToolSelection(message: string): string {
     const text = message.toLowerCase().trim();
+    
+    // Reminders - Create
     if (
-      /^(remind (me|us)\b|remind me to\b|set (a )?reminder\b|schedule (a )?(reminder|alarm)\b|wake me\b)/.test(
-        text,
+      /^(remind (me|us)\b|remind me to\b|set (a )?reminder\b|schedule (a )?(reminder|alarm)\b|wake me\b|alert me\b|notify me\b)/.test(
+        text
       )
     ) {
       return "createReminder";
     }
+    
+    // Reminders - List/View
     if (
-      /^(show|list|view)\s+(my\s+)?reminders?\b(?!.*\b(today|tomorrow|week|month|on|at)\b)/.test(
-        text,
+      /^(show|list|view|display|get)\s+(my\s+)?(all\s+)?reminders?\b(?!.*\b(today|tomorrow|week|month)\b)/.test(
+        text
       )
     ) {
       return "listReminders";
     }
+    
+    // Reminders - Upcoming with timeframe
     if (
-      /((today|tomorrow|week|month|on\s+\w+|at\s+\d{1,2}(:\d{2})?\s*(am|pm)?).*(reminder|reminders))/.test(
-        text,
+      /(what\s+reminders?.*(today|tomorrow|this\s+week|this\s+month)|reminders?\s+(for\s+)?(today|tomorrow|this\s+week|this\s+month)|(today|tomorrow|this\s+week|this\s+month).*reminders?)/.test(
+        text
       )
     ) {
       return "getUpcomingReminders";
     }
-    if (/^(snooze|postpone|delay)\b/.test(text)) {
+    
+    // Reminders - Snooze
+    if (/^(snooze|postpone|delay|push back)\b/.test(text)) {
       return "snoozeReminder";
     }
-    if (/^(show|what are|list)\s+(my\s+)?lists\b/.test(text)) {
+    
+    // Reminders - Delete
+    if (/^(delete|remove|cancel|clear)\s+(the\s+)?reminder\b/.test(text)) {
+      return "deleteReminder";
+    }
+    
+    // Reminders - Update
+    if (/^(change|update|edit|modify|reschedule|move)\s+(the\s+)?reminder\b/.test(text)) {
+      return "updateReminder";
+    }
+    
+    // Lists - Show all lists
+    if (/^(show|what are|list|display|get)\s+(my\s+)?lists\b/.test(text)) {
       return "getLists";
     }
-    if (/^(add|put|include)\s+.+\s+(to|into|onto)\s+.+\s+list\b/.test(text)) {
+    
+    // Lists - Create new list
+    if (/^(create|make|start|new)\s+(a\s+)?list\b/.test(text)) {
+      return "createList";
+    }
+    
+    // Lists - Add items
+    if (/^(add|put|include|insert)\s+.+\s+(to|into|onto|in)\s+.+\s+list\b/.test(text)) {
       return "addItemToList";
     }
-    if (/^(remove|delete|take off)\s+.+\s+from\s+.+\s+list\b/.test(text)) {
+    
+    // Lists - Remove items
+    if (/^(remove|delete|take off|clear)\s+.+\s+from\s+.+\s+list\b/.test(text)) {
       return "removeItemFromList";
     }
-    if (/^(what('| i)?s|show|list)\s+(on|in)\s+.+\s+list\b/.test(text)) {
+    
+    // Lists - Get items from specific list
+    if (/^(what('| i)?s|show|list|display|view|get)\s+(on|in)\s+(my\s+)?.+\s+list\b/.test(text)) {
       return "getListItems";
     }
+    
+    // Notes - Create
     if (
-      /^(remember this|take a note|create (a )?note|note:|\bnote this\b|\bsave this\b|\bstore this\b)/.test(
-        text,
+      /^(remember (this|that)|take a note|make (a )?note|create (a )?note|note:|note this|save (this|that)|store (this|that)|keep track)/.test(
+        text
       )
     ) {
       return "createNote";
     }
-    if (/^(search|find)\s+(note|notes|memory|memories)\b/.test(text)) {
+    
+    // Notes - Search
+    if (/^(search|find|look for|what did i)\s+(note|notes|memory|memories|save)\b/.test(text)) {
       return "searchNotes";
     }
-    if (/^(show|list)\s+(notes|memories)\b/.test(text)) {
+    
+    // Notes - List all
+    if (/^(show|list|display|get)\s+(my\s+)?(all\s+)?(notes|memories)\b/.test(text)) {
       return "listNotes";
     }
+    
+    // Stats
     if (/\b(stats|statistics|completion rate|how many lists)\b/.test(text)) {
       return "getListStats";
     }
+    
     return "no_tool_needed";
   }
   private isStateChangingTool(toolName: string): boolean {
     return [
+      // Reminders
       "createReminder",
       "batchCreateReminders",
+      "updateReminder",
+      "deleteReminder",
+      "snoozeReminder",
+      "completeReminder",
+      // Lists
+      "createList",
       "addItemToList",
       "removeItemFromList",
-      "createList",
+      "updateListItem",
+      "deleteList",
+      "archiveList",
+      "bulkCompleteItems",
+      "clearCompletedItems",
+      "duplicateList",
+      // Notes
       "createNote",
+      "updateNote",
+      "deleteNote",
+      "duplicateNote",
     ].includes(toolName);
-  }
-  private isReadOnlyTool(toolName: string): boolean {
-    return ["getCurrentTime"].includes(toolName);
-  }
-  private isTimeOrDateQuestion(message: string): boolean {
-    const t = (message || "").toLowerCase().trim();
-    if (!t) return false;
-    return (
-      /\b(current\s+date|date\s+today|today'?s\s+date)\b/.test(t) ||
-      /\b(what( is|'s)?\s+the\s+date(\s+today)?|what\s+date\s+is\s+it(\s+today)?)\b/.test(
-        t,
-      ) ||
-      /\b(current\s+time|time\s+now)\b/.test(t) ||
-      /\b(what( is|'s)?\s+the\s+time(\s+now)?|what\s+time\s+is\s+it(\s+now)?)\b/.test(
-        t,
-      )
-    );
   }
   private getDefaultModel() {
     const provider = config.ai.provider.toLowerCase();
@@ -221,7 +274,7 @@ export class AIService {
             throw new Error("Azure OpenAI not fully configured");
           }
           this.logger.info(
-            `Using Azure OpenAI (${config.ai.azureDeploymentName})`,
+            `Using Azure OpenAI (${config.ai.azureDeploymentName})`
           );
           return azure(config.ai.azureDeploymentName);
         case "vertex":
@@ -306,11 +359,11 @@ export class AIService {
           instance: model,
         });
         this.logger.info(
-          `Added fallback: ${fallbackConfig.provider} (${fallbackConfig.model})`,
+          `Added fallback: ${fallbackConfig.provider} (${fallbackConfig.model})`
         );
       } catch (error) {
         this.logger.warn(
-          `Failed to configure fallback ${fallbackConfig.provider}: ${error}`,
+          `Failed to configure fallback ${fallbackConfig.provider}: ${error}`
         );
       }
     }
@@ -321,7 +374,7 @@ export class AIService {
     userId: string,
     timezone: string,
     toolsRegistry: ToolsRegistry,
-    conversationHistory: ConversationMessage[] = [],
+    conversationHistory: ConversationMessage[] = []
   ): Promise<{
     text: string;
     toolCalls: any[];
@@ -339,13 +392,14 @@ export class AIService {
         instance: f.instance,
       })),
     ].filter((m) => m.instance);
-    const translation =
-      await this.translationService.translateToEnglish(message);
+    const translation = await this.translationService.translateToEnglish(
+      message
+    );
     const textForProcessing = translation.translatedText || message;
     const toolDefinitions = toolsRegistry.getToolDefinitions(userId);
     const selectedToolNameFromRouter = await routeToTool(
       textForProcessing,
-      toolDefinitions,
+      toolDefinitions
     );
     const commandLike = this.isCommandLike(textForProcessing);
     let selectedToolName = selectedToolNameFromRouter;
@@ -355,7 +409,7 @@ export class AIService {
         const maybeTool = toolsRegistry.getSingleAISDKTool(userId, heuristic);
         if (maybeTool && Object.keys(maybeTool).length > 0) {
           this.logger.info(
-            `Router returned no_tool_needed; heuristic selected ${heuristic}`,
+            `Router returned no_tool_needed; heuristic selected ${heuristic}`
           );
           selectedToolName = heuristic;
         }
@@ -367,7 +421,7 @@ export class AIService {
     }));
     if (selectedToolName === "no_tool_needed") {
       this.logger.info(
-        "No tool will be used. Generating conversational response.",
+        "No tool will be used. Generating conversational response."
       );
       for (const modelConfig of modelsToTry) {
         try {
@@ -377,41 +431,52 @@ export class AIService {
           ];
           const result = await generateText({
             model: modelConfig.instance,
-            system: `You are a helpful AI assistant. Be friendly, concise, and helpful in your responses. Current user timezone is ${timezone}.
+            system: `You are Memorae, a helpful and friendly AI assistant for task and memory management. Be conversational, helpful, and natural in your responses.
 
-Guidance:
-- If the user's request is general knowledge, chit-chat, or off our domain (reminders, lists, notes, OCR/transcription), answer conversationally.
-- If the request could trigger state-changing actions (creating reminders, lists, or notes) and is ambiguous or question-like, ask for a brief confirmation instead of assuming.`,
+Your capabilities:
+- Answer questions naturally and helpfully
+- Provide information, suggestions, and guidance
+- Help users understand how to use reminders, lists, and notes
+- Have casual conversations and answer general questions
+
+Current context:
+- User timezone: ${timezone}
+- Current time: ${new Date().toISOString()}
+
+Important:
+- Be warm and conversational, not robotic
+- If the user seems to want to create/modify data but the request is unclear, ask friendly follow-up questions
+- Never claim you performed an action (created/updated/deleted) unless you actually did
+- For ambiguous action requests, clarify what they want first`,
             messages: messagesWithCurrent,
           });
           return { text: result.text, toolCalls: [], toolResults: [] };
         } catch (error: any) {
           this.logger.warn(
             { error: error.message, provider: modelConfig.provider },
-            `Conversational request failed with ${modelConfig.provider}, trying next fallback`,
+            `Conversational request failed with ${modelConfig.provider}, trying next fallback`
           );
           continue;
         }
       }
       throw new Error(
-        "All AI models failed to generate a conversational response.",
+        "All AI models failed to generate a conversational response."
       );
     }
-    const willUseTools =
-      this.isCommandLike(textForProcessing) ||
-      (this.isReadOnlyTool(selectedToolName) &&
-        this.isTimeOrDateQuestion(textForProcessing));
+    // If router selected a tool (not no_tool_needed), trust that decision and use it
+    const willUseTools = selectedToolName !== "no_tool_needed";
+    
     if (willUseTools) {
-      this.logger.info(`Executing selected tool: ${selectedToolName}`);
+      this.logger.info(`Tool router selected: ${selectedToolName} - will provide to LLM`);
     } else {
       this.logger.info(
-        `Selected tool '${selectedToolName}' will be skipped (not command-like). Using conversational response.`,
+        `No tool selected by router. Using conversational response.`
       );
     }
     const tools = toolsRegistry.getSingleAISDKTool(userId, selectedToolName);
     if (!tools || Object.keys(tools).length === 0) {
       this.logger.error(
-        `Selected tool "${selectedToolName}" not available. Falling back to conversational response.`,
+        `Selected tool "${selectedToolName}" not available. Falling back to conversational response.`
       );
       for (const modelConfig of modelsToTry) {
         try {
@@ -421,53 +486,72 @@ Guidance:
           ];
           const result = await generateText({
             model: modelConfig.instance,
-            system: `You are a helpful AI assistant. Be friendly and concise. If the user's request is ambiguous regarding creating reminders, lists, or notes, ask for a short confirmation instead of acting. Timezone: ${timezone}.`,
+            system: `You are a helpful AI assistant. Be friendly and concise. If the user's request is ambiguous regarding creating reminders, lists, or notes, ask for a short confirmation instead of acting. Timezone: ${timezone}.
+
+Important: You do not have tool access for this request. Do NOT claim you created, updated, or deleted anything.`,
             messages: messagesWithCurrent,
           });
           return { text: result.text, toolCalls: [], toolResults: [] };
         } catch (error: any) {
           this.logger.warn(
             { error: error.message, provider: modelConfig.provider },
-            `Conversational fallback failed with ${modelConfig.provider}, trying next fallback`,
+            `Conversational fallback failed with ${modelConfig.provider}, trying next fallback`
           );
         }
       }
-      throw new Error(`AI service unavailable: conversational fallback failed`);
     }
     let lastError: Error | null = null;
     for (const modelConfig of modelsToTry) {
       try {
         this.logger.info(
-          `Attempting tool execution with ${modelConfig.provider}`,
+          `Attempting tool execution with ${modelConfig.provider}`
         );
         const systemPrompt = willUseTools
-          ? `You are a helpful AI assistant for a reminder and task management system.
-Your task is to use the provided tool ONLY if the user's request is clearly command-like and within our domain (reminders, lists, notes), or if it is a factual time/date question requiring an accurate answer. Otherwise, answer conversationally.
+          ? `You are Memorae, a helpful and friendly AI assistant for task and memory management.
 
-Guidance:
-- If the request is general knowledge, chit-chat, or otherwise off-domain, DO NOT call tools. Provide a direct answer.
-- If the request is ambiguous and would create/modify data (reminders, lists, notes), ask a brief confirmation first and DO NOT call tools until confirmed.
-- After using any tool, you MUST provide a concise explanation of what was done and the result.
+You have the "${selectedToolName}" tool available to help with this request.
 
-The user's message is: "${textForProcessing}"
-You have been provided with the tool: "${selectedToolName}".
+User's request: "${textForProcessing}"
 
-Note: The selected tool ${this.isStateChangingTool(selectedToolName) ? "modifies user data (state-changing)" : "is read-only"}.
+Your approach:
+1. **Analyze the request**: Does it have enough information to take action?
+   - YES → Extract parameters and use the "${selectedToolName}" tool
+   - NO → Ask friendly clarifying questions
 
-Current user timezone: ${timezone}
-Current user ID: ${userId}
-Current time (UTC): ${new Date().toISOString()}`
-          : `You are a helpful AI assistant for a reminder and task management system. Be friendly and concise.
+2. **Extract ALL relevant details** from the user's message:
+   - Times, dates, priorities from context
+   - Infer reasonable defaults when appropriate
+   - Use natural language understanding liberally
 
-Guidance:
-- Do not call tools for this request. Provide a direct conversational answer.
-- If the request appears ambiguous for creating or modifying reminders, lists, or notes, ask a brief confirmation instead of acting.
+3. **After tool execution**: Provide a natural, friendly confirmation
+   - Example: "Done! I've added milk to your groceries list."
+   - Example: "Got it! I'll remind you about the dentist appointment tomorrow at 2pm."
 
-The user's message is: "${textForProcessing}"
+4. **Be flexible with natural language**:
+   - "tomorrow afternoon" → infer reasonable time (2pm)
+   - "tonight" → infer evening time (8pm)
+   - "buy milk" when discussing shopping → should add to shopping list
 
-Current user timezone: ${timezone}
-Current user ID: ${userId}
-Current time (UTC): ${new Date().toISOString()}`;
+Tool category: ${
+              this.isStateChangingTool(selectedToolName)
+                ? "Action tool (creates/updates/deletes data)"
+                : "Query tool (retrieves information)"
+            }
+
+Context:
+- User timezone: ${timezone}
+- Current time: ${new Date().toISOString()}
+
+IMPORTANT: Be helpful and proactive. If the user clearly wants something done, do it. Only ask for clarification if the request is genuinely ambiguous.`
+          : `You are Memorae, a helpful and friendly AI assistant. Be conversational, warm, and helpful.
+
+The user said: "${textForProcessing}"
+
+Respond naturally and helpfully. Be friendly and engaging, not robotic.
+
+Context:
+- User timezone: ${timezone}
+- Current time: ${new Date().toISOString()}`;;
         const effectiveTools = willUseTools ? tools : ({} as any);
         const result = await generateText({
           model: modelConfig.instance,
@@ -481,9 +565,31 @@ Current time (UTC): ${new Date().toISOString()}`;
         } as any);
         const toolStats = (effectiveTools as any).__stats;
         const toolsActuallyExecuted = toolStats?.executed === true;
+        
         this.logger.info(
-          `AI processed message with ${modelConfig.provider} - tool executed: ${toolsActuallyExecuted}`,
+          {
+            provider: modelConfig.provider,
+            toolExecuted: toolsActuallyExecuted,
+            toolCallsCount: result.toolCalls?.length || 0,
+            toolResultsCount: result.toolResults?.length || 0,
+            hasText: !!result.text,
+            textPreview: result.text?.substring(0, 100)
+          },
+          `AI processed message with ${modelConfig.provider}`
         );
+        
+        // If tool was provided but not executed, log warning
+        if (willUseTools && !toolsActuallyExecuted) {
+          this.logger.warn(
+            {
+              selectedTool: selectedToolName,
+              textLength: textForProcessing.length,
+              hasToolCalls: result.toolCalls?.length > 0
+            },
+            `Tool ${selectedToolName} was provided but not executed by LLM`
+          );
+        }
+        
         return {
           text: result.text,
           toolCalls: result.toolCalls,
@@ -494,17 +600,17 @@ Current time (UTC): ${new Date().toISOString()}`;
         lastError = error;
         this.logger.warn(
           { error: error.message, provider: modelConfig.provider },
-          `Tool execution failed with ${modelConfig.provider}, trying next fallback`,
+          `Tool execution failed with ${modelConfig.provider}, trying next fallback`
         );
         continue;
       }
     }
     this.logger.error(
       { error: lastError?.message || "Unknown error" },
-      "All AI models failed to process message with the selected tool",
+      "All AI models failed to process message with the selected tool"
     );
     throw new Error(
-      `AI service unavailable: ${lastError?.message || "All providers failed"}`,
+      `AI service unavailable: ${lastError?.message || "All providers failed"}`
     );
   }
   async processMessageWithTools(
@@ -512,7 +618,7 @@ Current time (UTC): ${new Date().toISOString()}`;
     userId: string,
     timezone: string,
     tools: any,
-    conversationHistory: ConversationMessage[] = [],
+    conversationHistory: ConversationMessage[] = []
   ): Promise<{
     text: string;
     toolCalls: any[];
@@ -534,11 +640,11 @@ Current time (UTC): ${new Date().toISOString()}`;
       role: msg.role,
       content: msg.content,
     }));
-    const translation =
-      await this.translationService.translateToEnglish(message);
+    const translation = await this.translationService.translateToEnglish(
+      message
+    );
     const textForProcessing = translation.translatedText || message;
-    const commandLike = this.isCommandLike(textForProcessing);
-    const effectiveTools = commandLike ? tools : ({} as any);
+    const effectiveTools = tools;
     const messagesWithCurrent = [
       ...messages,
       { role: "user", content: textForProcessing },
@@ -552,6 +658,7 @@ Use the provided tool(s) ONLY when the user's request is clearly command-like an
 Guidance:
 - If the user's request is general knowledge, chit-chat, or off-domain, DO NOT call tools. Provide a direct answer.
 - If ambiguous and would create/modify data, ask a brief confirmation question first; do not call tools until confirmed.
+- Important: Do not claim that you created/updated/deleted anything unless you actually executed a tool that returned success.
 
 Current user timezone: ${timezone}
 Current user ID: ${userId}
@@ -575,17 +682,17 @@ Current time (UTC): ${new Date().toISOString()}`;
         lastError = error;
         this.logger.warn(
           { error: error.message, provider: modelConfig.provider },
-          `Direct tool execution failed with ${modelConfig.provider}, trying next fallback`,
+          `Direct tool execution failed with ${modelConfig.provider}, trying next fallback`
         );
         continue;
       }
     }
     this.logger.error(
       { error: lastError?.message || "Unknown error" },
-      "All AI models failed to process message with provided tools",
+      "All AI models failed to process message with provided tools"
     );
     throw new Error(
-      `AI service unavailable: ${lastError?.message || "All providers failed"}`,
+      `AI service unavailable: ${lastError?.message || "All providers failed"}`
     );
   }
 }

@@ -41,7 +41,7 @@ export function createAISDKTools(
   return {
     createReminder: tool({
       description:
-        "Create reminder at specific time. Supports one-time and recurring (daily/weekly/monthly). Triggers: remind, alert, schedule, notify.",
+        "Create a new reminder for a specific date/time. Use when user wants to be reminded about something. Supports both one-time and recurring reminders (daily, weekly, monthly). Examples: 'remind me to X', 'set a reminder', 'notify me about', 'alert me when', 'schedule reminder'.",
       inputSchema: z.object({
         title: z.string().describe("The reminder title/description"),
         reminderTime: z
@@ -128,7 +128,7 @@ export function createAISDKTools(
     }),
     updateReminder: tool({
       description:
-        "Modify existing reminder (time, title, priority). Triggers: change, update, edit, reschedule, move.",
+        "Update an existing reminder's time, title, or priority. Use when user wants to modify a reminder. Examples: 'change the X reminder to Y', 'update reminder time to Z', 'reschedule the dentist to 3pm', 'move the meeting reminder', 'edit reminder about X'. Searches for the reminder first.",
       inputSchema: z.object({
         searchQuery: z.string().describe("Text to search for the reminder"),
         title: z.string().optional().describe("New title for the reminder"),
@@ -211,7 +211,7 @@ export function createAISDKTools(
     }),
     deleteReminder: tool({
       description:
-        "Delete/cancel reminder permanently. Triggers: delete, remove, cancel, clear.",
+        "Permanently delete or cancel a reminder by searching for it. Use when user wants to remove a reminder. Examples: 'delete reminder about X', 'remove the X reminder', 'cancel reminder for Y', 'clear the reminder'. Will ask for confirmation if reminder is recurring.",
       inputSchema: z.object({
         searchQuery: z
           .string()
@@ -260,7 +260,7 @@ export function createAISDKTools(
     }),
     listReminders: tool({
       description:
-        "List reminders with filters (status, date). Triggers: list, show, display, what reminders.",
+        "List all reminders with optional filters for status (pending/completed). Use when user wants to see their reminders. Examples: 'show my reminders', 'list reminders', 'what reminders do I have', 'display all reminders', 'show pending reminders'.",
       inputSchema: z.object({
         status: z
           .enum(["pending", "completed", "all"])
@@ -401,7 +401,7 @@ export function createAISDKTools(
     }),
     getUpcomingReminders: tool({
       description:
-        "Get reminders for timeframe (today/tomorrow/week/month). Triggers: upcoming, what's coming, scheduled.",
+        "Get reminders for a specific timeframe: today, tomorrow, this week, or this month. Use when user asks about reminders in a specific time period. Examples: 'what reminders do I have today?', 'show tomorrow's reminders', 'what's coming up this week', 'reminders for this month'.",
       inputSchema: z.object({
         timeframe: z
           .enum(["today", "tomorrow", "week", "month"])
@@ -455,7 +455,7 @@ export function createAISDKTools(
     }),
     createList: tool({
       description:
-        "Create new list (shopping, todo, tasks). Triggers: create list, make list, new list.",
+        "Create a new empty list or with initial items. Use when user wants to start a new list. Examples: 'create a shopping list', 'make a new todo list', 'start a list for X', 'new list called Y'. Automatically suggests icons and colors based on list name/purpose.",
       inputSchema: z.object({
         name: z.string().describe("Name of the list"),
         description: z
@@ -537,7 +537,7 @@ export function createAISDKTools(
     }),
     addItemToList: tool({
       description:
-        "Add items to list (auto-creates if missing, max 50/call). Triggers: add to, put on, include.",
+        "Add one or more items to an existing list. If the list doesn't exist, it will be created automatically. Use when user wants to add items to a list. Examples: 'add X to Y list', 'put X on my list', 'include X in shopping list'. Max 50 items per call.",
       inputSchema: z.object({
         listName: z.string().describe("Name of the list"),
         items: z
@@ -616,7 +616,7 @@ export function createAISDKTools(
     }),
     getLists: tool({
       description:
-        "Show all user lists. Triggers: show lists, what lists, all lists. Can include archived lists.",
+        "Show all lists the user has created. Use when user wants to see their lists. Examples: 'show my lists', 'what lists do I have', 'display all lists', 'list my lists'. By default shows active lists only, can optionally include archived ones.",
       inputSchema: z.object({
         includeItems: z
           .boolean()
@@ -640,7 +640,7 @@ export function createAISDKTools(
     }),
     getListItems: tool({
       description:
-        "Show items in specific list. Triggers: show [list], what's on, what's in, view.",
+        "Get all items from a specific list by name. Use when user asks about contents of a particular list. Examples: 'what's on my shopping list?', 'show grocery list items', 'what's in my todo list', 'view my work list'.",
       inputSchema: z.object({
         listName: z.string().describe("Name of the list to get items from"),
         includeCompleted: z
@@ -739,7 +739,7 @@ export function createAISDKTools(
     }),
     createNote: tool({
       description:
-        "Save information/facts for later. Triggers: remember, note, save, store, keep track.",
+        "Save information, facts, or memories for later reference. Use when user wants to remember something without a specific time. Examples: 'remember that X', 'note: X', 'save this info', 'keep track of X', 'make a note about X', 'store this'. Different from reminders - notes are for reference, reminders are for time-based alerts.",
       inputSchema: z.object({
         content: z
           .string()
@@ -825,7 +825,7 @@ export function createAISDKTools(
     }),
     searchNotes: tool({
       description:
-        "Search saved notes/memories. Triggers: what did I, find note, do you remember, what was.",
+        "Search through saved notes to find specific information. Use when user wants to find or recall something they saved. Examples: 'what did I save about X?', 'find my notes on Y', 'do you remember what I said about Z?', 'search for notes containing X', 'what was that thing about Y'.",
       inputSchema: z.object({
         query: z.string().describe("Search query to find in notes"),
         category: z.string().optional().describe("Filter by category"),
@@ -1040,7 +1040,7 @@ export function createAISDKTools(
     }),
     getCurrentTime: tool({
       description:
-        "Get current time/date in user timezone. Triggers: what time, current time, what date.",
+        "Get current time/date in user timezone. ONLY use when user explicitly asks 'what time is it', 'what's the date', 'current time'. Do NOT use for vague questions like 'which day?', 'when?', 'what?'",
       inputSchema: z.object({}),
       execute: dedupe("getCurrentTime", async () => {
         const settings = await userService.getUserSettings(userId);

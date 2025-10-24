@@ -903,6 +903,70 @@ export class ListService {
       throw handleServiceError(error, "duplicateList");
     }
   }
+  async moveItemToList(params: {
+    itemId: string;
+    targetListId: string;
+  }): Promise<{ success: boolean; message: string }> {
+    try {
+      const { data: item, error: itemError } = await this.supabase
+        .from("list_items")
+        .select("id, list_id")
+        .eq("id", params.itemId)
+        .single();
+      if (itemError || !item) throw new NotFoundError("List item", params.itemId);
+      const { data: targetList, error: listError } = await this.supabase
+        .from("lists")
+        .select("id")
+        .eq("id", params.targetListId)
+        .single();
+      if (listError || !targetList) throw new NotFoundError("Target list", params.targetListId);
+      const { data: maxPos } = await this.supabase
+        .from("list_items")
+        .select("position")
+        .eq("list_id", params.targetListId)
+        .order("position", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const newPosition = (maxPos?.position ?? -1) + 1;
+      const { error } = await this.supabase
+        .from("list_items")
+        .update({ list_id: params.targetListId, position: newPosition, updated_at: new Date().toISOString() })
+        .eq("id", params.itemId);
+      if (error) throw error;
+      return { success: true, message: "Item moved successfully" };
+    } catch (error) {
+      logError("Failed to move item", error, { itemId: params.itemId });
+      throw handleServiceError(error, "moveItemToList");
+    }
+  }
+
+  async reorderListItems(params: {
+    userId: string;
+    listId: string;
+    orderedItemIds: string[];
+  }): Promise<{ success: boolean; message: string }> {
+    try {
+      const { data: listCheck, error: checkError } = await this.supabase
+        .from("lists")
+        .select("id, user_id")
+        .eq("id", params.listId)
+        .single();
+      if (checkError || !listCheck) throw new NotFoundError("List", params.listId);
+      if (listCheck.user_id !== params.userId) throw new ValidationError("List does not belong to user");
+      for (let i = 0; i < params.orderedItemIds.length; i++) {
+        await this.supabase
+          .from("list_items")
+          .update({ position: i, updated_at: new Date().toISOString() })
+          .eq("id", params.orderedItemIds[i])
+          .eq("list_id", params.listId);
+      }
+      return { success: true, message: "Items reordered successfully" };
+    } catch (error) {
+      logError("Failed to reorder items", error, { listId: params.listId });
+      throw handleServiceError(error, "reorderListItems");
+    }
+  }
+
   async getListStats(params: { userId: string }): Promise<{
     totalLists: number;
     totalItems: number;

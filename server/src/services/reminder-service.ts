@@ -20,11 +20,13 @@ import {
   ValidationError,
 } from "../utils/errors";
 import { formatInZone } from "../utils/time-utils";
+import { UtilityService } from "./utility-service";
 import { logInfo, logError, logAudit, logPerformance } from "../utils/logger";
 import { toUTC } from "../utils/time-utils";
 import { DateTime } from "luxon";
 export class ReminderService {
   private supabase = getSupabaseClient();
+  private util = new UtilityService();
   async createReminder(params: {
     userId: string;
     title: string;
@@ -713,6 +715,154 @@ export class ReminderService {
         reminderId: params.reminderId,
       });
       throw handleServiceError(error, "archiveReminder");
+    }
+  }
+
+  async cancelReminder(params: {
+    userId: string;
+    reminderId: string;
+  }): Promise<{ success: boolean; message: string }> {
+    const startTime = Date.now();
+    try {
+      const { userId, reminderId } = params;
+      const { data: existing, error: checkError } = await this.supabase
+        .from("reminders")
+        .select("id, status, user_id")
+        .eq("id", reminderId)
+        .eq("user_id", userId)
+        .single();
+      if (checkError || !existing) {
+        throw new NotFoundError("Reminder", reminderId);
+      }
+      const { error } = await this.supabase
+        .from("reminders")
+        .update({ status: "cancelled", updated_at: new Date().toISOString() })
+        .eq("id", reminderId)
+        .eq("user_id", userId);
+      if (error) throw error;
+      logAudit("CANCEL_REMINDER", existing.user_id, "reminder", { reminderId });
+      logPerformance("cancelReminder", Date.now() - startTime);
+      return { success: true, message: "Reminder cancelled" };
+    } catch (error) {
+      logError("Failed to cancel reminder", error, { reminderId: params.reminderId });
+      throw handleServiceError(error, "cancelReminder");
+    }
+  }
+
+  async rescheduleReminder(params: {
+    userId: string;
+    reminderId: string;
+    newReminderTime: string;
+  }): Promise<{ success: boolean; message: string; newTime: string }> {
+    const startTime = Date.now();
+    try {
+      const { userId, reminderId, newReminderTime } = params;
+      const { data: existing, error: checkError } = await this.supabase
+        .from("reminders")
+        .select("id, status, user_id")
+        .eq("id", reminderId)
+        .eq("user_id", userId)
+        .single();
+      if (checkError || !existing) throw new NotFoundError("Reminder", reminderId);
+      if (existing.status === "completed") {
+        throw new ValidationError("Cannot reschedule a completed reminder");
+      }
+      const { data, error } = await this.supabase
+        .from("reminders")
+        .update({
+          reminder_time: toUTC(newReminderTime),
+          status: "pending",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", reminderId)
+        .eq("user_id", userId)
+        .select()
+        .single();
+      if (error) throw error;
+      logAudit("RESCHEDULE_REMINDER", userId, "reminder", { reminderId, newReminderTime });
+      logPerformance("rescheduleReminder", Date.now() - startTime);
+      return { success: true, message: "Reminder rescheduled", newTime: data.reminder_time };
+    } catch (error) {
+      logError("Failed to reschedule reminder", error, { reminderId: params.reminderId });
+      throw handleServiceError(error, "rescheduleReminder");
+    }
+  }
+
+  async listOverdueReminders(params: {
+    userId: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ reminders: any[]; total: number }> {
+    try {
+      const nowISO = new Date().toISOString();
+      const limit = params.limit ?? 50;
+      const offset = params.offset ?? 0;
+      const { data, error, count } = await this.supabase
+        .from("reminders")
+        .select("*", { count: "exact" })
+        .eq("user_id", params.userId)
+        .eq("status", "pending")
+        .lt("reminder_time", nowISO)
+        .order("reminder_time", { ascending: true })
+        .range(offset, offset + limit - 1);
+      if (error) throw error;
+      return { reminders: data || [], total: count || 0 };
+    } catch (error) {
+      logError("Failed to list overdue reminders", error, { userId: params.userId });
+      throw handleServiceError(error, "listOverdueReminders");
+    }
+  }
+
+  async snoozeReminderByText(params: {
+    userId: string;
+    reminderId: string;
+    text: string;
+    timezone: string;
+  }): Promise<{ success: boolean; newReminderTime: string; message: string }> {
+    try {
+      const parsed = this.util.parseNaturalLanguageDate({
+        text: params.text,
+        timezone: params.timezone,
+      });
+      const best = this.util.pickBestDate(parsed.extractedDates);
+      if (!best) {
+        throw new ValidationError("Could not parse a valid future time from text");
+      }
+      const ensured = this.util.ensureFuture(best, params.timezone);
+      return await this.snoozeReminder({
+        userId: params.userId,
+        reminderId: params.reminderId,
+        snoozeUntil: ensured,
+      });
+    } catch (error) {
+      logError("Failed to snooze by text", error, { reminderId: params.reminderId });
+      throw handleServiceError(error, "snoozeReminderByText");
+    }
+  }
+
+  async bulkUpdateStatus(params: {
+    userId: string;
+    reminderIds: string[];
+    status: "completed" | "cancelled" | "pending";
+  }): Promise<{ success: boolean; updated: number }> {
+    try {
+      if (!params.reminderIds || params.reminderIds.length === 0) {
+        throw new ValidationError("reminderIds required");
+      }
+      const updateData: any = { status: params.status, updated_at: new Date().toISOString() };
+      if (params.status === "completed") updateData.completed_at = new Date().toISOString();
+      if (params.status !== "completed") updateData.completed_at = null;
+      const { data, error } = await this.supabase
+        .from("reminders")
+        .update(updateData)
+        .eq("user_id", params.userId)
+        .in("id", params.reminderIds)
+        .select("id");
+      if (error) throw error;
+      return { success: true, updated: data?.length || 0 };
+    } catch (error) {
+      logError("Failed to bulk update reminder status", error, { userId: params.userId });
+      throw handleServiceError(error, "bulkUpdateStatus");
     }
   }
 }

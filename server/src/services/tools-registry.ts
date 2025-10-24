@@ -434,6 +434,152 @@ export class ToolsRegistry {
         parameters: {},
         handler: this.mediaService.getAttachmentStats.bind(this.mediaService),
       },
+      cancelReminder: {
+        description: "Cancel a reminder (status = cancelled)",
+        parameters: {
+          reminderId: "string",
+        },
+        handler: this.reminderService.cancelReminder.bind(this.reminderService),
+      },
+      rescheduleReminder: {
+        description: "Change reminder_time safely",
+        parameters: {
+          reminderId: "string",
+          newReminderTime: "string (ISO 8601)",
+        },
+        handler: this.reminderService.rescheduleReminder.bind(this.reminderService),
+      },
+      listOverdueReminders: {
+        description: "Get pending reminders with reminder_time < now",
+        parameters: {
+          limit: "number (optional)",
+          offset: "number (optional)",
+        },
+        handler: this.reminderService.listOverdueReminders.bind(this.reminderService),
+      },
+      snoozeReminderByText: {
+        description: "Snooze using natural language like 'tomorrow morning'",
+        parameters: {
+          reminderId: "string",
+          text: "string",
+          timezone: "string",
+        },
+        handler: this.reminderService.snoozeReminderByText.bind(this.reminderService),
+      },
+      bulkUpdateReminderStatus: {
+        description: "Update status for multiple reminders",
+        parameters: {
+          reminderIds: "string[]",
+          status: "'completed' | 'cancelled' | 'pending'",
+        },
+        handler: this.reminderService.bulkUpdateStatus.bind(this.reminderService),
+      },
+      retryNotification: {
+        description: "Retry a failed notification (reset fields, increment retry)",
+        parameters: {
+          notificationId: "string",
+        },
+        handler: this.notificationService.retryNotification.bind(this.notificationService),
+      },
+      getFailedNotifications: {
+        description: "Fetch failed notification entries for remediation",
+        parameters: {
+          limit: "number (optional)",
+        },
+        handler: this.notificationService.getFailedNotifications.bind(this.notificationService),
+      },
+      bulkRetryFailedNotifications: {
+        description: "Retry multiple failed by IDs",
+        parameters: {
+          notificationIds: "string[]",
+        },
+        handler: this.notificationService.bulkRetryFailed.bind(this.notificationService),
+      },
+      linkMediaAttachment: {
+        description: "Link attachment to an entity via FK",
+        parameters: {
+          attachmentId: "string",
+          reminderId: "string (optional)",
+          listItemId: "string (optional)",
+          noteId: "string (optional)",
+        },
+        handler: this.mediaService.linkToItem.bind(this.mediaService),
+      },
+      unlinkMediaAttachment: {
+        description: "Unlink attachment from all entities",
+        parameters: {
+          attachmentId: "string",
+        },
+        handler: this.mediaService.unlinkAttachment.bind(this.mediaService),
+      },
+      transcribeMediaAttachment: {
+        description: "Transcribe audio attachment",
+        parameters: {
+          attachmentId: "string",
+        },
+        handler: this.mediaService.transcribeAttachment.bind(this.mediaService),
+      },
+      ocrMediaAttachment: {
+        description: "OCR image/PDF attachment",
+        parameters: {
+          attachmentId: "string",
+        },
+        handler: this.mediaService.ocrAttachment.bind(this.mediaService),
+      },
+      extractMediaEntities: {
+        description: "Extract entities from attachment",
+        parameters: {
+          attachmentId: "string",
+        },
+        handler: this.mediaService.extractEntities.bind(this.mediaService),
+      },
+      moveItemToList: {
+        description: "Move an item across lists",
+        parameters: {
+          itemId: "string",
+          targetListId: "string",
+        },
+        handler: this.listService.moveItemToList.bind(this.listService),
+      },
+      reorderListItems: {
+        description: "Reorder a list's items via positions",
+        parameters: {
+          listId: "string",
+          orderedItemIds: "string[]",
+        },
+        handler: this.listService.reorderListItems.bind(this.listService),
+      },
+      pinNote: {
+        description: "Toggle note is_pinned",
+        parameters: {
+          noteId: "string",
+          isPinned: "boolean",
+        },
+        handler: this.notesService.pinNote.bind(this.notesService),
+      },
+      archiveNote: {
+        description: "Toggle note is_archived",
+        parameters: {
+          noteId: "string",
+          isArchived: "boolean",
+        },
+        handler: this.notesService.archiveNote.bind(this.notesService),
+      },
+      validateRecurrenceRule: {
+        description: "Validate an iCalendar RRULE",
+        parameters: {
+          recurrenceRule: "string",
+        },
+        handler: this.utilityService.validateRecurrenceRule.bind(this.utilityService),
+      },
+      globalSearch: {
+        description: "Unified search across reminders, user_notes, lists, list_items, media_attachments",
+        parameters: {
+          query: "string",
+          limit: "number (optional)",
+        },
+        handler: this.utilityService.globalSearch.bind(this.utilityService),
+      },
     };
   }
   async executeTool(toolName: string, params: any): Promise<any> {
@@ -532,6 +678,63 @@ export class ToolsRegistry {
   }
   getRelevantTools(userId: string, _text?: string): any {
     const allTools = this.getAISDKTools(userId);
+    const text = (_text || "").toLowerCase().trim();
+    // If no text provided, return all
+    if (!text) return allTools;
+
+    const selected: any = {};
+    const add = (name: string) => {
+      const tool = (allTools as any)[name];
+      if (tool) (selected as any)[name] = tool;
+    };
+
+    // Notes intent
+    if (
+      /(remember this\b|\bremember\b|take a note\b|make a note\b|\bnote this\b|\bnote:\b|save this\b|store this\b|create (a )?note\b)/.test(
+        text,
+      )
+    ) {
+      add("createNote");
+      // Keep it focused to encourage correct tool use
+    }
+
+    // Reminders intent
+    if (
+      /(remind me\b|set (a )?reminder\b|schedule (a )?(reminder|alarm)\b|wake me\b)/.test(
+        text,
+      )
+    ) {
+      add("createReminder");
+    }
+
+    // Lists intent
+    if (/\b(show|what are|list)\s+(my\s+)?lists\b/.test(text)) {
+      add("getLists");
+    }
+    if (/(add|put|include)\s+.+\s+(to|into|onto)\s+.+\s+list\b/.test(text)) {
+      add("addItemToList");
+    }
+    if (/(remove|delete|take off)\s+.+\s+from\s+.+\s+list\b/.test(text)) {
+      add("removeItemFromList");
+    }
+
+    // Notes read ops
+    if (/^(search|find)\s+(note|notes|memory|memories)\b/.test(text)) {
+      add("searchNotes");
+    }
+    if (/\b(show|list)\s+(notes|memories)\b/.test(text)) {
+      add("listNotes");
+    }
+
+    // If we selected at least one tool, return the filtered set plus __stats
+    if (Object.keys(selected).length > 0) {
+      if ((allTools as any).__stats) {
+        (selected as any).__stats = (allTools as any).__stats;
+      }
+      return selected;
+    }
+
+    // Fallback: return all tools
     return allTools;
   }
 }

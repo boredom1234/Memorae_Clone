@@ -42,6 +42,12 @@ export function createDeduplicationWrapper() {
       stats.executed = true;
       stats.names.push(name);
       stats.counts[name] = (stats.counts[name] || 0) + 1;
+      
+      logInfo(`Executing tool: ${name}`, { 
+        params: JSON.stringify(params).substring(0, 200),
+        paramKeys: params ? Object.keys(params) : []
+      });
+      
       if (resultCache.has(key)) {
         logInfo(`Dedup hit for tool: ${name}`);
         return resultCache.get(key) as T;
@@ -53,6 +59,9 @@ export function createDeduplicationWrapper() {
       const p = (async () => {
         try {
           const res = await fn(params);
+          logInfo(`Tool ${name} succeeded`, { 
+            resultKeys: res && typeof res === 'object' ? Object.keys(res) : []
+          });
           resultCache.set(key, res);
           return res;
         } catch (error: any) {
@@ -65,7 +74,12 @@ export function createDeduplicationWrapper() {
               ? `Status: ${error.statusCode}`
               : undefined,
           } as any;
-          logError(`Tool ${name} failed`, error, { params });
+          logError(`Tool ${name} failed`, error, { 
+            params,
+            errorMessage: error.message,
+            errorCode: error.code,
+            errorStack: error.stack?.substring(0, 500)
+          });
           resultCache.set(key, errorResponse);
           return errorResponse;
         } finally {

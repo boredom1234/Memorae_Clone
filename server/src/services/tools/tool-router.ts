@@ -30,25 +30,51 @@ export async function routeToTool(
   const toolList = toolDefinitions
     .map((tool) => `- ${tool.name}: ${tool.description}`)
     .join("\n");
-  const prompt = `You are an expert and friendly AI router. Your task is to select the single most appropriate tool to handle the user's request.
-You must choose from the following list of tools:
+  const prompt = `You are an expert tool router for a task management system. Select the SINGLE BEST tool for the user's request.
+
+Available tools:
 ${toolList}
 
-Analyze the user's query and determine which tool is the best fit.
+ROUTING RULES:
+1. ONLY select a tool if the request is CLEAR and SPECIFIC about what action to perform
+2. For greetings, questions, or vague/incomplete requests → "no_tool_needed"
+3. User must provide enough context (what, when, which list, etc.) to execute the action
+4. Short questions without context (like "which day?", "what?", "when?") → "no_tool_needed"
 
-- If the query is a command or a request that a tool can handle, respond with the name of that tool.
-- If the query is a simple greeting, a question, or a conversation that does not require a tool, respond with "no_tool_needed".
-- If multiple tools seem relevant, choose the one that is most specific to the user's primary intent.
-- Your response MUST be a JSON object with a single key "toolName" and the string value of the selected tool name.
- - Return only JSON. No prose. No markdown. No extra text.
+EXAMPLES - TOOL NEEDED:
+"remind me to call mom at 5pm" → {"toolName": "createReminder"}
+"set a reminder for dentist appointment tomorrow 2pm" → {"toolName": "createReminder"}
+"what's on my shopping list?" → {"toolName": "getListItems"}
+"show me my grocery list" → {"toolName": "getListItems"}
+"show my reminders" → {"toolName": "listReminders"}
+"what reminders do I have today?" → {"toolName": "getUpcomingReminders"}
+"add milk to groceries" → {"toolName": "addItemToList"}
+"add eggs and bread to shopping list" → {"toolName": "addItemToList"}
+"delete reminder about dentist" → {"toolName": "deleteReminder"}
+"remove the dentist reminder" → {"toolName": "deleteReminder"}
+"remember that John's birthday is May 5th" → {"toolName": "createNote"}
+"note: meeting notes from today" → {"toolName": "createNote"}
+"create a new todo list" → {"toolName": "createList"}
+"make a shopping list" → {"toolName": "createList"}
+"search my notes for meeting" → {"toolName": "searchNotes"}
+"find reminders about doctor" → {"toolName": "searchReminders"}
 
-Example user query: "remind me to call mom at 5pm"
-Your response: { "toolName": "createReminder" }
+EXAMPLES - NO TOOL:
+"hey how are you?" → {"toolName": "no_tool_needed"}
+"what's the weather?" → {"toolName": "no_tool_needed"}
+"which day?" → {"toolName": "no_tool_needed"}
+"what?" → {"toolName": "no_tool_needed"}
+"when?" → {"toolName": "no_tool_needed"}
+"tell me more" → {"toolName": "no_tool_needed"}
+"thanks" → {"toolName": "no_tool_needed"}
+"ok" → {"toolName": "no_tool_needed"}
 
-Example user query: "hey how are you?"
-Your response: { "toolName": "no_tool_needed" }
+IMPORTANT:
+- Return ONLY valid JSON: {"toolName": "exact_tool_name"}
+- Tool name must exactly match one from the list above OR be "no_tool_needed"
+- No markdown, no explanations, ONLY JSON
 
-User query: ${userQuery}
+User query: "${userQuery}"
 Your response:`;
   try {
     const { text } = await generateText({
@@ -82,6 +108,16 @@ Your response:`;
       );
       return "no_tool_needed";
     }
+    
+    // Validate that the selected tool actually exists in the definitions
+    if (selectedTool !== "no_tool_needed") {
+      const toolExists = toolDefinitions.some(t => t.name === selectedTool);
+      if (!toolExists) {
+        logWarn(`Router selected invalid tool: ${selectedTool}. Available tools: ${toolDefinitions.map(t => t.name).join(', ')}`);
+        return "no_tool_needed";
+      }
+    }
+    
     logInfo(`Router selected tool: ${selectedTool}`);
     return selectedTool;
   } catch (error) {
