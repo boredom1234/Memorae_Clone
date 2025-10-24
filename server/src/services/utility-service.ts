@@ -34,6 +34,7 @@ export class UtilityService {
       if (!validatedParams.text || validatedParams.text.trim().length === 0) {
         throw new ValidationError("Text cannot be empty");
       }
+      const referenceDate = validatedParams.referenceDate
         ? new Date(validatedParams.referenceDate)
         : new Date();
       if (isNaN(referenceDate.getTime())) {
@@ -52,7 +53,7 @@ export class UtilityService {
               originalText: result.text,
               parsedDate: utcISO,
               confidence: result.start.isCertain("hour") ? 0.9 : 0.7,
-              type: result.start.is Certain("day")
+              type: result.start.isCertain("day")
                 ? ("absolute" as const)
                 : ("relative" as const),
             };
@@ -71,7 +72,7 @@ export class UtilityService {
         const hasRelativeCue = /(in|from now|after|within|later|following)\b/.test(
           text,
         );
-        const durRegex = /(\d+(?:\.\d+)?)\s*(years?|yrs?|y|months?|mos?|mo|mths?|mth|weeks?|wks?|wk|w|days?|d|hours?| hrs?|hr|h|minutes?|mins?|min|m)/g;
+        const durRegex = /(\d+(?:\.\d+)?)\s*(years?|yrs?|y|months?|mos?|mo|mths?|mth|weeks?|wks?|wk|w|days?|d|hours?|hrs?|hr|h|minutes?|mins?|min|m)/g;
         let match: RegExpExecArray | null;
         let years = 0,
           months = 0,
@@ -86,8 +87,37 @@ export class UtilityService {
           else if (/^mo(nths?)?$|mos?$|mths?$|mth$/.test(unit)) months += val;
           else if (/^w(eeks?)?$|wks?$|wk$/.test(unit)) weeks += val;
           else if (/^d(ays?)?$/.test(unit)) days += val;
-          else if (/^h(ours?)?$| hrs?$|hr$/.test(unit)) hours += val;
+          else if (/^h(ours?)?$|hrs?$|hr$/.test(unit)) hours += val;
           else if (/^m(in(utes?)?)?$|mins?$/.test(unit)) minutes += val;
+        }
+        if (hasRelativeCue && (years + months + weeks + days + hours + minutes > 0)) {
+          const futureDate = DateTime.fromJSDate(referenceDate, {
+            zone: validatedParams.timezone,
+          })
+            .plus({ years, months, weeks, days, hours, minutes })
+            .toUTC()
+            .toISO();
+          if (futureDate) {
+            extractedDates.push({
+              originalText: validatedParams.text,
+              parsedDate: futureDate,
+              confidence: 0.8,
+              type: "relative",
+            });
+          }
+        }
+      }
+      logPerformance("parseNaturalLanguageDate", Date.now() - startTime, {
+        count: extractedDates.length,
+      });
+      return {
+        success: extractedDates.length > 0,
+        extractedDates,
+      };
+    } catch (error) {
+      logError("Failed to parse natural language date", error, {
+        text: params.text,
+      });
       throw handleServiceError(error, "parseNaturalLanguageDate");
     }
   }
