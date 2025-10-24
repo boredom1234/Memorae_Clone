@@ -57,11 +57,16 @@ export function createReminderAITools(
       }),
       execute: dedupe("createReminder", async (params) => {
         const settings = await userService.getUserSettings(userId);
-        const tz = settings?.timezone || "UTC";
+        const ctx = (params as any)._context || {};
+        const tz = ctx.timezone || settings?.timezone || "UTC";
         let finalTime = params.reminderTime;
-        if (params.naturalTimeText || (!finalTime && !params.isRecurring)) {
+        // Always attempt to parse when we don't have a final time yet.
+        if (params.naturalTimeText || !finalTime) {
           const textToParse =
-            params.naturalTimeText || params.reminderTime || "";
+            params.naturalTimeText ||
+            params.reminderTime ||
+            (ctx.originalMessage as string) ||
+            "";
           if (textToParse.trim().length > 0) {
             const parsed = utilityService.parseNaturalLanguageDate({
               text: textToParse,
@@ -129,7 +134,8 @@ export function createReminderAITools(
       }),
       execute: dedupe("updateReminder", async (params) => {
         const settings = await userService.getUserSettings(userId);
-        const tz = settings?.timezone || "UTC";
+        const ctx = (params as any)._context || {};
+        const tz = ctx.timezone || settings?.timezone || "UTC";
         const searchResult = await reminderQueryService.searchReminders({
           userId,
           query: params.searchQuery,
@@ -160,7 +166,10 @@ export function createReminderAITools(
             isNaN(new Date(params.reminderTime).getTime()))
         ) {
           const textToParse =
-            params.naturalTimeText || params.reminderTime || "";
+            params.naturalTimeText ||
+            params.reminderTime ||
+            (ctx.originalMessage as string) ||
+            "";
           const parsed = utilityService.parseNaturalLanguageDate({
             text: textToParse,
             timezone: tz,
@@ -319,7 +328,8 @@ export function createReminderAITools(
       }),
       execute: dedupe("snoozeReminder", async (params) => {
         const settings = await userService.getUserSettings(userId);
-        const tz = settings?.timezone || "UTC";
+        const ctx = (params as any)._context || {};
+        const tz = ctx.timezone || settings?.timezone || "UTC";
         const searchResult = await reminderQueryService.searchReminders({
           userId,
           query: params.searchQuery,
@@ -347,7 +357,10 @@ export function createReminderAITools(
         let finalTime = params.snoozeUntil;
         if (params.naturalTimeText || !finalTime) {
           const textToParse =
-            params.naturalTimeText || params.snoozeUntil || "";
+            params.naturalTimeText ||
+            params.snoozeUntil ||
+            (ctx.originalMessage as string) ||
+            "";
           const parsed = utilityService.parseNaturalLanguageDate({
             text: textToParse,
             timezone: tz,
@@ -376,7 +389,7 @@ export function createReminderAITools(
     }),
     getUpcomingReminders: tool({
       description:
-        "Get reminders for a specific timeframe: today, tomorrow, this week, or this month. Use when user asks about reminders in a specific time period. Examples: 'what reminders do I have today?', 'show tomorrow\'s reminders', 'what\'s coming up this week', 'reminders for this month'.",
+        "Get reminders for a specific timeframe: today, tomorrow, this week, or this month. Use when user asks about reminders in a specific time period. Examples: 'what reminders do I have today?', 'show tomorrow's reminders', 'what's coming up this week', 'reminders for this month'.",
       inputSchema: z.object({
         timeframe: z
           .enum(["today", "tomorrow", "week", "month"])
@@ -430,7 +443,7 @@ export function createReminderAITools(
     }),
     archiveReminder: tool({
       description:
-        "Archive reminder (soft delete, status=cancelled). Triggers: archive, hide, don\'t delete.",
+        "Archive reminder (soft delete, status=cancelled). Triggers: archive, hide, don't delete.",
       inputSchema: z.object({
         searchQuery: z
           .string()

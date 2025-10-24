@@ -1,5 +1,8 @@
 import { logInfo, logError } from "../../utils/logger";
-export function createDeduplicationWrapper() {
+export function createDeduplicationWrapper(context?: {
+  originalMessage?: string;
+  timezone?: string;
+}) {
   const resultCache = new Map<string, any>();
   const pendingCache = new Map<string, Promise<any>>();
   const stats: any = {
@@ -18,6 +21,13 @@ export function createDeduplicationWrapper() {
   };
   const canonicalizeForKey = (name: string, params: any) => {
     const p = normalize(params || {});
+    // Remove transient context fields from dedupe key so the same logical
+    // request dedupes even if context (like originalMessage) differs.
+    try {
+      if (p && typeof p === "object" && "_context" in p) {
+        delete (p as any)._context;
+      }
+    } catch {}
     try {
       if (name === "createReminder" && p) {
         if (typeof p.title === "string") {
@@ -56,7 +66,10 @@ export function createDeduplicationWrapper() {
       }
       const p = (async () => {
         try {
-          const res = await fn(params);
+          const augmentedParams = context
+            ? { ...(params || {}), _context: context }
+            : params;
+          const res = await fn(augmentedParams);
           logInfo(`Tool ${name} succeeded`, {
             resultKeys: res && typeof res === "object" ? Object.keys(res) : [],
           });

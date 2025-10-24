@@ -41,9 +41,17 @@ export function createNotesAITools(
           ),
       }),
       execute: dedupe("createNote", async (params) => {
+        const ctx = (params as any)._context || {};
+        let content = params.content;
+        if (!content && ctx.originalMessage) {
+          content = ctx.originalMessage;
+        }
+        if (!content || content.trim().length === 0) {
+          throw new Error("Note content cannot be empty");
+        }
         let title = params.title;
-        if (!title && params.content) {
-          const firstLine = params.content.split("\n")[0];
+        if (!title && content) {
+          const firstLine = content.split("\n")[0];
           title =
             firstLine.length > 50
               ? firstLine.substring(0, 47) + "..."
@@ -51,7 +59,7 @@ export function createNotesAITools(
         }
         let category = params.category || "general";
         if (!params.category) {
-          const contentLower = params.content.toLowerCase();
+          const contentLower = content.toLowerCase();
           if (
             contentLower.includes("work") ||
             contentLower.includes("office") ||
@@ -86,7 +94,7 @@ export function createNotesAITools(
         }
         return await notesService.createNote({
           userId,
-          content: params.content,
+          content: content,
           title: title,
           category: category,
           tags: params.tags,
@@ -156,11 +164,26 @@ export function createNotesAITools(
         const searchResult = await notesQueryService.searchNotes({
           userId,
           query: params.searchQuery,
-          limit: 1,
+          limit: 5,
           includeArchived: false,
         });
         if (searchResult.notes.length === 0) {
-          throw new Error("Could not find that note");
+          throw new Error(
+            `Could not find any notes matching "${params.searchQuery}"`
+          );
+        }
+        if (searchResult.notes.length > 1) {
+          return {
+            needsSelection: true,
+            message: "I found multiple notes. Which one did you mean?",
+            candidates: searchResult.notes.map((n: any, idx: number) => ({
+              id: n.id,
+              number: idx + 1,
+              title: n.title,
+              preview: n.content.substring(0, 60),
+              type: "note",
+            })),
+          };
         }
         return await notesService.updateNote({
           userId,
@@ -185,11 +208,27 @@ export function createNotesAITools(
         const searchResult = await notesQueryService.searchNotes({
           userId,
           query: params.searchQuery,
-          limit: 1,
+          limit: 5,
           includeArchived: false,
         });
         if (searchResult.notes.length === 0) {
-          throw new Error("Could not find that note");
+          throw new Error(
+            `Could not find any notes matching "${params.searchQuery}"`
+          );
+        }
+        if (searchResult.notes.length > 1) {
+          return {
+            needsSelection: true,
+            message:
+              "I found multiple notes. Which one do you want to delete?",
+            candidates: searchResult.notes.map((n: any, idx: number) => ({
+              id: n.id,
+              number: idx + 1,
+              title: n.title,
+              preview: n.content.substring(0, 60),
+              type: "note",
+            })),
+          };
         }
         return await notesService.deleteNote(userId, searchResult.notes[0].id);
       }),
@@ -210,11 +249,27 @@ export function createNotesAITools(
         const searchResult = await notesQueryService.searchNotes({
           userId,
           query: params.searchQuery,
-          limit: 1,
+          limit: 5,
           includeArchived: false,
         });
         if (searchResult.notes.length === 0) {
-          throw new Error("Could not find that note");
+          throw new Error(
+            `Could not find any notes matching "${params.searchQuery}"`
+          );
+        }
+        if (searchResult.notes.length > 1) {
+          return {
+            needsSelection: true,
+            message:
+              "I found multiple notes. Which one do you want to duplicate?",
+            candidates: searchResult.notes.map((n: any, idx: number) => ({
+              id: n.id,
+              number: idx + 1,
+              title: n.title,
+              preview: n.content.substring(0, 60),
+              type: "note",
+            })),
+          };
         }
         return await notesService.duplicateNote({
           userId,

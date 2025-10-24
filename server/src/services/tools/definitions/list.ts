@@ -92,9 +92,13 @@ export function createListAITools(
     }),
     addItemToList: tool({
       description:
-        "Add one or more items to an existing list. If the list doesn't exist, it will be created automatically. Use when user wants to add items to a list. Examples: 'add X to Y list', 'put X on my list', 'include X in shopping list'. Max 50 items per call.",
+        "Add one or more items to an existing list. If the list doesn't exist, it will be created automatically. Use when user wants to add items to a list. Examples: 'add X to Y list', 'put X on my list', 'include X in shopping list'. ALWAYS extract list name from the message - common patterns: 'to X list', 'on my X', 'in the X list'. Max 50 items per call.",
       inputSchema: z.object({
-        listName: z.string().describe("Name of the list"),
+        listName: z
+          .string()
+          .describe(
+            "Name of the list - ALWAYS extract from user message (e.g., 'shopping', 'groceries', 'todo', 'work'). If not specified, try to infer or default to 'General'."
+          ),
         items: z
           .array(z.string())
           .describe("Items to add to the list (max 50)"),
@@ -104,6 +108,24 @@ export function createListAITools(
           .describe("Optional notes/context for the items being added"),
       }),
       execute: dedupe("addItemToList", async (params) => {
+        const ctx = (params as any)._context || {};
+        let listName = params.listName || "General";
+        if (!params.listName && ctx.originalMessage) {
+          const msg = ctx.originalMessage.toLowerCase();
+          const patterns = [
+            /(?:to|on|in)\s+(?:my\s+)?(\w+)\s+list/i,
+            /(\w+)\s+list/i,
+            /to\s+(\w+)/i,
+          ];
+          for (const pattern of patterns) {
+            const match = msg.match(pattern);
+            if (match && match[1]) {
+              listName =
+                match[1].charAt(0).toUpperCase() + match[1].slice(1);
+              break;
+            }
+          }
+        }
         if (params.items.length > 50) {
           const batches = [];
           for (let i = 0; i < params.items.length; i += 50) {
@@ -115,7 +137,7 @@ export function createListAITools(
             try {
               const result = await listItemService.addItemToList({
                 userId,
-                listName: params.listName,
+                listName: listName,
                 items: batches[i],
               });
               totalAdded += result.addedCount || batches[i].length;
@@ -124,7 +146,7 @@ export function createListAITools(
                 try {
                   const createResult = await listService.createList({
                     userId,
-                    name: params.listName,
+                    name: listName,
                     items: batches[i],
                   });
                   totalAdded += batches[i].length;
@@ -151,7 +173,7 @@ export function createListAITools(
         try {
           return await listItemService.addItemToList({
             userId,
-            listName: params.listName,
+            listName: listName,
             items: params.items,
           });
         } catch (error: any) {
@@ -161,7 +183,7 @@ export function createListAITools(
           ) {
             return await listService.createList({
               userId,
-              name: params.listName,
+              name: listName,
               items: params.items,
             });
           }
@@ -213,17 +235,29 @@ export function createListAITools(
     }),
     removeItemFromList: tool({
       description:
-        "Remove items from list. Triggers: remove, delete, take off.",
+        "Remove items from list. Triggers: remove, delete, take off. Searches for matching items and removes them.",
       inputSchema: z.object({
         listName: z.string().describe("Name of the list"),
         itemText: z.string().describe("Text to search for in items to remove"),
       }),
       execute: dedupe("removeItemFromList", async (params) => {
-        return await listItemService.removeItemFromList({
-          userId,
-          listName: params.listName,
-          itemText: params.itemText,
-        });
+        try {
+          return await listItemService.removeItemFromList({
+            userId,
+            listName: params.listName,
+            itemText: params.itemText,
+          });
+        } catch (error: any) {
+          if (
+            error.code === "LIST_NOT_FOUND" ||
+            error.message?.includes("not found")
+          ) {
+            throw new Error(
+              `Could not find list \"${params.listName}\". Check the list name and try again.`
+            );
+          }
+          throw error;
+        }
       }),
     }),
     updateListItem: tool({

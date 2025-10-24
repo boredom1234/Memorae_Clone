@@ -38,16 +38,26 @@ export function createNotificationAITools(
       }),
       execute: dedupe("sendReminderToContact", async (params) => {
         const settings = await userService.getUserSettings(userId);
-        const tz = settings?.timezone || "UTC";
+        const ctx = (params as any)._context || {};
+        const tz = ctx.timezone || settings?.timezone || "UTC";
         let iso = params.reminderTime;
         const asDate = new Date(iso);
         if (isNaN(asDate.getTime())) {
+          const textToParse =
+            params.reminderTime || (ctx.originalMessage as string) || "";
+          if (textToParse.trim().length === 0) {
+            throw new Error(
+              "Could not determine reminder time. Please specify a date/time."
+            );
+          }
           const parsed = await utilityService.parseNaturalLanguageDate({
-            text: params.reminderTime,
+            text: textToParse,
             timezone: tz,
           });
           if (!parsed.success || parsed.extractedDates.length === 0) {
-            throw new Error("Could not parse reminder time");
+            throw new Error(
+              `Could not parse reminder time from \"${textToParse.substring(0, 50)}\". Please specify a clear date/time.`
+            );
           }
           iso = parsed.extractedDates[0].parsedDate;
         }

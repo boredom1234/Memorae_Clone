@@ -28,6 +28,33 @@ export class AIService {
     this.initializeModels();
     this.translationService = new TranslationService();
   }
+  private enrichMessageWithContext(
+    message: string,
+    conversationHistory: ConversationMessage[] = [],
+  ): string {
+    const text = message.trim().toLowerCase();
+    const timeframeMap: Record<string, "today" | "tomorrow" | "week" | "month"> = {
+      today: "today",
+      "today's": "today",
+      tomorrow: "tomorrow",
+      "tomorrow's": "tomorrow",
+      week: "week",
+      "this week": "week",
+      month: "month",
+      "this month": "month",
+    };
+    const timeframeOnly = Object.keys(timeframeMap).find((k) =>
+      new RegExp(`^${k}$`).test(text),
+    );
+    if (timeframeOnly) {
+      const prev = [...conversationHistory].reverse().find((m) => m.role === "user" || m.role === "assistant");
+      const prevText = prev?.content?.toLowerCase() || "";
+      if (/reminder|upcoming|what.*reminders|show.*reminders|list.*reminders/.test(prevText)) {
+        return `reminders for ${timeframeMap[timeframeOnly]}`;
+      }
+    }
+    return message;
+  }
   private initializeModels() {
     this.defaultModel = this.getDefaultModel();
     this.fallbackModels = this.getFallbackModels();
@@ -385,17 +412,24 @@ export class AIService {
     const translation =
       await this.translationService.translateToEnglish(message);
     const textForProcessing = translation.translatedText || message;
+    const textForRouting = this.enrichMessageWithContext(
+      textForProcessing,
+      conversationHistory,
+    );
     const toolDefinitions = toolsRegistry.getToolDefinitions(userId);
     const selectedToolNameFromRouter = await routeToTool(
-      textForProcessing,
+      textForRouting,
       toolDefinitions,
     );
-    const commandLike = this.isCommandLike(textForProcessing);
+    const commandLike = this.isCommandLike(textForRouting);
     let selectedToolName = selectedToolNameFromRouter;
     if (selectedToolNameFromRouter === "no_tool_needed" && commandLike) {
-      const heuristic = this.heuristicToolSelection(textForProcessing);
+      const heuristic = this.heuristicToolSelection(textForRouting);
       if (heuristic !== "no_tool_needed") {
-        const maybeTool = toolsRegistry.getSingleAISDKTool(userId, heuristic);
+        const maybeTool = toolsRegistry.getSingleAISDKTool(userId, heuristic, {
+          originalMessage: textForProcessing,
+          timezone,
+        });
         if (maybeTool && Object.keys(maybeTool).length > 0) {
           this.logger.info(
             `Router returned no_tool_needed; heuristic selected ${heuristic}`,
@@ -462,7 +496,10 @@ Important:
         `No tool selected by router. Using conversational response.`,
       );
     }
-    const tools = toolsRegistry.getSingleAISDKTool(userId, selectedToolName);
+    const tools = toolsRegistry.getSingleAISDKTool(userId, selectedToolName, {
+      originalMessage: textForProcessing,
+      timezone,
+    });
     if (!tools || Object.keys(tools).length === 0) {
       this.logger.error(
         `Selected tool "${selectedToolName}" not available. Falling back to conversational response.`,
@@ -509,9 +546,11 @@ Your approach:
 
 2. **Extract ALL relevant details** from the user's message:
    - Times, dates, priorities from context
-   - For reminders: ALWAYS extract time info (use "now", "in 1 minute" if no explicit time given)
+   - For reminders: ALWAYS extract time info via naturalTimeText (use "now", "in 1 minute" if no explicit time given)
+   - For lists: ALWAYS extract list name from message (e.g., "shopping list", "todo", "groceries")
+   - For notes: ALWAYS extract content from message, infer category from context
    - Infer reasonable defaults when appropriate
-   - Use natural language understanding liberally
+   - Use natural language understanding liberally and be generous in parameter extraction
 
 3. **After tool execution**: Provide a natural, friendly confirmation
    - Example: "Done! I've added milk to your groceries list."
@@ -521,6 +560,10 @@ Your approach:
    - "tomorrow afternoon" → infer reasonable time (2pm)
    - "tonight" → infer evening time (8pm)
    - "buy milk" when discussing shopping → should add to shopping list
+
+5. **Special cases**:
+   - If the selected tool is getUpcomingReminders and the message is a single timeframe word ("today", "tomorrow", "this week", "this month"), map it directly to the timeframe parameter and call the tool.
+   - If the message contains patterns like "every X" without a start time, still create the recurring reminder and use the current time as the start when appropriate.
 
 Tool category: ${
               this.isStateChangingTool(selectedToolName)
@@ -576,8 +619,24 @@ Context:
             `Tool ${selectedToolName} was provided but not executed by LLM`,
           );
         }
+        let finalText = result.text;
+        if ((!finalText || finalText.trim().length === 0) && (result.toolResults?.length || 0) > 0) {
+          try {
+            const first = (result.toolResults as any[])[0];
+            const output = first?.output ?? first;
+            if (output?.message) finalText = output.message;
+            else if (output?.success === false && output?.error) {
+              finalText = `I couldn't complete that: ${output.message || 'validation failed'}. Please clarify the time or details.`;
+            } else if (output?.success === true) {
+              finalText = `Done.`;
+            }
+          } catch {}
+          if (!finalText || finalText.trim().length === 0) {
+            finalText = "Processed your request.";
+          }
+        }
         return {
-          text: result.text,
+          text: finalText,
           toolCalls: result.toolCalls,
           toolResults: result.toolResults,
           _toolsExecuted: toolsActuallyExecuted,

@@ -690,8 +690,11 @@ export class ToolsRegistry {
   getNotesQueryService() {
     return this.notesQueryService;
   }
-  getAISDKTools(userId: string) {
-    const { dedupe, stats } = createDeduplicationWrapper();
+  getAISDKTools(
+    userId: string,
+    context?: { originalMessage?: string; timezone?: string },
+  ) {
+    const { dedupe, stats } = createDeduplicationWrapper(context);
     const services: ToolServices = {
       userService: this.userService,
       reminderService: this.reminderService,
@@ -729,8 +732,12 @@ export class ToolsRegistry {
     }
     return definitions;
   }
-  getSingleAISDKTool(userId: string, toolName: string): any {
-    const allTools = this.getAISDKTools(userId);
+  getSingleAISDKTool(
+    userId: string,
+    toolName: string,
+    context?: { originalMessage?: string; timezone?: string },
+  ): any {
+    const allTools = this.getAISDKTools(userId, context);
     const selectedTool = allTools[toolName];
     if (!selectedTool) {
       return null;
