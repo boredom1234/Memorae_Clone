@@ -15,6 +15,23 @@ import {
 import { handleServiceError, ValidationError } from "../utils/errors";
 import { logError, logPerformance, logWarn } from "../utils/logger";
 export class UtilityService {
+  private normalizeTimeText(text: string): string {
+    try {
+      let t = text || "";
+      // Insert a space between numbers and letters: e.g., "1hour" -> "1 hour"
+      t = t.replace(/(\d)([a-zA-Z])/g, "$1 $2");
+      // Normalize common abbreviations
+      t = t
+        .replace(/\bhrs?\b/gi, "hours")
+        .replace(/\bmins?\b/gi, "minutes")
+        .replace(/\bsecs?\b/gi, "seconds");
+      // Collapse whitespace
+      t = t.replace(/\s+/g, " ").trim();
+      return t;
+    } catch {
+      return text;
+    }
+  }
   parseNaturalLanguageDate(params: {
     text: string;
     timezone: string;
@@ -40,15 +57,19 @@ export class UtilityService {
       if (isNaN(referenceDate.getTime())) {
         throw new ValidationError("Invalid reference date");
       }
-      const results = chrono.parse(validatedParams.text, referenceDate);
+      const normalizedText = this.normalizeTimeText(validatedParams.text);
+      const results = chrono.parse(normalizedText, referenceDate);
       let extractedDates = results
         .map((result) => {
           try {
             const date = result.start.date();
-            const utcISO = wallClockToUTCFromZone(
-              date,
-              validatedParams.timezone,
-            );
+            const isAbsolute = result.start.isCertain("day");
+            // For absolute wall-clock phrases (e.g., "tomorrow 5pm"), interpret in user's timezone.
+            // For relative phrases (e.g., "in 90 minutes", "1 hour from now"), Chrono already returns
+            // an absolute Date; use it directly to avoid double timezone interpretation.
+            const utcISO = isAbsolute
+              ? wallClockToUTCFromZone(date, validatedParams.timezone)
+              : date.toISOString();
             return {
               originalText: result.text,
               parsedDate: utcISO,
@@ -68,7 +89,7 @@ export class UtilityService {
         .filter((d): d is NonNullable<typeof d> => d !== null);
 
       if (extractedDates.length === 0) {
-        const text = validatedParams.text.toLowerCase();
+        const text = normalizedText.toLowerCase();
         const hasRelativeCue = /(in|from now|after|within|later|following)\b/.test(
           text,
         );
