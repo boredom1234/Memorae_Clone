@@ -546,14 +546,16 @@ export class MessageController {
           renderedText: clarificationMessage,
         };
       }
-      // Prefer meaningful natural-language text from AIService (e.g., computed time differences)
-      const hasMeaningfulText =
-        !!(result.text && result.text.trim() && !/^(processed your request\.?|done\.?)$/i.test(result.text.trim()));
+      const hasMeaningfulText = !!(
+        result.text &&
+        result.text.trim() &&
+        !/^(processed your request\.?|done\.?)$/i.test(result.text.trim())
+      );
       const renderedText = hasMeaningfulText
         ? (result.text as string)
         : result.toolResults &&
-          Array.isArray(result.toolResults) &&
-          result.toolResults.length > 0
+            Array.isArray(result.toolResults) &&
+            result.toolResults.length > 0
           ? this.responseFormatter.getResponseMessage(
               lastToolEnvelope,
               user.timezone,

@@ -773,7 +773,6 @@ export class ToolsRegistry {
     if (primaryTool) {
       selectedTools[primaryToolName] = primaryTool;
     }
-    // --- Categories ---
     const reminderTools = [
       "createReminder",
       "updateReminder",
@@ -842,20 +841,22 @@ export class ToolsRegistry {
       "updateUserSettings",
       "setQuietHours",
     ];
-
-    // --- Helpers for reminder mutations ---
     if (reminderTools.includes(primaryToolName)) {
-      if (allTools.getCurrentTime) selectedTools.getCurrentTime = allTools.getCurrentTime;
-      if (allTools.searchReminders) selectedTools.searchReminders = allTools.searchReminders;
-      if (allTools.listReminders) selectedTools.listReminders = allTools.listReminders;
+      if (allTools.getCurrentTime)
+        selectedTools.getCurrentTime = allTools.getCurrentTime;
+      if (allTools.searchReminders)
+        selectedTools.searchReminders = allTools.searchReminders;
+      if (allTools.listReminders)
+        selectedTools.listReminders = allTools.listReminders;
       if (allTools.parseNaturalLanguageDate)
-        selectedTools.parseNaturalLanguageDate = allTools.parseNaturalLanguageDate;
+        selectedTools.parseNaturalLanguageDate =
+          allTools.parseNaturalLanguageDate;
       if (allTools.suggestReminderTime)
         selectedTools.suggestReminderTime = allTools.suggestReminderTime;
     }
-    // --- Helpers for reminder queries ---
     if (reminderQueryTools.includes(primaryToolName)) {
-      if (allTools.getCurrentTime) selectedTools.getCurrentTime = allTools.getCurrentTime;
+      if (allTools.getCurrentTime)
+        selectedTools.getCurrentTime = allTools.getCurrentTime;
     }
     if (
       context?.originalMessage &&
@@ -873,16 +874,16 @@ export class ToolsRegistry {
       ) {
         selectedTools.listReminders = allTools.listReminders;
       }
-      // Also provide getUpcomingReminders so the LLM can choose the most suitable retrieval tool
-      if (!selectedTools.getUpcomingReminders && allTools.getUpcomingReminders) {
+      if (
+        !selectedTools.getUpcomingReminders &&
+        allTools.getUpcomingReminders
+      ) {
         selectedTools.getUpcomingReminders = allTools.getUpcomingReminders;
       }
-      // Providing searchReminders helps match a specific reminder by title like "Launch Tom"
       if (!selectedTools.searchReminders && allTools.searchReminders) {
         selectedTools.searchReminders = allTools.searchReminders;
       }
     }
-    // --- Helpers for list tools ---
     if (listTools.includes(primaryToolName)) {
       if (allTools.getLists) selectedTools.getLists = allTools.getLists;
       if (
@@ -906,8 +907,6 @@ export class ToolsRegistry {
         selectedTools.getLists = allTools.getLists;
       }
     }
-
-    // --- Helpers for note tools ---
     if (noteTools.includes(primaryToolName)) {
       if (
         (primaryToolName === "updateNote" ||
@@ -919,11 +918,11 @@ export class ToolsRegistry {
       }
       if (allTools.listNotes) selectedTools.listNotes = allTools.listNotes;
     }
-
-    // --- Helpers for media tools ---
     if (mediaTools.includes(primaryToolName)) {
-      if (allTools.getMediaHistory) selectedTools.getMediaHistory = allTools.getMediaHistory;
-      if (allTools.getMediaStats) selectedTools.getMediaStats = allTools.getMediaStats;
+      if (allTools.getMediaHistory)
+        selectedTools.getMediaHistory = allTools.getMediaHistory;
+      if (allTools.getMediaStats)
+        selectedTools.getMediaStats = allTools.getMediaStats;
       if (
         (primaryToolName === "ocrMediaAttachment" ||
           primaryToolName === "transcribeMediaAttachment") &&
@@ -932,10 +931,11 @@ export class ToolsRegistry {
         selectedTools.extractMediaEntities = allTools.extractMediaEntities;
       }
     }
-
-    // --- Helpers for notification tools ---
     if (notificationTools.includes(primaryToolName)) {
-      if (primaryToolName === "sendReminderToContact" && allTools.getCurrentTime) {
+      if (
+        primaryToolName === "sendReminderToContact" &&
+        allTools.getCurrentTime
+      ) {
         selectedTools.getCurrentTime = allTools.getCurrentTime;
       }
       if (
@@ -946,10 +946,11 @@ export class ToolsRegistry {
         selectedTools.getFailedNotifications = allTools.getFailedNotifications;
       }
     }
-
-    // --- Helpers for user tools ---
     if (userTools.includes(primaryToolName)) {
-      if (primaryToolName === "updateUserSettings" && allTools.getUserSettings) {
+      if (
+        primaryToolName === "updateUserSettings" &&
+        allTools.getUserSettings
+      ) {
         selectedTools.getUserSettings = allTools.getUserSettings;
       }
       if (primaryToolName === "setQuietHours" && allTools.getUserSettings) {
