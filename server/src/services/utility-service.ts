@@ -22,7 +22,11 @@ export class UtilityService {
       t = t
         .replace(/\bhrs?\b/gi, "hours")
         .replace(/\bmins?\b/gi, "minutes")
-        .replace(/\bsecs?\b/gi, "seconds");
+        .replace(/\bsecs?\b/gi, "seconds")
+        .replace(/\bwks?\b/gi, "weeks")
+        .replace(/\bdays?\b/gi, "days")
+        .replace(/\byrs?\b/gi, "years");
+      t = t.replace(/(\d+\s*\w+)\s+(\d+\s*\w+)/g, "$1 and $2");
       t = t.replace(/\s+/g, " ").trim();
       return t;
     } catch {
@@ -98,14 +102,18 @@ export class UtilityService {
       if (extractedDates.length === 0) {
         const text = normalizedText.toLowerCase();
         const hasRelativeCue =
-          /(in|from now|after|within|later|following)\b/.test(text);
-        
-        // Also check for "and" patterns that indicate multiple units
+          /(in|from now|after|within|later|following|timer|alarm)\b/.test(text);
         const hasMultipleUnits = /\d+\s*\w+\s*and\s*\d+\s*\w+/.test(text);
+        const hasAbsoluteIndicators =
+          /\b(at|on|january|february|march|april|may|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|tonight|yesterday)\b/.test(
+            text,
+          );
         logWarn("Chrono parsing failed, trying fallback regex", {
           originalText: validatedParams.text,
           normalizedText,
           hasRelativeCue,
+          hasMultipleUnits,
+          hasAbsoluteIndicators,
         });
         const durRegex =
           /(\d+(?:\.\d+)?)\s*(years?|yrs?|y|months?|mos?|mo|mths?|mth|weeks?|wks?|wk|w|days?|d|hours?|hrs?|hr|h|minutes?|mins?|min|m)\b/gi;
@@ -134,20 +142,22 @@ export class UtilityService {
           else if (/^h(ours?)?$|hrs?$|hr$/.test(unitLower)) hours += val;
           else if (/^m(in(utes?)?)?$|mins?$/.test(unitLower)) minutes += val;
         }
+        const totalDuration = years + months + weeks + days + hours + minutes;
         logWarn("Fallback regex parsing results", {
           hasRelativeCue,
           hasMultipleUnits,
+          hasAbsoluteIndicators,
           years,
           months,
           weeks,
           days,
           hours,
           minutes,
-          totalDuration: years + months + weeks + days + hours + minutes,
+          totalDuration,
         });
         if (
-          (hasRelativeCue || hasMultipleUnits) &&
-          years + months + weeks + days + hours + minutes > 0
+          totalDuration > 0 &&
+          (hasRelativeCue || hasMultipleUnits || !hasAbsoluteIndicators)
         ) {
           const futureDate = DateTime.fromJSDate(referenceDate, {
             zone: validatedParams.timezone,
@@ -173,14 +183,15 @@ export class UtilityService {
             { pattern: /in\s*(\d+)\s*hours?/i, unit: "hours" },
             { pattern: /in\s*(\d+)\s*minutes?/i, unit: "minutes" },
             { pattern: /in\s*(\d+)\s*days?/i, unit: "days" },
-            // Complex patterns with multiple units
-            { 
-              pattern: /(\d+)\s*(hrs?|hours?)\s*(?:and\s*)?(\d+)\s*(mins?|minutes?)\s*from\s*now/i, 
-              unit: "complex_hours_minutes" 
+            {
+              pattern:
+                /(\d+)\s*(hrs?|hours?)\s*(?:and\s*)?(\d+)\s*(mins?|minutes?)\s*from\s*now/i,
+              unit: "complex_hours_minutes",
             },
-            { 
-              pattern: /(\d+)\s*(hrs?|hours?)\s*(?:and\s*)?(\d+)\s*(mins?|minutes?)/i, 
-              unit: "complex_hours_minutes" 
+            {
+              pattern:
+                /(\d+)\s*(hrs?|hours?)\s*(?:and\s*)?(\d+)\s*(mins?|minutes?)/i,
+              unit: "complex_hours_minutes",
             },
           ];
           for (const { pattern, unit } of commonPatterns) {
@@ -191,11 +202,8 @@ export class UtilityService {
                 match: match,
                 unit,
               });
-              
               let duration = {};
-              
               if (unit === "complex_hours_minutes") {
-                // Handle patterns like "1hr and 37 mins from now"
                 const hours = parseFloat(match[1]);
                 const minutes = parseFloat(match[3]);
                 duration = { hours, minutes };
@@ -210,7 +218,6 @@ export class UtilityService {
                         ? { days: val }
                         : {};
               }
-              
               const futureDate = DateTime.fromJSDate(referenceDate, {
                 zone: validatedParams.timezone,
               })

@@ -756,6 +756,74 @@ export class ToolsRegistry {
     }
     return toolSet;
   }
+  getRelevantToolGroup(
+    userId: string,
+    primaryToolName: string,
+    context?: {
+      originalMessage?: string;
+      timezone?: string;
+    },
+  ): any {
+    const allTools = this.getAISDKTools(userId, context);
+    if (primaryToolName === "no_tool_needed") {
+      return {};
+    }
+    const selectedTools: any = {};
+    const primaryTool = allTools[primaryToolName];
+    if (primaryTool) {
+      selectedTools[primaryToolName] = primaryTool;
+    }
+    const reminderTools = [
+      "createReminder",
+      "updateReminder",
+      "snoozeReminder",
+      "batchCreateReminders",
+    ];
+    const queryTools = [
+      "listReminders",
+      "getUpcomingReminders",
+      "searchReminders",
+    ];
+    const listTools = [
+      "createList",
+      "addItemToList",
+      "removeItemFromList",
+      "getListItems",
+      "getLists",
+    ];
+    if (reminderTools.includes(primaryToolName)) {
+      if (allTools.getCurrentTime) {
+        selectedTools.getCurrentTime = allTools.getCurrentTime;
+      }
+    }
+    if (queryTools.includes(primaryToolName)) {
+      if (allTools.getCurrentTime) {
+        selectedTools.getCurrentTime = allTools.getCurrentTime;
+      }
+    }
+    if (listTools.includes(primaryToolName)) {
+      if (primaryToolName === "addItemToList" && allTools.getLists) {
+        selectedTools.getLists = allTools.getLists;
+      }
+      if (primaryToolName === "removeItemFromList" && allTools.getListItems) {
+        selectedTools.getListItems = allTools.getListItems;
+      }
+    }
+    if (
+      context?.originalMessage &&
+      /\b(from now|in \d+|timer|alarm|at \d+:\d+|tomorrow|today|tonight)\b/i.test(
+        context.originalMessage,
+      )
+    ) {
+      if (allTools.getCurrentTime) {
+        selectedTools.getCurrentTime = allTools.getCurrentTime;
+      }
+    }
+    if ((allTools as any).__stats) {
+      (selectedTools as any).__stats = (allTools as any).__stats;
+    }
+    return selectedTools;
+  }
   getRelevantTools(userId: string, _text?: string): any {
     const allTools = this.getAISDKTools(userId);
     const text = (_text || "").toLowerCase().trim();

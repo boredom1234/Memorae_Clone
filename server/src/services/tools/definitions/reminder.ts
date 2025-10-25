@@ -16,7 +16,7 @@ export function createReminderAITools(
   return {
     createReminder: tool({
       description:
-        "Create a new reminder for a specific date/time. Use when user wants to be reminded about something. Supports both one-time and recurring reminders (daily, weekly, monthly). Examples: 'remind me to X', 'set a reminder', 'notify me about', 'alert me when', 'schedule reminder'. ALWAYS extract time information from the user's message - either provide reminderTime or naturalTimeText.",
+        "Create a new reminder for a specific date/time. Use when user wants to be reminded about something. Supports both one-time and recurring reminders (daily, weekly, monthly). Examples: 'remind me to X', 'set a reminder', 'set a timer', 'notify me about', 'alert me when', 'schedule reminder'. CRITICAL: ALWAYS extract time information from the user's message via naturalTimeText. For durations like '1 hour 43 minutes from now' or 'timer for 30 minutes', extract the FULL time expression as naturalTimeText.",
       inputSchema: z.object({
         title: z.string().describe("The reminder title/description"),
         reminderTime: z

@@ -115,7 +115,7 @@ export class AIService {
   private heuristicToolSelection(message: string): string {
     const text = message.toLowerCase().trim();
     if (
-      /^(remind (me|us)\b|remind me to\b|set (a )?reminder\b|schedule (a )?(reminder|alarm)\b|wake me\b|alert me\b|notify me\b)/.test(
+      /^(remind (me|us)\b|remind me to\b|set (a )?reminder\b|set (a )?timer\b|set (a|an )?alarm\b|schedule (a )?(reminder|alarm)\b|wake me\b|alert me\b|notify me\b|timer for\b)/.test(
         text,
       )
     ) {
@@ -508,7 +508,7 @@ Important:
         `No tool selected by router. Using conversational response.`,
       );
     }
-    const tools = toolsRegistry.getSingleAISDKTool(userId, selectedToolName, {
+    const tools = toolsRegistry.getRelevantToolGroup(userId, selectedToolName, {
       originalMessage: textForProcessing,
       timezone,
     });
@@ -547,16 +547,23 @@ Important: You do not have tool access for this request. Do NOT claim you create
         const systemPrompt = willUseTools
           ? `You are Memorae, a helpful and friendly AI assistant for task and memory management.
 
-You have the "${selectedToolName}" tool available to help with this request.
+You have multiple tools available to help with this request. The PRIMARY tool is "${selectedToolName}", but you also have helper tools available.
 
 User's request: "${textForProcessing}"
 
 Your approach:
-1. **Analyze the request**: Does it have enough information to take action?
-   - YES → Extract parameters and use the "${selectedToolName}" tool
-   - NO → Ask friendly clarifying questions
+1. **THINK FIRST**: Break down the request into steps
+   - What information do I need?
+   - Do I need to check current time first?
+   - Are there complex time expressions to parse?
+   - What's the main action to take?
 
-2. **Extract ALL relevant details** from the user's message:
+2. **USE HELPER TOOLS when needed**:
+   - If time context is unclear or user mentions "from now", call getCurrentTime first
+   - Use helper tools to gather context before taking action
+   - Chain multiple tools together to build the complete solution
+
+3. **Extract ALL relevant details** from the user's message:
    - Times, dates, priorities from context
    - For reminders: ALWAYS extract time info via naturalTimeText (use "now", "in 1 minute" if no explicit time given)
    - For lists: ALWAYS extract list name from message (e.g., "shopping list", "todo", "groceries")
@@ -564,16 +571,17 @@ Your approach:
    - Infer reasonable defaults when appropriate
    - Use natural language understanding liberally and be generous in parameter extraction
 
-3. **After tool execution**: Provide a natural, friendly confirmation
+4. **After tool execution**: Provide a natural, friendly confirmation
    - Example: "Done! I've added milk to your groceries list."
    - Example: "Got it! I'll remind you about the dentist appointment tomorrow at 2pm."
 
-4. **Be flexible with natural language**:
+5. **Be flexible with natural language**:
    - "tomorrow afternoon" → infer reasonable time (2pm)
    - "tonight" → infer evening time (8pm)
+   - "1 hour 43 minutes from now" → extract duration properly
    - "buy milk" when discussing shopping → should add to shopping list
 
-5. **Special cases**:
+6. **Special cases**:
    - If the selected tool is getUpcomingReminders and the message is a single timeframe word ("today", "tomorrow", "this week", "this month"), map it directly to the timeframe parameter and call the tool.
    - If the message contains patterns like "every X" without a start time, still create the recurring reminder and use the current time as the start when appropriate.
 
@@ -608,7 +616,7 @@ ${summary ? `- Conversation summary (condensed prior messages):\n${summary}` : "
             { role: "user" as const, content: textForProcessing },
           ],
           tools: effectiveTools,
-          maxSteps: 5,
+          maxSteps: 10,
         } as any);
         const toolStats = (effectiveTools as any).__stats;
         const toolsActuallyExecuted = toolStats?.executed === true;
@@ -731,7 +739,7 @@ ${summary ? `Conversation summary (condensed prior messages):\n${summary}` : ""}
           system: systemPrompt,
           messages: messagesWithCurrent,
           tools: effectiveTools,
-          maxSteps: 5,
+          maxSteps: 10,
         } as any);
         const toolStats = (effectiveTools as any).__stats;
         const toolsActuallyExecuted = toolStats?.executed === true;
