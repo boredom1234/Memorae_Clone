@@ -546,16 +546,19 @@ export class MessageController {
           renderedText: clarificationMessage,
         };
       }
-      const renderedText =
-        result.toolResults &&
-        Array.isArray(result.toolResults) &&
-        result.toolResults.length > 0
+      // Prefer meaningful natural-language text from AIService (e.g., computed time differences)
+      const hasMeaningfulText =
+        !!(result.text && result.text.trim() && !/^(processed your request\.?|done\.?)$/i.test(result.text.trim()));
+      const renderedText = hasMeaningfulText
+        ? (result.text as string)
+        : result.toolResults &&
+          Array.isArray(result.toolResults) &&
+          result.toolResults.length > 0
           ? this.responseFormatter.getResponseMessage(
               lastToolEnvelope,
               user.timezone,
             )
-          : result.text ||
-            this.responseFormatter.getResponseMessage(result, user.timezone);
+          : this.responseFormatter.getResponseMessage(result, user.timezone);
       this.logger.info(
         {
           renderedTextPreview: (renderedText || "").slice(0, 160),

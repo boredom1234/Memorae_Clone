@@ -41,12 +41,20 @@ ROUTING RULES:
    - "upcoming reminders?" → YES, use getUpcomingReminders
    - "what's on my list?" → YES, use getListItems
    - "show notes" → YES, use listNotes
+   - "time left for reminder" → YES, use listReminders (NOT getCurrentTime)
+   - "how long until" → YES, use getUpcomingReminders (NOT getCurrentTime)
    
 2. **MUTATION TOOLS** (create, update, delete) - ONLY use when user clearly wants to modify data:
    - Must have enough context to perform the action
    - If unclear, prefer "no_tool_needed" to let AI ask for clarification
    
-3. **NO TOOL** for:
+3. **getCurrentTime** - ONLY use when user asks EXPLICITLY for current time/date:
+   - "what time is it?" → YES
+   - "what's the date?" → YES
+   - "time left for reminder" → NO (use listReminders instead)
+   - "how long until" → NO (use getUpcomingReminders instead)
+   
+4. **NO TOOL** for:
    - Greetings, off-topic questions, gratitude
    - Vague follow-ups without context ("what?", "when?", "which one?")
    - General knowledge questions not related to user's data
@@ -59,12 +67,22 @@ EXAMPLES - RETRIEVAL TOOLS (LOW threshold):
 "reminders for today" → {"toolName": "getUpcomingReminders"}
 "today's reminders" → {"toolName": "getUpcomingReminders"}
 "my reminders" → {"toolName": "listReminders"}
+"how much time is left for my reminder?" → {"toolName": "listReminders"}
+"time left for the reminder" → {"toolName": "listReminders"}
+"how long until my reminder?" → {"toolName": "getUpcomingReminders"}
+"when is my reminder?" → {"toolName": "listReminders"}
 "what's on my shopping list?" → {"toolName": "getListItems"}
 "show me my grocery list" → {"toolName": "getListItems"}
 "my lists" → {"toolName": "getLists"}
 "show my notes" → {"toolName": "listNotes"}
 "search my notes for meeting" → {"toolName": "searchNotes"}
 "find reminders about doctor" → {"toolName": "searchReminders"}
+
+EXAMPLES - getCurrentTime (ONLY explicit time requests):
+"what time is it?" → {"toolName": "getCurrentTime"}
+"what's the time now?" → {"toolName": "getCurrentTime"}
+"current date?" → {"toolName": "getCurrentTime"}
+"what day is today?" → {"toolName": "getCurrentTime"}
 
 EXAMPLES - MUTATION TOOLS (HIGHER threshold):
 "remind me to call mom at 5pm" → {"toolName": "createReminder"}

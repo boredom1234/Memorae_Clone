@@ -557,13 +557,30 @@ Your approach:
    - Do I need to check current time first?
    - Are there complex time expressions to parse?
    - What's the main action to take?
+   - Do I need to perform calculations (e.g., time differences)?
 
-2. **USE HELPER TOOLS when needed**:
+2. **USE MULTIPLE TOOLS to build complete answers**:
+   - For "time left" or "how long until" questions → Call BOTH listReminders/getUpcomingReminders OR searchReminders (to find the specific reminder) AND getCurrentTime, then calculate the difference
    - If time context is unclear or user mentions "from now", call getCurrentTime first
    - Use helper tools to gather context before taking action
    - Chain multiple tools together to build the complete solution
+   - ALWAYS provide calculated results, not just raw tool outputs
 
-3. **Extract ALL relevant details** from the user's message:
+3. **PERFORM CALCULATIONS when needed**:
+   - If user asks "time left" or "how long until", you MUST:
+     a) Obtain the target reminder time via listReminders/getUpcomingReminders or searchReminders
+     b) Get current time from getCurrentTime
+     c) Calculate the difference (in hours/minutes/seconds)
+     d) If the reminder time is in the past, report it as "overdue by X" instead of "remaining"
+     e) Format it nicely: "1 hour, 7 minutes, and 16 seconds remaining"
+   - Don't just return the raw times - do the math!
+
+3.5 **Reminder selection policy**:
+   - If the user mentions a specific title or keyword (e.g., "Launch Tom"), use searchReminders with that query and pick the closest fuzzy match.
+   - If no specific title is given, pick the nearest upcoming pending reminder.
+   - If multiple matches are equally plausible, ask a brief clarification unless one occurs much sooner than the others.
+
+4. **Extract ALL relevant details** from the user's message:
    - Times, dates, priorities from context
    - For reminders: ALWAYS extract time info via naturalTimeText (use "now", "in 1 minute" if no explicit time given)
    - For lists: ALWAYS extract list name from message (e.g., "shopping list", "todo", "groceries")
@@ -571,17 +588,22 @@ Your approach:
    - Infer reasonable defaults when appropriate
    - Use natural language understanding liberally and be generous in parameter extraction
 
-4. **After tool execution**: Provide a natural, friendly confirmation
+5. **CRITICAL: ALWAYS provide a text response after tool execution**:
+   - NEVER leave the response empty after calling tools
+   - ALWAYS summarize what you found/did in natural language
    - Example: "Done! I've added milk to your groceries list."
    - Example: "Got it! I'll remind you about the dentist appointment tomorrow at 2pm."
+   - Example: "Your reminder 'Launch Tom' is in 1 hour, 7 minutes, and 16 seconds." (after calculating time difference from tool results)
+   - Example: "'Launch Tom' was due 12 minutes ago (overdue by 12 minutes)."
+   - If you called multiple tools, combine their results into a coherent answer
 
-5. **Be flexible with natural language**:
+6. **Be flexible with natural language**:
    - "tomorrow afternoon" → infer reasonable time (2pm)
    - "tonight" → infer evening time (8pm)
    - "1 hour 43 minutes from now" → extract duration properly
    - "buy milk" when discussing shopping → should add to shopping list
 
-6. **Special cases**:
+7. **Special cases**:
    - If the selected tool is getUpcomingReminders and the message is a single timeframe word ("today", "tomorrow", "this week", "this month"), map it directly to the timeframe parameter and call the tool.
    - If the message contains patterns like "every X" without a start time, still create the recurring reminder and use the current time as the start when appropriate.
 
@@ -646,6 +668,9 @@ ${summary ? `- Conversation summary (condensed prior messages):\n${summary}` : "
           (!finalText || finalText.trim().length === 0) &&
           (result.toolResults?.length || 0) > 0
         ) {
+          this.logger.warn(
+            "LLM did not generate text after tool execution. Using fallback.",
+          );
           try {
             const first = (result.toolResults as any[])[0];
             const output = first?.output ?? first;
@@ -659,6 +684,110 @@ ${summary ? `- Conversation summary (condensed prior messages):\n${summary}` : "
           if (!finalText || finalText.trim().length === 0) {
             finalText = "Processed your request.";
           }
+        }
+
+        // Deterministic fallback: handle "time left" style queries by computing the difference
+        try {
+          const isTimeLeftQuery = /\b(time left|how long|how much time|remaining time|time until)\b/i.test(
+            textForProcessing,
+          );
+          const looksGeneric =
+            !result.text || /processed your request\.?/i.test(finalText || "");
+          if (willUseTools && isTimeLeftQuery && looksGeneric) {
+            this.logger.info(
+              "Applying deterministic fallback for time-left query",
+            );
+            // 1) Ensure current time
+            let currentTimeISO: string | null = null;
+            try {
+              const ctRes = (result.toolResults || []).find(
+                (r: any) => r?.toolName === "getCurrentTime",
+              );
+              currentTimeISO = ctRes?.output?.currentTime || null;
+            } catch {}
+            if (!currentTimeISO) {
+              const ct = await toolsRegistry.executeTool("getCurrentTime", {
+                timezone,
+              });
+              currentTimeISO = ct?.currentTime || new Date().toISOString();
+            }
+            // 2) Try to identify a specific reminder via quoted text; otherwise get nearest pending
+            const quoted = (textForProcessing.match(/"([^"]+)"|'([^']+)'/) || [])
+              .slice(1)
+              .find(Boolean);
+            let target: { title: string; reminder_time: string } | null = null;
+            if (quoted) {
+              const sr = await toolsRegistry.executeTool("searchReminders", {
+                userId,
+                query: quoted,
+                limit: 5,
+              });
+              const candidates: any[] = sr?.results || [];
+              // Pick the earliest upcoming among matches
+              const nowMs = currentTimeISO ? new Date(currentTimeISO).getTime() : Date.now();
+              target = candidates
+                .map((r) => ({ title: r.title, reminder_time: r.reminder_time || r.reminderTime }))
+                .filter((r) => r.reminder_time && new Date(r.reminder_time).getTime() > nowMs)
+                .sort(
+                  (a, b) =>
+                    new Date(a.reminder_time).getTime() -
+                    new Date(b.reminder_time).getTime(),
+                )[0] || null;
+              // If all matches are past or none upcoming, fall back to first match
+              if (!target && candidates.length > 0) {
+                const r0 = candidates[0];
+                target = {
+                  title: r0.title,
+                  reminder_time: r0.reminder_time || r0.reminderTime,
+                };
+              }
+            }
+            if (!target) {
+              const lr = await toolsRegistry.executeTool("listReminders", {
+                userId,
+                status: "pending",
+                limit: 20,
+              });
+              const items: any[] = lr?.results || lr?.reminders || [];
+              const nowMs = currentTimeISO ? new Date(currentTimeISO).getTime() : Date.now();
+              target = items
+                .map((r) => ({ title: r.title, reminder_time: r.reminder_time || r.reminderTime }))
+                .filter((r) => r.reminder_time && new Date(r.reminder_time).getTime() > nowMs)
+                .sort(
+                  (a, b) =>
+                    new Date(a.reminder_time).getTime() -
+                    new Date(b.reminder_time).getTime(),
+                )[0] || null;
+            }
+            if (target && target.reminder_time) {
+              const now = currentTimeISO ? new Date(currentTimeISO).getTime() : Date.now();
+              const due = new Date(target.reminder_time).getTime();
+              const diffMs = due - now;
+              const absMs = Math.abs(diffMs);
+              const sec = Math.floor(absMs / 1000) % 60;
+              const min = Math.floor(absMs / (1000 * 60)) % 60;
+              const hrs = Math.floor(absMs / (1000 * 60 * 60));
+              const parts = [] as string[];
+              if (hrs > 0) parts.push(`${hrs} hour${hrs !== 1 ? "s" : ""}`);
+              if (min > 0) parts.push(`${min} minute${min !== 1 ? "s" : ""}`);
+              if (sec > 0 || parts.length === 0)
+                parts.push(`${sec} second${sec !== 1 ? "s" : ""}`);
+              const formatted = parts.join(", ").replace(/, (?=[^,]*$)/, ", and ");
+              if (diffMs >= 0) {
+                finalText = `Your reminder${quoted ? ` "${quoted}"` : target.title ? ` "${target.title}"` : ""} is in ${formatted}.`;
+              } else {
+                finalText = `Your reminder${quoted ? ` "${quoted}"` : target.title ? ` "${target.title}"` : ""} was due ${formatted} ago (overdue).`;
+              }
+            } else {
+              finalText =
+                "I couldn't find an upcoming reminder to calculate the time left. Please specify the reminder title or create one.";
+            }
+          }
+        } catch (e: any) {
+          this.logger.warn(
+            { error: e?.message },
+            "Deterministic time-left fallback failed",
+          );
         }
         return {
           text: finalText,

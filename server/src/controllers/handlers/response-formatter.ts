@@ -12,7 +12,11 @@ export class ResponseFormatter {
     const r = unwrap(result);
     if (!r) return "I couldn't format that result.";
     if ((r as any).text) {
-      return (r as any).text;
+      // Don't override meaningful calculated responses with generic formatting
+      const text = (r as any).text;
+      if (text && text.trim() && !text.match(/^(processed your request\.?|done\.?)$/i)) {
+        return text;
+      }
     }
     if ((r as any).message) return (r as any).message;
     if ((r as any).reminders) {

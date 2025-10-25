@@ -773,40 +773,187 @@ export class ToolsRegistry {
     if (primaryTool) {
       selectedTools[primaryToolName] = primaryTool;
     }
+    // --- Categories ---
     const reminderTools = [
       "createReminder",
       "updateReminder",
       "snoozeReminder",
+      "completeReminder",
+      "deleteReminder",
+      "archiveReminder",
+      "cancelReminder",
+      "rescheduleReminder",
       "batchCreateReminders",
+      "snoozeReminderByText",
     ];
-    const queryTools = [
+    const reminderQueryTools = [
       "listReminders",
       "getUpcomingReminders",
       "searchReminders",
+      "listOverdueReminders",
     ];
     const listTools = [
       "createList",
+      "deleteList",
+      "archiveList",
+      "duplicateList",
+      "getLists",
       "addItemToList",
       "removeItemFromList",
+      "updateListItem",
+      "bulkCompleteItems",
+      "clearCompletedItems",
+      "moveItemToList",
+      "reorderListItems",
       "getListItems",
-      "getLists",
+      "searchLists",
+      "getListStats",
     ];
+    const noteTools = [
+      "createNote",
+      "updateNote",
+      "deleteNote",
+      "duplicateNote",
+      "pinNote",
+      "archiveNote",
+      "listNotes",
+      "searchNotes",
+    ];
+    const mediaTools = [
+      "getMediaHistory",
+      "searchMediaByText",
+      "getMediaStats",
+      "linkMediaAttachment",
+      "unlinkMediaAttachment",
+      "transcribeMediaAttachment",
+      "ocrMediaAttachment",
+      "extractMediaEntities",
+    ];
+    const notificationTools = [
+      "sendReminderToContact",
+      "getNotificationHistory",
+      "retryNotification",
+      "getFailedNotifications",
+      "bulkRetryFailedNotifications",
+      "sendCustomMessage",
+    ];
+    const userTools = [
+      "getUserSettings",
+      "updateUserSettings",
+      "setQuietHours",
+    ];
+
+    // --- Helpers for reminder mutations ---
     if (reminderTools.includes(primaryToolName)) {
-      if (allTools.getCurrentTime) {
+      if (allTools.getCurrentTime) selectedTools.getCurrentTime = allTools.getCurrentTime;
+      if (allTools.searchReminders) selectedTools.searchReminders = allTools.searchReminders;
+      if (allTools.listReminders) selectedTools.listReminders = allTools.listReminders;
+      if (allTools.parseNaturalLanguageDate)
+        selectedTools.parseNaturalLanguageDate = allTools.parseNaturalLanguageDate;
+      if (allTools.suggestReminderTime)
+        selectedTools.suggestReminderTime = allTools.suggestReminderTime;
+    }
+    // --- Helpers for reminder queries ---
+    if (reminderQueryTools.includes(primaryToolName)) {
+      if (allTools.getCurrentTime) selectedTools.getCurrentTime = allTools.getCurrentTime;
+    }
+    if (
+      context?.originalMessage &&
+      /\b(time left|how long|how much time|when is|remaining time|time until)\b/i.test(
+        context.originalMessage,
+      )
+    ) {
+      if (allTools.getCurrentTime && !selectedTools.getCurrentTime) {
         selectedTools.getCurrentTime = allTools.getCurrentTime;
       }
-    }
-    if (queryTools.includes(primaryToolName)) {
-      if (allTools.getCurrentTime) {
-        selectedTools.getCurrentTime = allTools.getCurrentTime;
+      if (
+        !selectedTools.listReminders &&
+        !selectedTools.getUpcomingReminders &&
+        allTools.listReminders
+      ) {
+        selectedTools.listReminders = allTools.listReminders;
+      }
+      // Also provide getUpcomingReminders so the LLM can choose the most suitable retrieval tool
+      if (!selectedTools.getUpcomingReminders && allTools.getUpcomingReminders) {
+        selectedTools.getUpcomingReminders = allTools.getUpcomingReminders;
+      }
+      // Providing searchReminders helps match a specific reminder by title like "Launch Tom"
+      if (!selectedTools.searchReminders && allTools.searchReminders) {
+        selectedTools.searchReminders = allTools.searchReminders;
       }
     }
+    // --- Helpers for list tools ---
     if (listTools.includes(primaryToolName)) {
-      if (primaryToolName === "addItemToList" && allTools.getLists) {
+      if (allTools.getLists) selectedTools.getLists = allTools.getLists;
+      if (
+        (primaryToolName === "addItemToList" ||
+          primaryToolName === "removeItemFromList" ||
+          primaryToolName === "updateListItem" ||
+          primaryToolName === "bulkCompleteItems" ||
+          primaryToolName === "clearCompletedItems" ||
+          primaryToolName === "moveItemToList" ||
+          primaryToolName === "reorderListItems") &&
+        allTools.getListItems
+      ) {
+        selectedTools.getListItems = allTools.getListItems;
+      }
+      if (
+        (primaryToolName === "deleteList" ||
+          primaryToolName === "archiveList" ||
+          primaryToolName === "duplicateList") &&
+        allTools.getLists
+      ) {
         selectedTools.getLists = allTools.getLists;
       }
-      if (primaryToolName === "removeItemFromList" && allTools.getListItems) {
-        selectedTools.getListItems = allTools.getListItems;
+    }
+
+    // --- Helpers for note tools ---
+    if (noteTools.includes(primaryToolName)) {
+      if (
+        (primaryToolName === "updateNote" ||
+          primaryToolName === "deleteNote" ||
+          primaryToolName === "duplicateNote") &&
+        allTools.searchNotes
+      ) {
+        selectedTools.searchNotes = allTools.searchNotes;
+      }
+      if (allTools.listNotes) selectedTools.listNotes = allTools.listNotes;
+    }
+
+    // --- Helpers for media tools ---
+    if (mediaTools.includes(primaryToolName)) {
+      if (allTools.getMediaHistory) selectedTools.getMediaHistory = allTools.getMediaHistory;
+      if (allTools.getMediaStats) selectedTools.getMediaStats = allTools.getMediaStats;
+      if (
+        (primaryToolName === "ocrMediaAttachment" ||
+          primaryToolName === "transcribeMediaAttachment") &&
+        allTools.extractMediaEntities
+      ) {
+        selectedTools.extractMediaEntities = allTools.extractMediaEntities;
+      }
+    }
+
+    // --- Helpers for notification tools ---
+    if (notificationTools.includes(primaryToolName)) {
+      if (primaryToolName === "sendReminderToContact" && allTools.getCurrentTime) {
+        selectedTools.getCurrentTime = allTools.getCurrentTime;
+      }
+      if (
+        (primaryToolName === "retryNotification" ||
+          primaryToolName === "bulkRetryFailedNotifications") &&
+        allTools.getFailedNotifications
+      ) {
+        selectedTools.getFailedNotifications = allTools.getFailedNotifications;
+      }
+    }
+
+    // --- Helpers for user tools ---
+    if (userTools.includes(primaryToolName)) {
+      if (primaryToolName === "updateUserSettings" && allTools.getUserSettings) {
+        selectedTools.getUserSettings = allTools.getUserSettings;
+      }
+      if (primaryToolName === "setQuietHours" && allTools.getUserSettings) {
+        selectedTools.getUserSettings = allTools.getUserSettings;
       }
     }
     if (
