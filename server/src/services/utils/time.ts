@@ -40,6 +40,14 @@ export function buildRecurrenceRule(params: {
   message?: string;
 } {
   try {
+    // Validate input parameters
+    if (!params.natural || typeof params.natural !== 'string' || params.natural.trim().length === 0) {
+      throw new ValidationError("Recurrence rule text cannot be empty.");
+    }
+    if (!params.timezone || typeof params.timezone !== 'string') {
+      throw new ValidationError("Timezone is required for recurrence rules.");
+    }
+    
     const text = params.natural.toLowerCase().trim();
     const byTime = (() => {
       try {
@@ -380,6 +388,11 @@ export function parseNaturalLanguageDate(params: {
       normalizedText,
       timezone: validatedParams.timezone,
     });
+    
+    // Early validation for empty or invalid input
+    if (normalizedText.length < 2) {
+      throw new ValidationError("Time expression is too short to parse meaningfully.");
+    }
     const results = chrono.parse(normalizedText, referenceDate);
     logWarn("Chrono parse results", {
       resultsCount: results.length,
@@ -505,12 +518,15 @@ export function parseNaturalLanguageDate(params: {
       }
       if (extractedDates.length === 0) {
         const commonPatterns = [
+          // Duration patterns
           { pattern: /(\d+)\s*hours?\s*from\s*now/i, unit: "hours" },
           { pattern: /(\d+)\s*minutes?\s*from\s*now/i, unit: "minutes" },
           { pattern: /(\d+)\s*days?\s*from\s*now/i, unit: "days" },
           { pattern: /in\s*(\d+)\s*hours?/i, unit: "hours" },
           { pattern: /in\s*(\d+)\s*minutes?/i, unit: "minutes" },
           { pattern: /in\s*(\d+)\s*days?/i, unit: "days" },
+          
+          // Complex duration patterns
           {
             pattern:
               /(\d+)\s*(hrs?|hours?)\s*(?:and\s*)?(\d+)\s*(mins?|minutes?)\s*from\s*now/i,
@@ -529,6 +545,20 @@ export function parseNaturalLanguageDate(params: {
             pattern:
               /(\d+)\s*(hrs?|hours?)\s*(?:and\s*)?(\d+)\s*(mins?|minutes?)/i,
             unit: "complex_hours_minutes",
+          },
+          
+          // CRITICAL: Time-only patterns (HH:MM AM/PM)
+          {
+            pattern: /^(\d{1,2}):(\d{2})\s*(am|pm)$/i,
+            unit: "time_only_colon",
+          },
+          {
+            pattern: /^(\d{1,2})\.(\d{2})\s*(am|pm)$/i,
+            unit: "time_only_dot",
+          },
+          {
+            pattern: /^(\d{1,2})\s*(am|pm)$/i,
+            unit: "time_only_hour",
           },
         ];
         for (const { pattern, unit } of commonPatterns) {
@@ -551,6 +581,61 @@ export function parseNaturalLanguageDate(params: {
               const hours = parseFloat(match[1]);
               const minutes = parseFloat(match[2]);
               duration = { hours, minutes };
+            } else if (unit === "time_only_colon" || unit === "time_only_dot") {
+              // Handle "10:20 pm" or "10.20 pm"
+              const hour = parseInt(match[1]);
+              const minute = parseInt(match[2]);
+              const isPM = match[3].toLowerCase() === 'pm';
+              const hour24 = isPM && hour !== 12 ? hour + 12 : (!isPM && hour === 12 ? 0 : hour);
+              
+              const today = DateTime.fromJSDate(referenceDate, { zone: validatedParams.timezone });
+              let targetTime = today.set({ hour: hour24, minute, second: 0, millisecond: 0 });
+              
+              // If the time has already passed today, set it for tomorrow
+              if (targetTime.toJSDate().getTime() <= referenceDate.getTime()) {
+                targetTime = targetTime.plus({ days: 1 });
+              }
+              
+              const futureDate = targetTime.toUTC().toISO();
+              
+              if (futureDate) {
+                extractedDates.push({
+                  originalText: validatedParams.text,
+                  parsedDate: futureDate,
+                  confidence: 0.95,
+                  type: "absolute",
+                });
+                logWarn("Generated time-only date", { futureDate, hour24, minute, isPM });
+                break; // Stop processing other patterns
+              }
+              continue; // Skip duration processing for time-only patterns
+            } else if (unit === "time_only_hour") {
+              // Handle "3 pm"
+              const hour = parseInt(match[1]);
+              const isPM = match[2].toLowerCase() === 'pm';
+              const hour24 = isPM && hour !== 12 ? hour + 12 : (!isPM && hour === 12 ? 0 : hour);
+              
+              const today = DateTime.fromJSDate(referenceDate, { zone: validatedParams.timezone });
+              let targetTime = today.set({ hour: hour24, minute: 0, second: 0, millisecond: 0 });
+              
+              // If the time has already passed today, set it for tomorrow
+              if (targetTime.toJSDate().getTime() <= referenceDate.getTime()) {
+                targetTime = targetTime.plus({ days: 1 });
+              }
+              
+              const futureDate = targetTime.toUTC().toISO();
+              
+              if (futureDate) {
+                extractedDates.push({
+                  originalText: validatedParams.text,
+                  parsedDate: futureDate,
+                  confidence: 0.95,
+                  type: "absolute",
+                });
+                logWarn("Generated hour-only date", { futureDate, hour24, isPM });
+                break; // Stop processing other patterns
+              }
+              continue; // Skip duration processing for time-only patterns
             } else {
               const val = parseFloat(match[1]);
               duration =
@@ -772,19 +857,20 @@ export function pickBestDate(
   if (!extractedDates || extractedDates.length === 0) {
     return null;
   }
-  const now = Date.now();
-  const futureDates = extractedDates.filter(
-    (d) => new Date(d.parsedDate).getTime() > now,
-  );
-  if (futureDates.length === 0) {
-    return null;
-  }
-  futureDates.sort((a, b) => {
-    const confDiff = b.confidence - a.confidence;
-    if (Math.abs(confDiff) > 0.1) return confDiff;
-    return new Date(a.parsedDate).getTime() - new Date(b.parsedDate).getTime();
-  });
-  return futureDates[0].parsedDate;
+  
+  // Validate that the date is actually valid
+  const sorted = extractedDates
+    .filter(date => {
+      try {
+        const parsed = new Date(date.parsedDate);
+        return !isNaN(parsed.getTime());
+      } catch {
+        return false;
+      }
+    })
+    .sort((a, b) => b.confidence - a.confidence);
+    
+  return sorted[0]?.parsedDate || null;
 }
 export function ensureFuture(dateISO: string, timezone: string): string {
   return ensureFutureInZone(dateISO, timezone);

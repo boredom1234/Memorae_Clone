@@ -371,6 +371,10 @@ export class MessageController {
                 userId: user.id,
                 searchQuery: "Take Meds",
                 naturalTimeText: "10:30 PM",
+                _context: {
+                  timezone: user.timezone,
+                  originalMessage: "Update reminder time to 10:30 PM",
+                },
               });
               const rendered = this.responseFormatter.getResponseMessage(
                 result,
@@ -461,6 +465,10 @@ export class MessageController {
             userId: user.id,
             searchQuery: targetId,
             naturalTimeText: newTime,
+            _context: {
+              timezone: user.timezone,
+              originalMessage: `Update reminder time to ${newTime}`,
+            },
           });
         } else if (action === "snoozeReminder") {
           result = { text: "Snooze confirmed." };

@@ -34,6 +34,11 @@ export function createListAITools(
           ),
       }),
       execute: dedupe("createList", async (params) => {
+        // Validate required parameters
+        if (!params.name || typeof params.name !== 'string' || params.name.trim().length === 0) {
+          throw new Error("List name is required and cannot be empty.");
+        }
+        
         const listData: any = { ...params };
         if (!listData.icon) {
           const nameLower = params.name.toLowerCase();
@@ -108,6 +113,17 @@ export function createListAITools(
           .describe("Optional notes/context for the items being added"),
       }),
       execute: dedupe("addItemToList", async (params) => {
+        // Validate required parameters
+        if (!params.items || !Array.isArray(params.items) || params.items.length === 0) {
+          throw new Error("At least one item is required to add to the list.");
+        }
+        
+        // Validate all items are strings and not empty
+        const invalidItems = params.items.filter(item => !item || typeof item !== 'string' || item.trim().length === 0);
+        if (invalidItems.length > 0) {
+          throw new Error("All items must be non-empty strings.");
+        }
+        
         const ctx = (params as any)._context || {};
         let listName = params.listName || "General";
         if (!params.listName && ctx.originalMessage) {
@@ -272,6 +288,14 @@ export function createListAITools(
         newContent: z.string().optional().describe("New content for the item"),
       }),
       execute: dedupe("updateListItem", async (params) => {
+        // Validate required parameters
+        if (!params.listName || typeof params.listName !== 'string' || params.listName.trim().length === 0) {
+          throw new Error("List name is required to find the item to update.");
+        }
+        if (!params.itemText || typeof params.itemText !== 'string' || params.itemText.trim().length === 0) {
+          throw new Error("Item text is required to find the item to update.");
+        }
+        
         const listItems = await listQueryService.getListItems({
           userId,
           listName: params.listName,
