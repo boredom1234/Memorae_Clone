@@ -158,6 +158,28 @@ The system logs:
 - Failure reasons (tools missing, invalid time, not found)
 - Intent detection results with confidence scores
 
+## Codebase Overview
+
+This is a high-level overview of the server codebase. For more details, see `server/Codebase_Documentation.md`.
+
+- **`src/app.ts` & `src/index.ts`**: Main application entry points. `index.ts` starts the server and `app.ts` configures the Fastify instance.
+- **`src/config`**: Environment variable validation and configuration.
+- **`src/controllers`**: Handles incoming messages and API requests.
+    - `message-handler.ts`: Main controller for message processing.
+    - `notification-controller.ts`: API routes for notifications.
+    - `handlers/`: Specific handlers for media, onboarding, and response formatting.
+- **`src/lib`**: Shared library code, like the Supabase client.
+- **`src/middleware`**: Input validation and rate limiting.
+- **`src/models`**: TypeScript types for database tables.
+- **`src/services`**: Core business logic.
+    - `ai-service.ts`: Core of AI interaction.
+    - `whatsapp-manager.ts` & `telegram-manager.ts`: Manage platform connections.
+    - `reminder-scheduler.ts`: Schedules and sends reminders.
+    - `tools-registry.ts`: Central registry for AI tools.
+    - Sub-directories for specific features like `reminders`, `lists`, `notes`.
+- **`src/types`**: Conversation context types.
+- **`src/utils`**: Utility functions for error handling, logging, time, etc.
+
 ## License
 
 MIT

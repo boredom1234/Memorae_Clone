@@ -40,6 +40,16 @@ export function isCommandLike(message: string): boolean {
     "",
   );
   if (
+    /^(yes|yup|yeah|correct|right|that's right|exactly|sure|ok|okay|y)$/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  if (/\d+[:.]\d+\s*(am|pm|sorry|correction|actually)/i.test(text)) {
+    return true;
+  }
+  if (
     /\b(remember(?: (?:this|that))?|take a note|make (?:a )?note|note:|note this|note that|save (?:this|that)|store (?:this|that)|keep track)\b/i.test(
       text,
     )
@@ -87,6 +97,14 @@ export function isCommandLike(message: string): boolean {
 }
 export function heuristicToolSelection(message: string): string {
   const text = message.toLowerCase().trim();
+  if (
+    /^(yes|yup|yeah|correct|right|that's right|exactly|sure|y)$/i.test(text)
+  ) {
+    return "conversational_with_context";
+  }
+  if (/\d+[:.]\d+\s*(am|pm|sorry|correction|actually)/i.test(text)) {
+    return "updateReminder";
+  }
   if (
     /^(remind (me|us)\b|remind me to\b|set (a )?reminder\b|set (a )?timer\b|set (a|an )?alarm\b|schedule (a )?(reminder|alarm)\b|wake me\b|alert me\b|notify me\b|timer for\b)/.test(
       text,

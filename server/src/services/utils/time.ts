@@ -395,9 +395,24 @@ export function parseNaturalLanguageDate(params: {
         try {
           const date = result.start.date();
           const isAbsolute = result.start.isCertain("day");
-          const utcISO = isAbsolute
-            ? wallClockToUTCFromZone(date, validatedParams.timezone)
-            : date.toISOString();
+          const hasTimeOnly =
+            result.start.isCertain("hour") && !result.start.isCertain("day");
+          let finalDate = date;
+          if (hasTimeOnly) {
+            const today = DateTime.now().setZone(validatedParams.timezone);
+            finalDate = today
+              .set({
+                hour: date.getHours(),
+                minute: date.getMinutes(),
+                second: 0,
+                millisecond: 0,
+              })
+              .toJSDate();
+          }
+          const utcISO =
+            isAbsolute || hasTimeOnly
+              ? wallClockToUTCFromZone(finalDate, validatedParams.timezone)
+              : finalDate.toISOString();
           return {
             originalText: result.text,
             parsedDate: utcISO,
@@ -503,6 +518,15 @@ export function parseNaturalLanguageDate(params: {
           },
           {
             pattern:
+              /in\s*(\d+)\s*(hrs?|hours?)\s*(?:and\s*)?(\d+)\s*(mins?|minutes?)/i,
+            unit: "complex_hours_minutes_in",
+          },
+          {
+            pattern: /(\d+)\s*hour\s*(\d+)\s*minutes?\s*from\s*now/i,
+            unit: "hour_minutes_from_now",
+          },
+          {
+            pattern:
               /(\d+)\s*(hrs?|hours?)\s*(?:and\s*)?(\d+)\s*(mins?|minutes?)/i,
             unit: "complex_hours_minutes",
           },
@@ -516,9 +540,16 @@ export function parseNaturalLanguageDate(params: {
               unit,
             });
             let duration = {};
-            if (unit === "complex_hours_minutes") {
+            if (
+              unit === "complex_hours_minutes" ||
+              unit === "complex_hours_minutes_in"
+            ) {
               const hours = parseFloat(match[1]);
               const minutes = parseFloat(match[3]);
+              duration = { hours, minutes };
+            } else if (unit === "hour_minutes_from_now") {
+              const hours = parseFloat(match[1]);
+              const minutes = parseFloat(match[2]);
               duration = { hours, minutes };
             } else {
               const val = parseFloat(match[1]);

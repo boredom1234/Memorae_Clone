@@ -77,17 +77,28 @@ export class AIService {
     let selectedToolName = selectedToolNameFromRouter;
     if (selectedToolNameFromRouter === "no_tool_needed") {
       const heuristic = heuristicToolSelection(textForRouting);
-      const allowHeuristic = commandLike || heuristic === "createNote";
+      const allowHeuristic =
+        commandLike ||
+        heuristic === "createNote" ||
+        heuristic === "conversational_with_context";
       if (heuristic !== "no_tool_needed" && allowHeuristic) {
-        const maybeTool = toolsRegistry.getSingleAISDKTool(userId, heuristic, {
-          originalMessage: textForProcessing,
-          timezone,
-        });
-        if (maybeTool && Object.keys(maybeTool).length > 0) {
-          this.logger.info(
-            `Router returned no_tool_needed; heuristic selected ${heuristic}`,
+        if (heuristic === "conversational_with_context") {
+          selectedToolName = "no_tool_needed";
+        } else {
+          const maybeTool = toolsRegistry.getSingleAISDKTool(
+            userId,
+            heuristic,
+            {
+              originalMessage: textForProcessing,
+              timezone,
+            },
           );
-          selectedToolName = heuristic;
+          if (maybeTool && Object.keys(maybeTool).length > 0) {
+            this.logger.info(
+              `Router returned no_tool_needed; heuristic selected ${heuristic}`,
+            );
+            selectedToolName = heuristic;
+          }
         }
       }
     }

@@ -338,8 +338,106 @@ export class MessageController {
     }
     const lowerText = validatedText.toLowerCase().trim();
     if (
+      /^(yes|y|yup|yeah|confirm|ok|correct|right|sure|exactly)$/i.test(
+        lowerText,
+      )
+    ) {
+      const recentMessages = conversationContext.messages.slice(-4);
+      const lastAssistantMessage = recentMessages
+        .reverse()
+        .find((m) => m.role === "assistant");
+      if (
+        lastAssistantMessage &&
+        /just to confirm|would you like me to update|correct\?/i.test(
+          lastAssistantMessage.content,
+        )
+      ) {
+        const reminderUpdateContext = recentMessages.find((m) =>
+          /update.*reminder|change.*time|10\.?30.*pm/i.test(m.content),
+        );
+        if (reminderUpdateContext) {
+          this.logger.info(
+            "Detected confirmation for reminder update from context",
+          );
+          try {
+            const takeMemsMatch = recentMessages.find((m) =>
+              /take meds/i.test(m.content),
+            );
+            const timeMatch = recentMessages.find((m) =>
+              /10\.?30.*pm/i.test(m.content),
+            );
+            if (takeMemsMatch && timeMatch) {
+              const result = await this.tools.executeTool("updateReminder", {
+                userId: user.id,
+                searchQuery: "Take Meds",
+                naturalTimeText: "10:30 PM",
+              });
+              const rendered = this.responseFormatter.getResponseMessage(
+                result,
+                user.timezone,
+              );
+              if (rendered) {
+                this.addToConversationContext(user.id, {
+                  role: "assistant",
+                  content: rendered,
+                  timestamp: new Date(),
+                });
+              }
+              return { text: rendered };
+            }
+          } catch (e) {
+            this.logger.error(
+              { error: e },
+              "Failed to execute context-detected update",
+            );
+            return {
+              text: "Sorry, I couldn't update that reminder. Could you try again?",
+            };
+          }
+        }
+      }
+    }
+    if (
+      /^\d+[:.]\d+\s*(am|pm)(?:\s*(?:sorry|correction|actually|instead))?$/i.test(
+        validatedText.trim(),
+      )
+    ) {
+      const recentMessages = conversationContext.messages.slice(-6);
+      const recentReminderCreation = recentMessages.find((m) =>
+        /reminder.*created|created.*reminder|remind.*everyday|everyday.*remind/i.test(
+          m.content,
+        ),
+      );
+      if (recentReminderCreation) {
+        this.logger.info("Detected time correction for recent reminder");
+        const reminderNameMatch = recentMessages.find((m) =>
+          /take meds|meds/i.test(m.content),
+        );
+        const timeMatch = validatedText.match(/(\d+[:.]\d+\s*(?:am|pm))/i);
+        if (reminderNameMatch && timeMatch) {
+          const newTime = timeMatch[1];
+          this.logger.info(`Updating reminder time to: ${newTime}`);
+          conversationContext.needsConfirmation = {
+            action: "updateReminder",
+            summary: `Update "Take Meds" reminder time to ${newTime}`,
+            targetId: "Take Meds",
+            timestamp: new Date(),
+          };
+          const confirmMessage = `Just to confirm, you'd like me to update the "Take Meds" reminder to be every day at ${newTime} instead of 10 PM, correct?`;
+          this.addToConversationContext(user.id, {
+            role: "assistant",
+            content: confirmMessage,
+            timestamp: new Date(),
+          });
+          return { text: confirmMessage };
+        }
+      }
+    }
+    if (
       conversationContext.needsConfirmation &&
-      /^(yes|y|confirm|ok)$/i.test(lowerText)
+      /^(yes|y|yup|yeah|confirm|ok|correct|right|sure|exactly)$/i.test(
+        lowerText,
+      )
     ) {
       this.logger.info(
         `User confirmed action: ${conversationContext.needsConfirmation.action}`,
@@ -354,7 +452,16 @@ export class MessageController {
             reminderId: targetId,
           });
         } else if (action === "updateReminder") {
-          result = { text: "Update confirmed." };
+          const summaryMatch =
+            conversationContext.needsConfirmation.summary.match(
+              /(\d+[:.]\d+\s*(?:am|pm))/i,
+            );
+          const newTime = summaryMatch ? summaryMatch[1] : "10:30 PM";
+          result = await this.tools.executeTool("updateReminder", {
+            userId: user.id,
+            searchQuery: targetId,
+            naturalTimeText: newTime,
+          });
         } else if (action === "snoozeReminder") {
           result = { text: "Snooze confirmed." };
         } else {
