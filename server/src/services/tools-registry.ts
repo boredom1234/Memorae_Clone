@@ -857,6 +857,9 @@ export class ToolsRegistry {
     if (reminderQueryTools.includes(primaryToolName)) {
       if (allTools.getCurrentTime)
         selectedTools.getCurrentTime = allTools.getCurrentTime;
+      if (allTools.calculateTimeDifference)
+        selectedTools.calculateTimeDifference =
+          allTools.calculateTimeDifference;
     }
     if (
       context?.originalMessage &&
@@ -866,6 +869,13 @@ export class ToolsRegistry {
     ) {
       if (allTools.getCurrentTime && !selectedTools.getCurrentTime) {
         selectedTools.getCurrentTime = allTools.getCurrentTime;
+      }
+      if (
+        allTools.calculateTimeDifference &&
+        !selectedTools.calculateTimeDifference
+      ) {
+        selectedTools.calculateTimeDifference =
+          allTools.calculateTimeDifference;
       }
       if (
         !selectedTools.listReminders &&
@@ -965,6 +975,10 @@ export class ToolsRegistry {
     ) {
       if (allTools.getCurrentTime) {
         selectedTools.getCurrentTime = allTools.getCurrentTime;
+      }
+      if (allTools.calculateTimeDifference) {
+        selectedTools.calculateTimeDifference =
+          allTools.calculateTimeDifference;
       }
     }
     if ((allTools as any).__stats) {

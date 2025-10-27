@@ -523,6 +523,56 @@ export class UtilityService {
       throw handleServiceError(error, "getCurrentTime");
     }
   }
+  calculateTimeDifference(params: {
+    toTime: string;
+    fromTime?: string;
+    includeSeconds?: boolean;
+  }): {
+    diffMs: number;
+    isFuture: boolean;
+    parts: { days: number; hours: number; minutes: number; seconds: number };
+    formatted: string;
+  } {
+    try {
+      const to = new Date(params.toTime);
+      const from = params.fromTime ? new Date(params.fromTime) : new Date();
+      if (isNaN(to.getTime())) {
+        throw new ValidationError("Invalid toTime ISO datetime");
+      }
+      if (isNaN(from.getTime())) {
+        throw new ValidationError("Invalid fromTime ISO datetime");
+      }
+      const diffMs = to.getTime() - from.getTime();
+      const absMs = Math.abs(diffMs);
+      let remaining = Math.floor(absMs / 1000);
+      const days = Math.floor(remaining / (24 * 60 * 60));
+      remaining -= days * 24 * 60 * 60;
+      const hours = Math.floor(remaining / (60 * 60));
+      remaining -= hours * 60 * 60;
+      const minutes = Math.floor(remaining / 60);
+      remaining -= minutes * 60;
+      const seconds = Math.max(0, remaining);
+      const parts: string[] = [];
+      if (days > 0) parts.push(`${days} day${days !== 1 ? "s" : ""}`);
+      if (hours > 0) parts.push(`${hours} hour${hours !== 1 ? "s" : ""}`);
+      if (minutes > 0) parts.push(`${minutes} minute${minutes !== 1 ? "s" : ""}`);
+      const includeSeconds =
+        params.includeSeconds ?? (days === 0 && hours === 0);
+      if (includeSeconds || parts.length === 0) {
+        parts.push(`${seconds} second${seconds !== 1 ? "s" : ""}`);
+      }
+      const formatted = parts.join(", ").replace(/, (?=[^,]*$)/, ", and ");
+      return {
+        diffMs,
+        isFuture: diffMs >= 0,
+        parts: { days, hours, minutes, seconds },
+        formatted,
+      };
+    } catch (error) {
+      logError("Failed to calculate time difference", error, params);
+      throw handleServiceError(error, "calculateTimeDifference");
+    }
+  }
   pickBestDate(
     extractedDates: Array<{
       originalText: string;

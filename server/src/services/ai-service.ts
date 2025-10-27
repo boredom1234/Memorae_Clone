@@ -1,4 +1,4 @@
-import { generateText } from "ai";
+import { generateText, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { google } from "@ai-sdk/google";
@@ -638,6 +638,7 @@ ${summary ? `- Conversation summary (condensed prior messages):\n${summary}` : "
             { role: "user" as const, content: textForProcessing },
           ],
           tools: effectiveTools,
+          stopWhen: stepCountIs(8),
           maxSteps: 10,
         } as any);
         const toolStats = (effectiveTools as any).__stats;
@@ -1123,6 +1124,7 @@ ${summary ? `Conversation summary (condensed prior messages):\n${summary}` : ""}
           system: systemPrompt,
           messages: messagesWithCurrent,
           tools: effectiveTools,
+          stopWhen: stepCountIs(8),
           maxSteps: 10,
         } as any);
         const toolStats = (effectiveTools as any).__stats;
