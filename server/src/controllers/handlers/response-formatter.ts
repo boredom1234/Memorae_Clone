@@ -17,6 +17,21 @@ export class ResponseFormatter {
     };
     const r = unwrap(result);
     if (!r) return "I couldn't format that result.";
+
+    // Helper to get a display time from various possible shapes
+    const getDisplayTime = (item: any): string | undefined => {
+      try {
+        const formatted = item.reminderTimeFormatted || item.reminder_time_formatted;
+        if (formatted && typeof formatted === 'string') return formatted;
+        const raw = item.reminderTime || item.reminder_time;
+        if (!raw) return undefined;
+        if (timezone) return formatInZone(raw, timezone);
+        const d = new Date(raw);
+        return isNaN(d.getTime()) ? String(raw) : d.toLocaleString();
+      } catch {
+        return undefined;
+      }
+    };
     if ((r as any).text) {
       const text = (r as any).text;
       if (
@@ -35,10 +50,8 @@ export class ResponseFormatter {
       }
       return `📅 Your reminders:\n${reminders
         .map((rem: any, i: number) => {
-          const ts = timezone
-            ? formatInZone(rem.reminderTime, timezone)
-            : new Date(rem.reminderTime).toLocaleString();
-          return `${i + 1}. ${this.escapeMarkdown(rem.title)} - ${ts}`;
+          const ts = getDisplayTime(rem) || '';
+          return `${i + 1}. ${this.escapeMarkdown(rem.title)}${ts ? ' - ' + ts : ''}`;
         })
         .join("\n")}`;
     }
@@ -194,7 +207,8 @@ export class ResponseFormatter {
       return `✅ Note saved!\n${title}${title ? "\n" : ""}${(r as any).content}${tags}`;
     }
     if ((r as any).success === true) {
-      return "✅ Note deleted successfully!";
+      if ((r as any).message) return (r as any).message;
+      return "✅ Success.";
     }
     return "I couldn't format that result.";
   }

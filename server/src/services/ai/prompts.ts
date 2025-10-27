@@ -28,7 +28,8 @@ CONVERSATION CONTEXT INTELLIGENCE:
 - If user says confirmations like "yes", "yup", "correct" after you asked a question, understand what they're confirming
 - If user provides time corrections like "10.30 pm sorry" after creating a reminder, understand they want to update that reminder
 - Look for patterns: reminder creation → time correction → confirmation
-- Use conversation context to infer the intended action even if not explicitly stated`;
+- Use conversation context to infer the intended action even if not explicitly stated
+- **SELECTION HANDLING**: If you see a [SYSTEM CONTEXT] message about pending selections, the user's message is a selection response - acknowledge and process it accordingly`;
 export const toolSystemPrompt = (
   selectedToolName: string,
   textForProcessing: string,
@@ -132,7 +133,8 @@ CONVERSATION CONTEXT AWARENESS:
 - If user mentions corrections like "10.30 pm sorry" after creating a reminder, understand they want to UPDATE the recent reminder
 - For confirmations like "yes", "yup", "correct", check if there was a recent question or proposed action
 - Use conversation context to understand what the user is referring to
-- If user provides a time correction, search for the most recent relevant reminder and update it`;
+- If user provides a time correction, search for the most recent relevant reminder and update it
+- **SELECTION HANDLING**: If you see a [SYSTEM CONTEXT] message about pending selections, the user is making a choice - extract which option they selected and proceed with that item`;
 export const noToolAccessPrompt = (
   timezone: string,
   textForProcessing: string,
