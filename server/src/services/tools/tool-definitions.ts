@@ -19,6 +19,8 @@ import { createUtilityAITools } from "./definitions/utility";
 import { createNotificationAITools } from "./definitions/notification";
 import { createMediaAITools } from "./definitions/media";
 import { createActivityAITools } from "./definitions/activity";
+import { PendingActionService } from "../pending-action-service";
+import { createInteractionAITools } from "./definitions/interaction";
 export interface ToolServices {
   userService: UserService;
   reminderService: ReminderService;
@@ -33,6 +35,7 @@ export interface ToolServices {
   notificationService: NotificationService;
   mediaService: MediaAttachmentService;
   activityService: ActivityService;
+  pendingActionService: PendingActionService;
 }
 export type DedupeFunction = <T>(
   name: string,
@@ -52,5 +55,6 @@ export function createAISDKTools(
     ...createNotificationAITools(userId, services, dedupe),
     ...createMediaAITools(userId, services, dedupe),
     ...createActivityAITools(userId, services, dedupe),
+    ...createInteractionAITools(userId, services, dedupe),
   };
 }

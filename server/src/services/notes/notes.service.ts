@@ -241,4 +241,56 @@ export class NotesService {
       updatedAt: dbNote.updated_at,
     };
   }
+  async mergeNotes(params: {
+    userId: string;
+    noteIds: string[];
+    newTitle?: string;
+  }): Promise<UserNote> {
+    try {
+      if (!params.noteIds || params.noteIds.length < 2) {
+        throw new AppError("Provide at least two notes to merge", 400, "MERGE_NOTES_INVALID");
+      }
+      const { data: notes, error } = await this.supabase
+        .from("user_notes")
+        .select("*")
+        .eq("user_id", params.userId)
+        .in("id", params.noteIds);
+      if (error) throw error;
+      if (!notes || notes.length === 0) {
+        throw new AppError("No notes found to merge", 404, "MERGE_NOTES_NOT_FOUND");
+      }
+      // Sort by created_at ascending for readability
+      notes.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      const mergedContent = notes
+        .map((n: any, idx: number) => {
+          const titleLine = n.title ? `# ${n.title}\n` : "";
+          return `--- Note ${idx + 1} (${new Date(n.created_at).toISOString()}) ---\n${titleLine}${n.content || ""}`;
+        })
+        .join("\n\n\n");
+      const newTitle = params.newTitle || "Merged Notes";
+      const { data: newNote, error: createError } = await this.supabase
+        .from("user_notes")
+        .insert({
+          user_id: params.userId,
+          title: newTitle,
+          content: mergedContent,
+          tags: [],
+          category: "general",
+          is_pinned: false,
+          is_archived: false,
+        })
+        .select()
+        .single();
+      if (createError || !newNote) {
+        throw new AppError("Failed to create merged note", 500, "MERGE_NOTES_CREATE_ERROR");
+      }
+      logInfo("Notes merged", { userId: params.userId, count: notes.length, newNoteId: newNote.id });
+      return this.mapDatabaseNote(newNote);
+    } catch (error) {
+      logError("Error in mergeNotes", error, params);
+      throw error instanceof AppError
+        ? error
+        : new AppError("Failed to merge notes", 500, "MERGE_NOTES_ERROR");
+    }
+  }
 }

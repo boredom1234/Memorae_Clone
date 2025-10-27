@@ -386,6 +386,83 @@ export function createListAITools(
         });
       }),
     }),
+    renameList: tool({
+      description:
+        "Rename a list by id or by name. Use when user says 'rename X list to Y'.",
+      inputSchema: z.object({
+        listId: z.string().optional().describe("List ID"),
+        listName: z.string().optional().describe("Current list name"),
+        newName: z.string().describe("New name for the list"),
+      }),
+      execute: dedupe("renameList", async (params) => {
+        return await listService.renameList({
+          userId,
+          listId: params.listId,
+          listName: params.listName,
+          newName: params.newName,
+        });
+      }),
+    }),
+    mergeLists: tool({
+      description:
+        "Merge all items from a source list into a target list. Optionally delete the source after merge.",
+      inputSchema: z.object({
+        sourceListId: z.string().optional(),
+        sourceListName: z.string().optional(),
+        targetListId: z.string().optional(),
+        targetListName: z.string().optional(),
+        deleteSource: z.boolean().optional().describe("Delete source list after merge"),
+      }),
+      execute: dedupe("mergeLists", async (params) => {
+        return await listService.mergeLists({
+          userId,
+          sourceListId: params.sourceListId,
+          sourceListName: params.sourceListName,
+          targetListId: params.targetListId,
+          targetListName: params.targetListName,
+          deleteSource: params.deleteSource || false,
+        });
+      }),
+    }),
+    batchAddItemsToList: tool({
+      description:
+        "Add many items to a list in batches (idempotent by tool dedupe).",
+      inputSchema: z.object({
+        listName: z.string().describe("Name of the list"),
+        items: z.array(z.string()).describe("Items to add (can be 100+)"),
+      }),
+      execute: dedupe("batchAddItemsToList", async (params) => {
+        const chunks: string[][] = [];
+        for (let i = 0; i < params.items.length; i += 50) {
+          chunks.push(params.items.slice(i, i + 50));
+        }
+        let totalAdded = 0;
+        const errors: string[] = [];
+        for (let i = 0; i < chunks.length; i++) {
+          try {
+            const res = await listItemService.addItemToList({
+              userId,
+              listName: params.listName,
+              items: chunks[i],
+            });
+            totalAdded += res.addedCount || chunks[i].length;
+          } catch (e: any) {
+            errors.push(`Batch ${i + 1}: ${e?.message || "unknown error"}`);
+          }
+        }
+        return {
+          success: errors.length === 0,
+          addedCount: totalAdded,
+          totalItems: params.items.length,
+          batches: chunks.length,
+          message:
+            errors.length > 0
+              ? `Added ${totalAdded} of ${params.items.length} items. Errors: ${errors.join("; ")}`
+              : `Successfully added all ${totalAdded} items in ${chunks.length} batches.`,
+          errors: errors.length ? errors : undefined,
+        };
+      }),
+    }),
     getListStats: tool({
       description:
         "Get statistics about user's lists. Triggers: list stats, how many lists, list summary.",

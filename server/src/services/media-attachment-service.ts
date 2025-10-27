@@ -72,6 +72,23 @@ export class MediaAttachmentService {
       throw error;
     }
   }
+  async getAttachment(attachmentId: string): Promise<MediaAttachment | null> {
+    try {
+      const { data, error } = await this.supabase
+        .from("media_attachments")
+        .select("*")
+        .eq("id", attachmentId)
+        .single();
+      if (error) {
+        this.logger.error({ error }, "Failed to get attachment");
+        return null;
+      }
+      return data ? this.mapToMediaAttachment(data) : null;
+    } catch (error: any) {
+      this.logger.error({ error }, "Error getting attachment");
+      return null;
+    }
+  }
   async unlinkAttachment(attachmentId: string): Promise<{
     success: boolean;
     message: string;

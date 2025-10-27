@@ -322,4 +322,109 @@ export class ListService {
       throw handleServiceError(error, "duplicateList");
     }
   }
+  async renameList(params: {
+    userId: string;
+    listId?: string;
+    listName?: string;
+    newName: string;
+  }): Promise<{ success: boolean; message: string }> {
+    try {
+      if (!params.newName || params.newName.trim().length === 0) {
+        throw new ValidationError("New name cannot be empty");
+      }
+      let listId = params.listId;
+      if (!listId && params.listName) {
+        listId = await this.findListByName(params.userId, params.listName);
+        if (!listId) throw new NotFoundError("List", params.listName);
+      }
+      if (!listId) throw new ValidationError("Either listId or listName must be provided");
+      const { data: existing, error: checkError } = await this.supabase
+        .from("lists")
+        .select("id, user_id")
+        .eq("id", listId)
+        .single();
+      if (checkError || !existing) throw new NotFoundError("List", listId);
+      if (existing.user_id !== params.userId)
+        throw new ValidationError("List does not belong to user");
+      const { error } = await this.supabase
+        .from("lists")
+        .update({ name: params.newName.trim(), updated_at: new Date().toISOString() })
+        .eq("id", listId)
+        .eq("user_id", params.userId);
+      if (error) throw error;
+      return { success: true, message: `List renamed to "${params.newName}"` };
+    } catch (error) {
+      logError("Failed to rename list", error, params);
+      throw handleServiceError(error, "renameList");
+    }
+  }
+  async mergeLists(params: {
+    userId: string;
+    sourceListId?: string;
+    sourceListName?: string;
+    targetListId?: string;
+    targetListName?: string;
+    deleteSource?: boolean;
+  }): Promise<{ success: boolean; message: string; targetListId: string; movedCount: number }> {
+    try {
+      let sourceId = params.sourceListId;
+      if (!sourceId && params.sourceListName) {
+        sourceId = await this.findListByName(params.userId, params.sourceListName);
+        if (!sourceId) throw new NotFoundError("List", params.sourceListName);
+      }
+      let targetId = params.targetListId;
+      if (!targetId && params.targetListName) {
+        targetId = await this.findListByName(params.userId, params.targetListName);
+        if (!targetId) throw new NotFoundError("List", params.targetListName);
+      }
+      if (!sourceId || !targetId) {
+        throw new ValidationError("Both source and target lists must be specified");
+      }
+      if (sourceId === targetId) {
+        throw new ValidationError("Source and target lists cannot be the same");
+      }
+      const { data: targetMax } = await this.supabase
+        .from("list_items")
+        .select("position")
+        .eq("list_id", targetId)
+        .order("position", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      let nextPos = (targetMax?.position ?? -1) + 1;
+      const { data: sourceItems, error: srcErr } = await this.supabase
+        .from("list_items")
+        .select("id, content, notes, is_completed, position")
+        .eq("list_id", sourceId)
+        .order("position", { ascending: true });
+      if (srcErr) throw srcErr;
+      let movedCount = 0;
+      if (sourceItems && sourceItems.length > 0) {
+        const newItems = sourceItems.map((it) => ({
+          list_id: targetId!,
+          content: it.content,
+          notes: it.notes,
+          is_completed: it.is_completed,
+          position: nextPos++,
+          updated_at: new Date().toISOString(),
+        }));
+        const { error: insertErr } = await this.supabase
+          .from("list_items")
+          .insert(newItems);
+        if (insertErr) throw insertErr;
+        movedCount = newItems.length;
+      }
+      if (params.deleteSource) {
+        const { error: delErr } = await this.supabase
+          .from("lists")
+          .delete()
+          .eq("id", sourceId)
+          .eq("user_id", params.userId);
+        if (delErr) throw delErr;
+      }
+      return { success: true, message: `Merged ${movedCount} item(s) into target list`, targetListId: targetId, movedCount };
+    } catch (error) {
+      logError("Failed to merge lists", error, params);
+      throw handleServiceError(error, "mergeLists");
+    }
+  }
 }

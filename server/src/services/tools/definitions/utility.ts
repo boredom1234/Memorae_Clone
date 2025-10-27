@@ -6,7 +6,7 @@ export function createUtilityAITools(
   services: ToolServices,
   dedupe: DedupeFunction,
 ) {
-  const { utilityService, userService } = services;
+  const { utilityService, userService, reminderQueryService, listService, listQueryService } = services;
   return {
     getCurrentTime: tool({
       description:
@@ -63,6 +63,111 @@ export function createUtilityAITools(
           taskDescription: params.taskDescription,
           timezone: tz,
         });
+      }),
+    }),
+    buildRecurrenceRule: tool({
+      description:
+        "Convert natural language recurrence (e.g., 'every weekday', 'every 2nd Saturday') into an RRULE. Provide startTime if available to set BYHOUR/BYMINUTE.",
+      inputSchema: z.object({
+        natural: z.string().describe("Natural language recurrence description"),
+        startTime: z.string().optional().describe("Start ISO datetime to infer time components"),
+      }),
+      execute: dedupe("buildRecurrenceRule", async (params) => {
+        const settings = await userService.getUserSettings(userId);
+        const tz = settings?.timezone || "UTC";
+        return utilityService.buildRecurrenceRule({
+          natural: params.natural,
+          timezone: tz,
+          startTime: params.startTime,
+        });
+      }),
+    }),
+    explainRecurrenceRule: tool({
+      description:
+        "Explain an RRULE in friendly natural language so the user can confirm it.",
+      inputSchema: z.object({
+        rrule: z.string().describe("RRULE to explain"),
+      }),
+      execute: dedupe("explainRecurrenceRule", async (params) => {
+        return utilityService.explainRecurrenceRule(params.rrule);
+      }),
+    }),
+    getNextOccurrences: tool({
+      description:
+        "Compute the next N occurrence timestamps for a given RRULE or reminderId.",
+      inputSchema: z.object({
+        rrule: z.string().optional().describe("RRULE; provide either this or reminderId"),
+        reminderId: z.string().optional().describe("Reminder ID; alternative to RRULE"),
+        count: z.number().optional().describe("Number of occurrences to return (default 5)"),
+        startTime: z.string().optional().describe("Start from this ISO time if provided"),
+      }),
+      execute: dedupe("getNextOccurrences", async (params) => {
+        const settings = await userService.getUserSettings(userId);
+        const tz = settings?.timezone || "UTC";
+        return utilityService.getNextOccurrences({
+          rrule: params.rrule,
+          reminderId: params.reminderId,
+          count: params.count || 5,
+          timezone: tz,
+          startTime: params.startTime,
+        });
+      }),
+    }),
+    resolveReminderByText: tool({
+      description:
+        "Resolve a reminder by fuzzy text, returning the best matching reminder id/title/time.",
+      inputSchema: z.object({
+        query: z.string().describe("Text describing the reminder"),
+      }),
+      execute: dedupe("resolveReminderByText", async (params) => {
+        const res = await reminderQueryService.searchReminders({
+          userId,
+          query: params.query,
+          limit: 5,
+        });
+        if (!res.results || res.results.length === 0) {
+          return { success: false, message: "No matching reminders found" };
+        }
+        const best = res.results[0];
+        return {
+          success: true,
+          id: best.id,
+          title: best.title,
+          reminderTime: best.reminderTime,
+          candidates: res.results,
+        };
+      }),
+    }),
+    resolveListByName: tool({
+      description:
+        "Resolve a list by name, returning its listId. Uses fuzzy normalization (e.g., 'my shopping list' → 'shopping').",
+      inputSchema: z.object({
+        name: z.string().describe("List name provided by the user"),
+      }),
+      execute: dedupe("resolveListByName", async (params) => {
+        const listId = await listService.findListByName(userId, params.name);
+        if (!listId) return { success: false, message: "List not found" };
+        return { success: true, listId };
+      }),
+    }),
+    parseItemsFromText: tool({
+      description:
+        "Parse multiple list items from unstructured text or pasted lines/CSV/bullets.",
+      inputSchema: z.object({
+        text: z.string().describe("Raw text containing items (lines, commas, bullets)"),
+      }),
+      execute: dedupe("parseItemsFromText", async (params) => {
+        return utilityService.parseListItemsFromText(params.text);
+      }),
+    }),
+    extractTasksFromText: tool({
+      description:
+        "Extract likely task lines from a block of text (notes, OCR, transcript).",
+      inputSchema: z.object({
+        text: z.string().describe("Text to scan for tasks"),
+      }),
+      execute: dedupe("extractTasksFromText", async (params) => {
+        return utilityService.extractTasksFromText(params.text);
       }),
     }),
     calculateTimeDifference: tool({

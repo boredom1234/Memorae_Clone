@@ -15,6 +15,7 @@ import { AppError } from "../utils/errors";
 import { logError, logInfo } from "../utils/logger";
 import { createAISDKTools, ToolServices } from "./tools/tool-definitions";
 import { createDeduplicationWrapper } from "./tools/tool-deduplication";
+import { PendingActionService } from "./pending-action-service";
 export class ToolsRegistry {
   private userService: UserService;
   private reminderService: ReminderService;
@@ -29,6 +30,7 @@ export class ToolsRegistry {
   private notificationService: NotificationService;
   private mediaService: MediaAttachmentService;
   private activityService: ActivityService;
+  private pendingActionService: PendingActionService;
   constructor() {
     this.userService = new UserService();
     this.reminderService = new ReminderService();
@@ -43,6 +45,7 @@ export class ToolsRegistry {
     this.notificationService = new NotificationService();
     this.mediaService = new MediaAttachmentService();
     this.activityService = new ActivityService();
+    this.pendingActionService = new PendingActionService();
   }
   getTools() {
     return {
@@ -712,6 +715,7 @@ export class ToolsRegistry {
       notificationService: this.notificationService,
       mediaService: this.mediaService,
       activityService: this.activityService,
+      pendingActionService: this.pendingActionService,
     };
     const toolsObj = createAISDKTools(userId, services, dedupe);
     (toolsObj as any).__stats = stats;
@@ -827,6 +831,8 @@ export class ToolsRegistry {
       "transcribeMediaAttachment",
       "ocrMediaAttachment",
       "extractMediaEntities",
+      "createRemindersFromImage",
+      "extractListFromImage",
     ];
     const notificationTools = [
       "sendReminderToContact",
@@ -853,6 +859,14 @@ export class ToolsRegistry {
           allTools.parseNaturalLanguageDate;
       if (allTools.suggestReminderTime)
         selectedTools.suggestReminderTime = allTools.suggestReminderTime;
+      if (allTools.buildRecurrenceRule)
+        selectedTools.buildRecurrenceRule = allTools.buildRecurrenceRule;
+      if (allTools.explainRecurrenceRule)
+        selectedTools.explainRecurrenceRule = allTools.explainRecurrenceRule;
+      if (allTools.getNextOccurrences)
+        selectedTools.getNextOccurrences = allTools.getNextOccurrences;
+      if (allTools.resolveReminderByText)
+        selectedTools.resolveReminderByText = allTools.resolveReminderByText;
     }
     if (reminderQueryTools.includes(primaryToolName)) {
       if (allTools.getCurrentTime)
@@ -908,6 +922,10 @@ export class ToolsRegistry {
       ) {
         selectedTools.getListItems = allTools.getListItems;
       }
+      if (allTools.resolveListByName)
+        selectedTools.resolveListByName = allTools.resolveListByName;
+      if (allTools.parseItemsFromText)
+        selectedTools.parseItemsFromText = allTools.parseItemsFromText;
       if (
         (primaryToolName === "deleteList" ||
           primaryToolName === "archiveList" ||
@@ -940,6 +958,11 @@ export class ToolsRegistry {
       ) {
         selectedTools.extractMediaEntities = allTools.extractMediaEntities;
       }
+      if (allTools.createRemindersFromImage)
+        selectedTools.createRemindersFromImage =
+          allTools.createRemindersFromImage;
+      if (allTools.extractListFromImage)
+        selectedTools.extractListFromImage = allTools.extractListFromImage;
     }
     if (notificationTools.includes(primaryToolName)) {
       if (

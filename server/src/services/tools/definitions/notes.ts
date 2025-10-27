@@ -6,7 +6,7 @@ export function createNotesAITools(
   services: ToolServices,
   dedupe: DedupeFunction,
 ) {
-  const { notesService, notesQueryService } = services;
+  const { notesService, notesQueryService, utilityService } = services;
   return {
     createNote: tool({
       description:
@@ -275,6 +275,90 @@ export function createNotesAITools(
           noteId: searchResult.notes[0].id,
           newTitle: params.newTitle,
         });
+      }),
+    }),
+    summarizeNotes: tool({
+      description:
+        "Produce a concise summary of notes (optionally filtered by query), including counts and short highlights.",
+      inputSchema: z.object({
+        query: z.string().optional().describe("Optional search query to filter notes"),
+        limit: z.number().optional().describe("Max notes to include in highlights (default 5)"),
+      }),
+      execute: dedupe("summarizeNotes", async (params) => {
+        let notes: any[] = [];
+        if (params.query) {
+          const res = await notesQueryService.searchNotes({
+            userId,
+            query: params.query,
+            limit: Math.min(params.limit || 5, 20),
+            includeArchived: false,
+          });
+          notes = res.notes || [];
+        } else {
+          const res = await notesQueryService.listNotes({
+            userId,
+            onlyPinned: false,
+            limit: Math.min(params.limit || 5, 20),
+            includeArchived: false,
+            sortBy: "created",
+            sortOrder: "desc",
+          } as any);
+          notes = res.notes || [];
+        }
+        const stats = await notesQueryService.getNotesStats(userId);
+        const highlights = notes.map((n, i) => {
+          const title = n.title ? `${n.title}: ` : "";
+          const body = (n.content || "").split("\n")[0].slice(0, 100);
+          return `${i + 1}. ${title}${body}${body.length >= 100 ? "..." : ""}`;
+        });
+        return {
+          success: true,
+          totalNotes: stats.total,
+          pinned: stats.pinned,
+          recent7d: stats.recent,
+          categories: stats.categories,
+          highlights,
+          message: `You have ${stats.total} notes. ${highlights.length > 0 ? "Here are some highlights:\n" + highlights.join("\n") : ""}`,
+        };
+      }),
+    }),
+    mergeNotes: tool({
+      description:
+        "Merge multiple notes into a single new note (ordered by creation time).",
+      inputSchema: z.object({
+        noteIds: z.array(z.string()).min(2).describe("IDs of notes to merge"),
+        newTitle: z.string().optional().describe("Optional title for the merged note"),
+      }),
+      execute: dedupe("mergeNotes", async (params) => {
+        return notesService.mergeNotes({ userId, noteIds: params.noteIds, newTitle: params.newTitle });
+      }),
+    }),
+    extractTasksFromNote: tool({
+      description:
+        "Extract actionable tasks from a note's content using heuristics (lines like 'call', 'buy', 'email', etc.).",
+      inputSchema: z.object({
+        noteId: z.string().optional(),
+        searchQuery: z.string().optional(),
+      }),
+      execute: dedupe("extractTasksFromNote", async (params) => {
+        let note: any | null = null;
+        if (params.noteId) {
+          note = await notesQueryService.getNote(userId, params.noteId);
+        } else if (params.searchQuery) {
+          const res = await notesQueryService.searchNotes({ userId, query: params.searchQuery, limit: 5, includeArchived: false });
+          if (res.notes.length === 0) {
+            return { success: false, tasks: [], message: `No note found for "${params.searchQuery}"` };
+          }
+          note = res.notes[0];
+        }
+        if (!note) return { success: false, tasks: [], message: "Note not found" };
+        const { tasks } = utilityService.extractTasksFromText(note.content || "");
+        return {
+          success: true,
+          noteId: note.id,
+          tasks,
+          message: tasks.length ? `Found ${tasks.length} task(s) in note.` : "No clear tasks found in the note.",
+        };
       }),
     }),
   };

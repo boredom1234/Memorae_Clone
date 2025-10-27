@@ -33,6 +33,301 @@ export class UtilityService {
       return text;
     }
   }
+  buildRecurrenceRule(params: {
+    natural: string;
+    timezone: string;
+    startTime?: string; // ISO, used to infer BYHOUR/BYMINUTE
+  }): {
+    rrule: string;
+    message?: string;
+  } {
+    // Very lightweight NL -> RRULE heuristic covering common cases
+    try {
+      const text = params.natural.toLowerCase().trim();
+      const byTime = (() => {
+        try {
+          const base = params.startTime
+            ? DateTime.fromISO(params.startTime, { setZone: true })
+            : DateTime.now();
+          return `;BYHOUR=${base.hour};BYMINUTE=${base.minute}`;
+        } catch {
+          return "";
+        }
+      })();
+      const dayMap: Record<string, string> = {
+        sunday: "SU",
+        monday: "MO",
+        tuesday: "TU",
+        wednesday: "WE",
+        thursday: "TH",
+        friday: "FR",
+        saturday: "SA",
+        sun: "SU",
+        mon: "MO",
+        tue: "TU",
+        wed: "WE",
+        thu: "TH",
+        fri: "FR",
+        sat: "SA",
+      };
+      const weekdays = ["MO", "TU", "WE", "TH", "FR"]; 
+      // daily / every X days
+      const everyXDays = text.match(/every\s+(\d+)\s+days?/i);
+      if (/\b(daily|every day)\b/.test(text)) {
+        return { rrule: `FREQ=DAILY${byTime}` };
+      }
+      if (everyXDays) {
+        const interval = Math.max(1, parseInt(everyXDays[1], 10));
+        return { rrule: `FREQ=DAILY;INTERVAL=${interval}${byTime}` };
+      }
+      // weekdays
+      if (/\b(weekdays|every weekday)\b/.test(text)) {
+        return { rrule: `FREQ=WEEKLY;BYDAY=${weekdays.join(",")}${byTime}` };
+      }
+      // weekly by days (e.g., every monday and wednesday)
+      if (/\bevery\b.*\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)(?:\s*(,|and)\s*(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun))*\b/.test(text)) {
+        const found = Array.from(text.matchAll(/(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)/g)).map((m) => dayMap[m[1]]);
+        const unique = Array.from(new Set(found)).filter(Boolean);
+        if (unique.length > 0) return { rrule: `FREQ=WEEKLY;BYDAY=${unique.join(",")}${byTime}` };
+      }
+      // every X weeks on specific days
+      const everyXWeeks = text.match(/every\s+(\d+)\s+weeks?/i);
+      if (everyXWeeks) {
+        const interval = Math.max(1, parseInt(everyXWeeks[1], 10));
+        const days = Array.from(text.matchAll(/(mon|tue|wed|thu|fri|sat|sun)/g)).map((m) => dayMap[m[1]]);
+        const byday = days.length > 0 ? `;BYDAY=${Array.from(new Set(days)).join(",")}` : "";
+        return { rrule: `FREQ=WEEKLY;INTERVAL=${interval}${byday}${byTime}` };
+      }
+      // monthly by day-of-month: "on the 15th" or "every month on the 15th"
+      const dom = text.match(/on the (\d{1,2})(st|nd|rd|th)/i);
+      if (/\bmonthly\b/.test(text) && dom) {
+        const day = Math.min(31, Math.max(1, parseInt(dom[1], 10)));
+        return { rrule: `FREQ=MONTHLY;BYMONTHDAY=${day}${byTime}` };
+      }
+      if (/\bevery month\b/.test(text) && dom) {
+        const day = Math.min(31, Math.max(1, parseInt(dom[1], 10)));
+        return { rrule: `FREQ=MONTHLY;BYMONTHDAY=${day}${byTime}` };
+      }
+      // monthly by weekday position: e.g., "every 2nd Saturday"
+      const posMatch = text.match(/(1st|first|2nd|second|3rd|third|4th|fourth)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)/i);
+      if (/\bmonthly\b/.test(text) && posMatch) {
+        const posMap: Record<string, number> = {
+          "1st": 1,
+          first: 1,
+          "2nd": 2,
+          second: 2,
+          "3rd": 3,
+          third: 3,
+          "4th": 4,
+          fourth: 4,
+        };
+        const pos = posMap[posMatch[1].toLowerCase()];
+        const byday = dayMap[posMatch[2].toLowerCase()];
+        if (pos && byday)
+          return { rrule: `FREQ=MONTHLY;BYDAY=${byday};BYSETPOS=${pos}${byTime}` };
+      }
+      // fallback: weekly
+      return { rrule: `FREQ=WEEKLY${byTime}`, message: "Defaulted to weekly recurrence" };
+    } catch (error) {
+      logError("Failed to build RRULE", error, params);
+      return { rrule: "FREQ=WEEKLY", message: "Failed to parse natural recurrence; defaulted to weekly" };
+    }
+  }
+  explainRecurrenceRule(rrule: string): { natural: string } {
+    try {
+      const rule = (rrule || "").toUpperCase();
+      const parts = Object.fromEntries(
+        rule
+          .split(";")
+          .map((kv) => kv.split("=") as [string, string])
+          .filter((kv) => kv.length === 2),
+      ) as Record<string, string>;
+      const freq = parts["FREQ"] || "WEEKLY";
+      const interval = parts["INTERVAL"] ? parseInt(parts["INTERVAL"], 10) : 1;
+      const byday = parts["BYDAY"];
+      const bymonthday = parts["BYMONTHDAY"];
+      const bysetpos = parts["BYSETPOS"];
+      const dayName: Record<string, string> = {
+        SU: "Sunday",
+        MO: "Monday",
+        TU: "Tuesday",
+        WE: "Wednesday",
+        TH: "Thursday",
+        FR: "Friday",
+        SA: "Saturday",
+      };
+      let natural = "";
+      if (freq === "DAILY") {
+        natural = interval > 1 ? `Every ${interval} days` : "Daily";
+      } else if (freq === "WEEKLY") {
+        if (byday) {
+          const days = byday.split(",").map((d) => dayName[d] || d);
+          natural = interval > 1 ? `Every ${interval} weeks on ${days.join(", ")}` : `Every week on ${days.join(", ")}`;
+        } else {
+          natural = interval > 1 ? `Every ${interval} weeks` : "Weekly";
+        }
+      } else if (freq === "MONTHLY") {
+        if (bymonthday) {
+          natural = interval > 1 ? `Every ${interval} months on day ${bymonthday}` : `Every month on day ${bymonthday}`;
+        } else if (byday && bysetpos) {
+          const days = byday.split(",").map((d) => dayName[d] || d);
+          const posMap: Record<string, string> = { "1": "1st", "2": "2nd", "3": "3rd", "4": "4th" };
+          natural = interval > 1
+            ? `Every ${interval} months on the ${posMap[bysetpos] || bysetpos} ${days.join(", ")}`
+            : `Every month on the ${posMap[bysetpos] || bysetpos} ${days.join(", ")}`;
+        } else {
+          natural = interval > 1 ? `Every ${interval} months` : "Monthly";
+        }
+      } else {
+        natural = `Repeats (${freq.toLowerCase()})`;
+      }
+      return { natural };
+    } catch (error) {
+      logError("Failed to explain RRULE", error, { rrule });
+      return { natural: "Repeats" };
+    }
+  }
+  async getNextOccurrences(params: {
+    rrule?: string;
+    reminderId?: string;
+    count?: number;
+    timezone: string;
+    startTime?: string;
+  }): Promise<{ occurrences: string[] }> {
+    try {
+      let rule = params.rrule?.toUpperCase();
+      let startISO = params.startTime;
+      if (!rule && params.reminderId) {
+        const { getSupabaseClient } = await import("../lib/supabase");
+        const supabase = getSupabaseClient();
+        const { data: r, error } = await supabase
+          .from("reminders")
+          .select("reminder_time, recurrence_rule")
+          .eq("id", params.reminderId)
+          .single();
+        if (error || !r) throw error || new Error("Reminder not found");
+        rule = (r.recurrence_rule || "").toUpperCase();
+        startISO = r.reminder_time;
+      }
+      if (!rule) return { occurrences: [] };
+      const parts = Object.fromEntries(
+        rule
+          .split(";")
+          .map((kv) => kv.split("=") as [string, string])
+          .filter((kv) => kv.length === 2),
+      ) as Record<string, string>;
+      const freq = parts["FREQ"] || "WEEKLY";
+      const interval = parts["INTERVAL"] ? Math.max(1, parseInt(parts["INTERVAL"], 10)) : 1;
+      const byday = parts["BYDAY"];
+      const bymonthday = parts["BYMONTHDAY"] ? parseInt(parts["BYMONTHDAY"], 10) : undefined;
+      const bysetpos = parts["BYSETPOS"] ? parseInt(parts["BYSETPOS"], 10) : undefined;
+      const max = Math.min(params.count || 5, 50);
+      const start = startISO
+        ? DateTime.fromISO(startISO, { zone: params.timezone })
+        : DateTime.now().setZone(params.timezone);
+      const results: string[] = [];
+      let cursor = start;
+      const dowIndex: Record<string, number> = { SU: 7, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
+      const safeSecond: number = typeof start.second === "number" ? start.second : 0;
+      const normalizeToTime = (dt: DateTime) => dt.set({ second: safeSecond, millisecond: 0 });
+      // ensure we include the start itself if future
+      const pushIfFuture = (dt: DateTime) => {
+        if (dt.toMillis() >= DateTime.now().toMillis()) {
+          const iso = dt.toUTC().toISO() || new Date(dt.toUTC().toMillis()).toISOString();
+          results.push(iso);
+        }
+      };
+      while (results.length < max) {
+        if (freq === "DAILY") {
+          if (results.length === 0) pushIfFuture(normalizeToTime(cursor));
+          cursor = cursor.plus({ days: interval });
+          pushIfFuture(normalizeToTime(cursor));
+        } else if (freq === "WEEKLY") {
+          const days = byday ? byday.split(",") : [cursor.toFormat("ccc").slice(0, 2).toUpperCase()];
+          for (const d of days) {
+            const targetDow = dowIndex[d] || 1;
+            const currentDow = cursor.weekday; // 1..7 (Mon..Sun)
+            let delta = targetDow - currentDow;
+            if (delta < 0) delta += 7;
+            const occ = normalizeToTime(cursor.plus({ days: delta }));
+            pushIfFuture(occ);
+            if (results.length >= max) break;
+          }
+          cursor = cursor.plus({ weeks: interval });
+        } else if (freq === "MONTHLY") {
+          if (bymonthday !== undefined) {
+            const bm: number = bymonthday as number;
+            const maxDaysInMonth: number = cursor.daysInMonth || 31;
+            const targetDay = Math.min(bm, maxDaysInMonth);
+            const occ = normalizeToTime(cursor.set({ day: targetDay }));
+            pushIfFuture(occ);
+            cursor = cursor.plus({ months: interval });
+          } else if (byday && bysetpos) {
+            const dayCodes = byday.split(",");
+            const targetCode = dayCodes[0];
+            const targetDow = dowIndex[targetCode] || 1;
+            const monthStart = cursor.startOf("month");
+            let firstDow = monthStart.weekday; // 1..7
+            let add = (targetDow - firstDow + 7) % 7;
+            const pos: number = bysetpos as number;
+            let occ = monthStart.plus({ days: add + (pos - 1) * 7 });
+            occ = normalizeToTime(occ);
+            pushIfFuture(occ);
+            cursor = cursor.plus({ months: interval });
+          } else {
+            const occ = normalizeToTime(cursor);
+            pushIfFuture(occ);
+            cursor = cursor.plus({ months: interval });
+          }
+        } else {
+          // default weekly
+          const occ = normalizeToTime(cursor);
+          pushIfFuture(occ);
+          cursor = cursor.plus({ weeks: interval });
+        }
+        // guard infinite loop
+        if (results.length >= max) break;
+        if (results.length === 0 && results.length < max && cursor.diff(start, "years").years > 10) break;
+      }
+      // Ensure uniqueness & sorted
+      const uniqueSorted = Array.from(new Set(results)).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+      return { occurrences: uniqueSorted.slice(0, max) };
+    } catch (error) {
+      logError("Failed to compute next occurrences", error, params);
+      return { occurrences: [] };
+    }
+  }
+  parseListItemsFromText(text: string): { items: string[] } {
+    try {
+      if (!text) return { items: [] };
+      const lines = text
+        .split(/\r?\n|,/)
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .map((l) => l.replace(/^[-*•\d\.\)\(\s]+/, "").trim())
+        .filter((l) => l.length > 0 && l.length <= 200);
+      const items = Array.from(new Set(lines.map((l) => l.replace(/\s+/g, " "))));
+      return { items };
+    } catch (error) {
+      logError("Failed to parse items from text", error, { textLen: text?.length });
+      return { items: [] };
+    }
+  }
+  extractTasksFromText(text: string): { tasks: string[] } {
+    try {
+      if (!text) return { tasks: [] };
+      const lines = text.split(/\r?\n/).map((l) => l.trim());
+      const candidates = lines
+        .map((l) => l.replace(/^[-*•\d\.\)\(\s]+/, "").trim())
+        .filter((l) => l.length > 0)
+        .filter((l) => /\b(todo\b|task\b|remember\b|buy\b|call\b|email\b|schedule\b|follow up\b|follow-up\b|pay\b|send\b|draft\b|prepare\b|review\b|finish\b|complete\b|book\b)/i.test(l));
+      const tasks = Array.from(new Set(candidates.map((t) => t.replace(/\s+/g, " "))));
+      return { tasks };
+    } catch (error) {
+      logError("Failed to extract tasks from text", error, { textLen: text?.length });
+      return { tasks: [] };
+    }
+  }
   parseNaturalLanguageDate(params: {
     text: string;
     timezone: string;
