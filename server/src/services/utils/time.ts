@@ -267,12 +267,21 @@ export async function getNextOccurrences(params: {
     const bysetpos = parts["BYSETPOS"]
       ? parseInt(parts["BYSETPOS"], 10)
       : undefined;
-    const max = Math.min(params.count || 5, 50);
+    const max = Math.min(Math.max(params.count ?? 5, 1), 50);
     const start = startISO
       ? DateTime.fromISO(startISO, { setZone: true }).setZone(params.timezone)
       : DateTime.now().setZone(params.timezone);
     const results: string[] = [];
     let cursor = start;
+    const byhour = parts["BYHOUR"]
+      ? Math.min(23, Math.max(0, parseInt(parts["BYHOUR"], 10)))
+      : undefined;
+    const byminute = parts["BYMINUTE"]
+      ? Math.min(59, Math.max(0, parseInt(parts["BYMINUTE"], 10)))
+      : undefined;
+    const bysecondRule = parts["BYSECOND"]
+      ? Math.min(59, Math.max(0, parseInt(parts["BYSECOND"], 10)))
+      : undefined;
     const dowIndex: Record<string, number> = {
       SU: 7,
       MO: 1,
@@ -284,8 +293,15 @@ export async function getNextOccurrences(params: {
     };
     const safeSecond: number =
       typeof start.second === "number" ? start.second : 0;
+    const baseHour = start.hour;
+    const baseMinute = start.minute;
     const normalizeToTime = (dt: DateTime) =>
-      dt.set({ second: safeSecond, millisecond: 0 });
+      dt.set({
+        hour: byhour ?? baseHour,
+        minute: byminute ?? baseMinute,
+        second: bysecondRule ?? safeSecond,
+        millisecond: 0,
+      });
     const pushIfFuture = (dt: DateTime) => {
       if (dt.toMillis() >= DateTime.now().toMillis()) {
         const iso =
@@ -325,12 +341,14 @@ export async function getNextOccurrences(params: {
           const targetCode = dayCodes[0];
           const targetDow = dowIndex[targetCode] || 1;
           const monthStart = cursor.startOf("month");
-          let firstDow = monthStart.weekday;
-          let add = (targetDow - firstDow + 7) % 7;
+          const firstDow = monthStart.weekday;
+          const add = (targetDow - firstDow + 7) % 7;
           const pos: number = bysetpos as number;
-          let occ = monthStart.plus({ days: add + (pos - 1) * 7 });
-          occ = normalizeToTime(occ);
-          pushIfFuture(occ);
+          const candidate = monthStart.plus({ days: add + (pos - 1) * 7 });
+          if (candidate.month === monthStart.month) {
+            const occ = normalizeToTime(candidate);
+            pushIfFuture(occ);
+          }
           cursor = cursor.plus({ months: interval });
         } else {
           const occ = normalizeToTime(cursor);

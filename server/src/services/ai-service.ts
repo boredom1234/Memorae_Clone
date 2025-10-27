@@ -40,13 +40,16 @@ export class AIService {
   private hasToolFailures(
     result: any,
     expectTools: boolean,
+    toolStats?: any,
   ): {
     failed: boolean;
     summary: string;
   } {
     try {
+      const executed = toolStats?.executed === true;
       const noToolActivity =
         expectTools &&
+        !executed &&
         (!result.toolCalls || result.toolCalls.length === 0) &&
         (!result.toolResults || result.toolResults.length === 0);
       if (noToolActivity) {
@@ -282,7 +285,11 @@ export class AIService {
           stopWhen: stepCountIs(8),
           maxSteps: 10,
         } as any);
-        const failure = this.hasToolFailures(result, willUseTools);
+        const failure = this.hasToolFailures(
+          result,
+          willUseTools,
+          (effectiveTools as any).__stats,
+        );
         if (failure.failed) {
           this.logger.warn(
             { provider: modelConfig.provider, reason: failure.summary },
@@ -455,7 +462,11 @@ export class AIService {
           stopWhen: stepCountIs(8),
           maxSteps: 10,
         } as any);
-        const failure = this.hasToolFailures(result, true);
+        const failure = this.hasToolFailures(
+          result,
+          true,
+          (effectiveTools as any).__stats,
+        );
         if (failure.failed) {
           this.logger.warn(
             { provider: modelConfig.provider, reason: failure.summary },
