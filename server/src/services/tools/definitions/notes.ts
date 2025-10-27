@@ -46,9 +46,11 @@ export function createNotesAITools(
         if (!content && ctx.originalMessage) {
           content = ctx.originalMessage;
         }
-        
-        // Validate required parameters
-        if (!content || typeof content !== 'string' || content.trim().length === 0) {
+        if (
+          !content ||
+          typeof content !== "string" ||
+          content.trim().length === 0
+        ) {
           throw new Error("Note content is required and cannot be empty.");
         }
         let title = params.title;
@@ -163,11 +165,15 @@ export function createNotesAITools(
         isPinned: z.boolean().optional().describe("Mark as pinned/unpinned"),
       }),
       execute: dedupe("updateNote", async (params) => {
-        // Validate required parameters
-        if (!params.searchQuery || typeof params.searchQuery !== 'string' || params.searchQuery.trim().length === 0) {
-          throw new Error("Search query is required to find the note to update.");
+        if (
+          !params.searchQuery ||
+          typeof params.searchQuery !== "string" ||
+          params.searchQuery.trim().length === 0
+        ) {
+          throw new Error(
+            "Search query is required to find the note to update.",
+          );
         }
-        
         const searchResult = await notesQueryService.searchNotes({
           userId,
           query: params.searchQuery,

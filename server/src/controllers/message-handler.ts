@@ -235,46 +235,51 @@ export class MessageController {
     this.logger.info(`Text message: \"${validatedText}\"`);
     const conversationContext = this.getConversationContext(user.id);
     const lowerText = validatedText.toLowerCase().trim();
-    // Enhanced selection detection: numeric, ordinal, or natural language
     const parseSelection = (text: string): number | null => {
       const lower = text.toLowerCase().trim();
-      
-      // Direct number: "2"
       if (/^\d+$/.test(text)) return parseInt(text, 10);
-      
-      // Ordinal patterns: "2nd", "second", "second one", "the second", "the second one"
       const ordinalMap: Record<string, number> = {
-        'first': 1, '1st': 1, 'one': 1, 'a': 1,
-        'second': 2, '2nd': 2, 'two': 2, 'b': 2,
-        'third': 3, '3rd': 3, 'three': 3, 'c': 3,
-        'fourth': 4, '4th': 4, 'four': 4, 'd': 4,
-        'fifth': 5, '5th': 5, 'five': 5, 'e': 5,
+        first: 1,
+        "1st": 1,
+        one: 1,
+        a: 1,
+        second: 2,
+        "2nd": 2,
+        two: 2,
+        b: 2,
+        third: 3,
+        "3rd": 3,
+        three: 3,
+        c: 3,
+        fourth: 4,
+        "4th": 4,
+        four: 4,
+        d: 4,
+        fifth: 5,
+        "5th": 5,
+        five: 5,
+        e: 5,
       };
-      
-      // Try direct match first
       if (ordinalMap[lower]) return ordinalMap[lower];
-      
-      // Remove common prefixes/suffixes
       const normalized = lower
-        .replace(/^(the|option|number|choice|select|pick|choose|it's|its)\s+/gi, '')
-        .replace(/\s+(one|option|choice|please|pls)$/gi, '')
-        .replace(/^(i want|i choose|i pick|i select)\s+/gi, '')
+        .replace(
+          /^(the|option|number|choice|select|pick|choose|it's|its)\s+/gi,
+          "",
+        )
+        .replace(/\s+(one|option|choice|please|pls)$/gi, "")
+        .replace(/^(i want|i choose|i pick|i select)\s+/gi, "")
         .trim();
-      
-      // Try again after normalization
       if (ordinalMap[normalized]) return ordinalMap[normalized];
-      
-      // Pattern matching for "X one" or "X option"
-      const match = normalized.match(/^(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|\d+)/i);
+      const match = normalized.match(
+        /^(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|\d+)/i,
+      );
       if (match) {
         const key = match[1].toLowerCase();
         if (ordinalMap[key]) return ordinalMap[key];
         if (/^\d+$/.test(key)) return parseInt(key, 10);
       }
-      
       return null;
     };
-    
     const selection = parseSelection(validatedText.trim());
     if (selection !== null) {
       if (
@@ -412,7 +417,6 @@ export class MessageController {
               /10\.?30.*pm/i.test(m.content),
             );
             if (takeMemsMatch && timeMatch) {
-              // Resolve reminderId by searching, then parse time and call core updateReminder
               const search = await this.tools.executeTool("searchReminders", {
                 userId: user.id,
                 query: "Take Meds",
@@ -432,7 +436,9 @@ export class MessageController {
               });
               const best = util.pickBestDate(parsed.extractedDates);
               if (!best) {
-                return { text: "I couldn't understand the new time. Please provide a time like 10:30 PM." };
+                return {
+                  text: "I couldn't understand the new time. Please provide a time like 10:30 PM.",
+                };
               }
               const result = await this.tools.executeTool("updateReminder", {
                 userId: user.id,
@@ -536,7 +542,6 @@ export class MessageController {
               /(\d+[:.]\d+\s*(?:am|pm))/i,
             );
           const newTime = summaryMatch ? summaryMatch[1] : "10:30 PM";
-          // Resolve reminderId (targetId may be id or title), parse time, then update
           let reminderId = targetId;
           if (!/^[0-9a-f-]{6,}$/i.test(targetId || "")) {
             const search = await this.tools.executeTool("searchReminders", {
@@ -556,7 +561,9 @@ export class MessageController {
           });
           const best = util.pickBestDate(parsed.extractedDates);
           if (!best) {
-            return { text: "I couldn't understand the time to update. Please provide a clear time." };
+            return {
+              text: "I couldn't understand the time to update. Please provide a clear time.",
+            };
           }
           result = await this.tools.executeTool("updateReminder", {
             userId: user.id,
@@ -564,7 +571,6 @@ export class MessageController {
             reminderTime: best,
           });
         } else if (action === "snoozeReminder") {
-          // Attempt to parse snooze time from summary, resolve reminder, then snooze
           const timeMatch = conversationContext.needsConfirmation.summary.match(
             /(\d+[:.]\d+\s*(?:am|pm)|in\s+\d+\s+(?:minutes?|hours?|days?))/i,
           );
@@ -582,7 +588,9 @@ export class MessageController {
             return { text: "I couldn't find that reminder to snooze." };
           }
           if (!snoozeText) {
-            return { text: "When should I snooze it until? Please specify a time." };
+            return {
+              text: "When should I snooze it until? Please specify a time.",
+            };
           }
           const util = this.tools.getUtilityService();
           const parsed = util.parseNaturalLanguageDate({
@@ -591,7 +599,9 @@ export class MessageController {
           });
           const best = util.pickBestDate(parsed.extractedDates);
           if (!best) {
-            return { text: "I couldn't understand the snooze time. Please provide a clear time." };
+            return {
+              text: "I couldn't understand the snooze time. Please provide a clear time.",
+            };
           }
           result = await this.tools.executeTool("snoozeReminder", {
             userId: user.id,
@@ -655,37 +665,35 @@ export class MessageController {
     this.logger.info(
       `Conversation history: ${conversationContext.messages.length} messages`,
     );
-    
-    // Inject pending selection context into conversation history if present
     let effectiveMessages = conversationContext.messages;
-    if (conversationContext.candidateItems && conversationContext.candidateItems.length > 0) {
-      // Check if the message seems selection-related (short, might be an attempt to select)
-      const seemsLikeSelection = validatedText.length < 50 && (
-        /^(the\s+)?(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|one|two|three|four|five|that|this|it)\b/i.test(validatedText) ||
-        validatedText.split(/\s+/).length <= 5 // Very short messages are likely selections
-      );
-      
+    if (
+      conversationContext.candidateItems &&
+      conversationContext.candidateItems.length > 0
+    ) {
+      const seemsLikeSelection =
+        validatedText.length < 50 &&
+        (/^(the\s+)?(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|one|two|three|four|five|that|this|it)\b/i.test(
+          validatedText,
+        ) ||
+          validatedText.split(/\s+/).length <= 5);
       if (seemsLikeSelection) {
-        // Create a context message explaining the pending selection
-        const selectionContext = `[SYSTEM CONTEXT: The user is currently selecting from ${conversationContext.candidateItems.length} options: ${conversationContext.candidateItems.map((c, i) => `${i + 1}. ${c.title}`).join(', ')}. Their response "${validatedText}" should be interpreted as a selection. If you cannot determine which option, ask them to choose by number (1, 2, etc.).]`;
-        
-        // Add context to the most recent assistant message
+        const selectionContext = `[SYSTEM CONTEXT: The user is currently selecting from ${conversationContext.candidateItems.length} options: ${conversationContext.candidateItems.map((c, i) => `${i + 1}. ${c.title}`).join(", ")}. Their response "${validatedText}" should be interpreted as a selection. If you cannot determine which option, ask them to choose by number (1, 2, etc.).]`;
         effectiveMessages = [
           ...conversationContext.messages,
           {
-            role: 'assistant' as const,
+            role: "assistant" as const,
             content: selectionContext,
             timestamp: new Date(),
-          }
+          },
         ];
       } else {
-        // Message doesn't seem like a selection - clear the candidates and proceed normally
-        this.logger.info('User message does not seem like a selection while candidates are pending. Clearing candidates.');
+        this.logger.info(
+          "User message does not seem like a selection while candidates are pending. Clearing candidates.",
+        );
         conversationContext.candidateItems = undefined;
         conversationContext.pendingAction = undefined;
       }
     }
-    
     try {
       const result = await this.aiService.processMessage(
         validatedText,
@@ -849,11 +857,11 @@ export class MessageController {
           timestamp: new Date(),
         });
       }
-      const finalRendered = renderedText || (
-        toolsWereExecuted
+      const finalRendered =
+        renderedText ||
+        (toolsWereExecuted
           ? "Done."
-          : "I'm not sure I understood that correctly. Could you please rephrase or provide more details?"
-      );
+          : "I'm not sure I understood that correctly. Could you please rephrase or provide more details?");
       return {
         text: result.text,
         toolCalls: result.toolCalls,

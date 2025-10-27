@@ -34,13 +34,10 @@ async function start() {
       setTelegramManager(telegramManager);
       app.log.info("✅ Telegram initialized");
     }
-    
-    // Start reminder cleanup service (runs every 3 seconds)
     app.log.info("🧹 Starting reminder cleanup service...");
     cleanupService = new ReminderCleanupService();
     cleanupService.start();
     app.log.info("✅ Reminder cleanup service started");
-    
     const signals = ["SIGINT", "SIGTERM"];
     signals.forEach((signal) => {
       process.on(signal, async () => {

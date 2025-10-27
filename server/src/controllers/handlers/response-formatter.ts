@@ -1,11 +1,9 @@
 import { formatInZone } from "../../utils/time-utils";
 export class ResponseFormatter {
   private escapeMarkdown(text: string): string {
-    if (!text || typeof text !== 'string') return text;
-    // Escape Telegram Markdown special characters
-    return text.replace(/([*_`\[\]()~>#+=|{}.!-])/g, '\\$1');
+    if (!text || typeof text !== "string") return text;
+    return text.replace(/([*_`\[\]()~>#+=|{}.!-])/g, "\\$1");
   }
-
   getResponseMessage(result: any, timezone?: string): string {
     const unwrap = (obj: any) => {
       if (!obj || typeof obj !== "object") return obj;
@@ -17,12 +15,11 @@ export class ResponseFormatter {
     };
     const r = unwrap(result);
     if (!r) return "I couldn't format that result.";
-
-    // Helper to get a display time from various possible shapes
     const getDisplayTime = (item: any): string | undefined => {
       try {
-        const formatted = item.reminderTimeFormatted || item.reminder_time_formatted;
-        if (formatted && typeof formatted === 'string') return formatted;
+        const formatted =
+          item.reminderTimeFormatted || item.reminder_time_formatted;
+        if (formatted && typeof formatted === "string") return formatted;
         const raw = item.reminderTime || item.reminder_time;
         if (!raw) return undefined;
         if (timezone) return formatInZone(raw, timezone);
@@ -50,8 +47,8 @@ export class ResponseFormatter {
       }
       return `📅 Your reminders:\n${reminders
         .map((rem: any, i: number) => {
-          const ts = getDisplayTime(rem) || '';
-          return `${i + 1}. ${this.escapeMarkdown(rem.title)}${ts ? ' - ' + ts : ''}`;
+          const ts = getDisplayTime(rem) || "";
+          return `${i + 1}. ${this.escapeMarkdown(rem.title)}${ts ? " - " + ts : ""}`;
         })
         .join("\n")}`;
     }

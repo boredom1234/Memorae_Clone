@@ -56,11 +56,13 @@ export function createReminderAITools(
           ),
       }),
       execute: dedupe("createReminder", async (params) => {
-        // Validate required parameters
-        if (!params.title || typeof params.title !== 'string' || params.title.trim().length === 0) {
+        if (
+          !params.title ||
+          typeof params.title !== "string" ||
+          params.title.trim().length === 0
+        ) {
           throw new Error("Reminder title is required and cannot be empty.");
         }
-        
         const settings = await userService.getUserSettings(userId);
         const ctx = (params as any)._context || {};
         const tz = ctx.timezone || settings?.timezone || "UTC";
@@ -137,11 +139,15 @@ export function createReminderAITools(
           .describe("New priority"),
       }),
       execute: dedupe("updateReminder", async (params) => {
-        // Validate required parameters
-        if (!params.searchQuery || typeof params.searchQuery !== 'string' || params.searchQuery.trim().length === 0) {
-          throw new Error("Search query is required to find the reminder to update.");
+        if (
+          !params.searchQuery ||
+          typeof params.searchQuery !== "string" ||
+          params.searchQuery.trim().length === 0
+        ) {
+          throw new Error(
+            "Search query is required to find the reminder to update.",
+          );
         }
-        
         const settings = await userService.getUserSettings(userId);
         const ctx = (params as any)._context || {};
         const tz = ctx.timezone || settings?.timezone || "UTC";
@@ -185,12 +191,13 @@ export function createReminderAITools(
               timezone: tz,
             });
             if (parsed.success && parsed.extractedDates.length > 0) {
-              const bestDate = utilityService.pickBestDate(parsed.extractedDates);
+              const bestDate = utilityService.pickBestDate(
+                parsed.extractedDates,
+              );
               if (bestDate) {
                 finalTime = bestDate;
               }
             }
-            // If parsing failed but we have naturalTimeText, throw a more specific error
             if (!finalTime && params.naturalTimeText) {
               throw new Error(
                 `Could not parse the time "${params.naturalTimeText}". Please try a different format like "3:00 PM" or "15:30".`,
@@ -201,7 +208,9 @@ export function createReminderAITools(
         if (finalTime) {
           const parsedDate = new Date(finalTime);
           if (isNaN(parsedDate.getTime())) {
-            throw new Error(`Invalid time format: "${finalTime}". Please try a different format.`);
+            throw new Error(
+              `Invalid time format: "${finalTime}". Please try a different format.`,
+            );
           }
           if (parsedDate.getTime() <= Date.now()) {
             finalTime = utilityService.ensureFuture(finalTime, tz);
@@ -349,11 +358,15 @@ export function createReminderAITools(
           ),
       }),
       execute: dedupe("snoozeReminder", async (params) => {
-        // Validate required parameters
-        if (!params.searchQuery || typeof params.searchQuery !== 'string' || params.searchQuery.trim().length === 0) {
-          throw new Error("Search query is required to find the reminder to snooze.");
+        if (
+          !params.searchQuery ||
+          typeof params.searchQuery !== "string" ||
+          params.searchQuery.trim().length === 0
+        ) {
+          throw new Error(
+            "Search query is required to find the reminder to snooze.",
+          );
         }
-        
         const settings = await userService.getUserSettings(userId);
         const ctx = (params as any)._context || {};
         const tz = ctx.timezone || settings?.timezone || "UTC";

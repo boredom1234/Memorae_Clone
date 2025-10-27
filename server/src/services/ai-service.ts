@@ -37,6 +37,69 @@ export class AIService {
       `AI Service initialized with ${this.fallbackModels.length} fallback models`,
     );
   }
+  private hasToolFailures(
+    result: any,
+    expectTools: boolean,
+  ): {
+    failed: boolean;
+    summary: string;
+  } {
+    try {
+      const noToolActivity =
+        expectTools &&
+        (!result.toolCalls || result.toolCalls.length === 0) &&
+        (!result.toolResults || result.toolResults.length === 0);
+      if (noToolActivity) {
+        return {
+          failed: true,
+          summary:
+            "No tool was executed even though a tool was expected. Please select and invoke the right tool with valid parameters.",
+        };
+      }
+      const trs: any[] = Array.isArray(result.toolResults)
+        ? (result.toolResults as any[])
+        : [];
+      for (const tr of trs) {
+        const out =
+          tr && typeof tr === "object" && "output" in tr
+            ? (tr as any).output
+            : tr;
+        const msg =
+          (out && (out.message || out.error || out.errorMessage)) || "";
+        const hasFailure =
+          (out && out.success === false) ||
+          (typeof out === "object" && ("error" in out || "errorCode" in out)) ||
+          /invalid|missing|required|parse|format|not found|could not|failed|error/i.test(
+            String(msg || ""),
+          );
+        if (hasFailure) {
+          const toolName = (tr as any)?.toolName || "unknown_tool";
+          return {
+            failed: true,
+            summary: `Tool ${toolName} reported a failure: ${String(msg || "unknown error")}`,
+          };
+        }
+      }
+    } catch {}
+    return { failed: false, summary: "" };
+  }
+  private buildRepairAssistantContent(
+    selectedToolName: string,
+    originalText: string,
+    failureSummary: string,
+  ): string {
+    return [
+      "[SYSTEM REPAIR CONTEXT]",
+      `Router-selected primary tool: ${selectedToolName}`,
+      `Original user text: "${originalText}"`,
+      `Failure summary: ${failureSummary}`,
+      "Instructions: Analyze the failure, fix invalid or missing parameters, and retry the appropriate tool(s).",
+      "Prefer using helper tools such as parseNaturalLanguageDate, getCurrentTime, searchReminders, listReminders, resolveListByName, calculateTimeDifference as needed.",
+      "Ensure reminder/list IDs are resolved via search tools when ambiguous.",
+      "Ensure times are valid ISO and in the future when appropriate; if not, parse from naturalTimeText.",
+      "Make at most one concise repair-and-retry cycle, then produce the final answer based on tool results.",
+    ].join("\n");
+  }
   async processMessage(
     message: string,
     userId: string,
@@ -208,7 +271,7 @@ export class AIService {
           summary,
         );
         const effectiveTools = willUseTools ? tools : ({} as any);
-        const result = await generateText({
+        let result = await generateText({
           model: modelConfig.instance,
           system: systemPrompt,
           messages: [
@@ -219,12 +282,39 @@ export class AIService {
           stopWhen: stepCountIs(8),
           maxSteps: 10,
         } as any);
+        const failure = this.hasToolFailures(result, willUseTools);
+        if (failure.failed) {
+          this.logger.warn(
+            { provider: modelConfig.provider, reason: failure.summary },
+            "Tool call failed or not executed; attempting self-healing retry",
+          );
+          const repairMessages = [
+            ...messages,
+            { role: "user" as const, content: textForProcessing },
+            {
+              role: "assistant" as const,
+              content: this.buildRepairAssistantContent(
+                selectedToolName,
+                textForProcessing,
+                failure.summary,
+              ),
+            },
+          ];
+          result = (await generateText({
+            model: modelConfig.instance,
+            system: systemPrompt,
+            messages: repairMessages,
+            tools: effectiveTools,
+            stopWhen: stepCountIs(8),
+            maxSteps: 10,
+          } as any)) as any;
+        }
         const toolStats = (effectiveTools as any).__stats;
-        const toolsActuallyExecuted = toolStats?.executed === true;
+        const toolsActuallyExecutedFinal = toolStats?.executed === true;
         this.logger.info(
           {
             provider: modelConfig.provider,
-            toolExecuted: toolsActuallyExecuted,
+            toolExecuted: toolsActuallyExecutedFinal,
             toolCallsCount: result.toolCalls?.length || 0,
             toolResultsCount: result.toolResults?.length || 0,
             hasText: !!result.text,
@@ -232,7 +322,7 @@ export class AIService {
           },
           `AI processed message with ${modelConfig.provider}`,
         );
-        if (willUseTools && !toolsActuallyExecuted) {
+        if (willUseTools && !toolsActuallyExecutedFinal) {
           this.logger.warn(
             {
               selectedTool: selectedToolName,
@@ -298,7 +388,7 @@ export class AIService {
           text: finalText,
           toolCalls: result.toolCalls,
           toolResults: result.toolResults,
-          _toolsExecuted: toolsActuallyExecuted,
+          _toolsExecuted: toolsActuallyExecutedFinal,
         };
       } catch (error: any) {
         lastError = error;
@@ -357,7 +447,7 @@ export class AIService {
     for (const modelConfig of modelsToTry) {
       try {
         const systemPrompt = directToolSystemPrompt(timezone, userId, summary);
-        const result = await generateText({
+        let result = await generateText({
           model: modelConfig.instance,
           system: systemPrompt,
           messages: messagesWithCurrent,
@@ -365,6 +455,32 @@ export class AIService {
           stopWhen: stepCountIs(8),
           maxSteps: 10,
         } as any);
+        const failure = this.hasToolFailures(result, true);
+        if (failure.failed) {
+          this.logger.warn(
+            { provider: modelConfig.provider, reason: failure.summary },
+            "Direct tool run failed or did not execute; attempting self-healing retry",
+          );
+          const repairMessages = [
+            ...messagesWithCurrent,
+            {
+              role: "assistant" as const,
+              content: this.buildRepairAssistantContent(
+                "direct-tools",
+                textForProcessing,
+                failure.summary,
+              ),
+            },
+          ];
+          result = (await generateText({
+            model: modelConfig.instance,
+            system: systemPrompt,
+            messages: repairMessages,
+            tools: effectiveTools,
+            stopWhen: stepCountIs(8),
+            maxSteps: 10,
+          } as any)) as any;
+        }
         const toolStats = (effectiveTools as any).__stats;
         const toolsActuallyExecuted = toolStats?.executed === true;
         return {
