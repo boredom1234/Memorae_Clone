@@ -14,6 +14,7 @@ import { validateAIInput } from "../middleware/validation";
 import { OnboardingHandler } from "./handlers/onboarding-handler";
 import { ResponseFormatter } from "./handlers/response-formatter";
 import { MediaHandler } from "./handlers/media-handler";
+import { formatInZone } from "../utils/time-utils";
 export class MessageController {
   private logger = pino({ level: "info" });
   private tools: ToolsRegistry;
@@ -486,10 +487,12 @@ export class MessageController {
           } as any;
         } catch {}
         const selectionMessage = `${lastToolResult.message}\n\n${lastToolResult.candidates
-          .map(
-            (c: any, idx: number) =>
-              `${idx + 1}. ${c.title}${c.time ? ` - ${c.time}` : ""}`,
-          )
+          .map((c: any, idx: number) => {
+            const ts = c.time
+              ? formatInZone(c.time, user.timezone, "MMM d, yyyy 'at' h:mm a")
+              : "";
+            return `${idx + 1}. ${c.title}${ts ? ` - ${ts}` : ""}`;
+          })
           .join("\n")}\n\nReply with the number of your choice.`;
         this.addToConversationContext(user.id, {
           role: "assistant",
@@ -678,6 +681,8 @@ export class MessageController {
     );
   }
   getResponseMessage(result: any, timezone?: string): string {
-    return this.responseFormatter.getResponseMessage(result, timezone);
+    const tz =
+      timezone || (result && (result.timezone || result?.output?.timezone));
+    return this.responseFormatter.getResponseMessage(result, tz);
   }
 }
