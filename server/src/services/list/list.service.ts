@@ -327,7 +327,10 @@ export class ListService {
     listId?: string;
     listName?: string;
     newName: string;
-  }): Promise<{ success: boolean; message: string }> {
+  }): Promise<{
+    success: boolean;
+    message: string;
+  }> {
     try {
       if (!params.newName || params.newName.trim().length === 0) {
         throw new ValidationError("New name cannot be empty");
@@ -337,7 +340,8 @@ export class ListService {
         listId = await this.findListByName(params.userId, params.listName);
         if (!listId) throw new NotFoundError("List", params.listName);
       }
-      if (!listId) throw new ValidationError("Either listId or listName must be provided");
+      if (!listId)
+        throw new ValidationError("Either listId or listName must be provided");
       const { data: existing, error: checkError } = await this.supabase
         .from("lists")
         .select("id, user_id")
@@ -348,7 +352,10 @@ export class ListService {
         throw new ValidationError("List does not belong to user");
       const { error } = await this.supabase
         .from("lists")
-        .update({ name: params.newName.trim(), updated_at: new Date().toISOString() })
+        .update({
+          name: params.newName.trim(),
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", listId)
         .eq("user_id", params.userId);
       if (error) throw error;
@@ -365,20 +372,33 @@ export class ListService {
     targetListId?: string;
     targetListName?: string;
     deleteSource?: boolean;
-  }): Promise<{ success: boolean; message: string; targetListId: string; movedCount: number }> {
+  }): Promise<{
+    success: boolean;
+    message: string;
+    targetListId: string;
+    movedCount: number;
+  }> {
     try {
       let sourceId = params.sourceListId;
       if (!sourceId && params.sourceListName) {
-        sourceId = await this.findListByName(params.userId, params.sourceListName);
+        sourceId = await this.findListByName(
+          params.userId,
+          params.sourceListName,
+        );
         if (!sourceId) throw new NotFoundError("List", params.sourceListName);
       }
       let targetId = params.targetListId;
       if (!targetId && params.targetListName) {
-        targetId = await this.findListByName(params.userId, params.targetListName);
+        targetId = await this.findListByName(
+          params.userId,
+          params.targetListName,
+        );
         if (!targetId) throw new NotFoundError("List", params.targetListName);
       }
       if (!sourceId || !targetId) {
-        throw new ValidationError("Both source and target lists must be specified");
+        throw new ValidationError(
+          "Both source and target lists must be specified",
+        );
       }
       if (sourceId === targetId) {
         throw new ValidationError("Source and target lists cannot be the same");
@@ -421,7 +441,12 @@ export class ListService {
           .eq("user_id", params.userId);
         if (delErr) throw delErr;
       }
-      return { success: true, message: `Merged ${movedCount} item(s) into target list`, targetListId: targetId, movedCount };
+      return {
+        success: true,
+        message: `Merged ${movedCount} item(s) into target list`,
+        targetListId: targetId,
+        movedCount,
+      };
     } catch (error) {
       logError("Failed to merge lists", error, params);
       throw handleServiceError(error, "mergeLists");

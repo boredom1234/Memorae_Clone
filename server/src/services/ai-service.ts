@@ -72,7 +72,18 @@ export class AIService {
     );
   }
   private isCommandLike(message: string): boolean {
-    const text = message.toLowerCase().trim();
+    const original = message.toLowerCase().trim();
+    const text = original.replace(
+      /^(?:lmao|lol|haha|hey|hi|hello|ok|okay|pls|please|uh|um|hmm)[,!.\s]+/i,
+      "",
+    );
+    if (
+      /\b(remember(?: (?:this|that))?|take a note|make (?:a )?note|note:|note this|note that|save (?:this|that)|store (?:this|that)|keep track)\b/i.test(
+        text,
+      )
+    ) {
+      return true;
+    }
     if (text.endsWith("?")) {
       if (
         /^(can you|could you|please|will you|would you)\s+(add|create|set|schedule|remind|remove|delete|list|show|update|change|move|mark|complete|snooze|search|find|get)\b/.test(
@@ -177,7 +188,7 @@ export class AIService {
       return "getListItems";
     }
     if (
-      /^(remember (this|that)|take a note|make (a )?note|create (a )?note|note:|note this|save (this|that)|store (this|that)|keep track)/.test(
+      /\b(remember(?: (?:this|that))?|take a note|make (?:a )?note|note:|note this|note that|save (?:this|that)|store (?:this|that)|keep track)\b/i.test(
         text,
       )
     ) {
@@ -433,9 +444,10 @@ export class AIService {
     );
     const commandLike = this.isCommandLike(textForRouting);
     let selectedToolName = selectedToolNameFromRouter;
-    if (selectedToolNameFromRouter === "no_tool_needed" && commandLike) {
+    if (selectedToolNameFromRouter === "no_tool_needed") {
       const heuristic = this.heuristicToolSelection(textForRouting);
-      if (heuristic !== "no_tool_needed") {
+      const allowHeuristic = commandLike || heuristic === "createNote";
+      if (heuristic !== "no_tool_needed" && allowHeuristic) {
         const maybeTool = toolsRegistry.getSingleAISDKTool(userId, heuristic, {
           originalMessage: textForProcessing,
           timezone,
@@ -485,7 +497,18 @@ Important:
 - If the user refers to earlier messages, use the conversation summary and history; if insufficient, ask them to restate.`,
             messages: messagesWithCurrent,
           });
-          return { text: result.text, toolCalls: [], toolResults: [] };
+          let safeText = result.text;
+          try {
+            const claimsAction =
+              /\b(saved|created|added|set|scheduled|deleted|removed|updated)\b/i.test(
+                safeText || "",
+              ) && /\b(note|reminder|list|item)\b/i.test(safeText || "");
+            if (claimsAction) {
+              safeText =
+                "I haven't saved anything yet. Would you like me to save that as a note?";
+            }
+          } catch {}
+          return { text: safeText, toolCalls: [], toolResults: [] };
         } catch (error: any) {
           this.logger.warn(
             { error: error.message, provider: modelConfig.provider },
@@ -529,7 +552,18 @@ Important:
 Important: You do not have tool access for this request. Do NOT claim you created, updated, or deleted anything.`,
             messages: messagesWithCurrent,
           });
-          return { text: result.text, toolCalls: [], toolResults: [] };
+          let safeText = result.text;
+          try {
+            const claimsAction =
+              /\b(saved|created|added|set|scheduled|deleted|removed|updated)\b/i.test(
+                safeText || "",
+              ) && /\b(note|reminder|list|item)\b/i.test(safeText || "");
+            if (claimsAction) {
+              safeText =
+                "I haven't saved anything yet. Would you like me to save that as a note?";
+            }
+          } catch {}
+          return { text: safeText, toolCalls: [], toolResults: [] };
         } catch (error: any) {
           this.logger.warn(
             { error: error.message, provider: modelConfig.provider },

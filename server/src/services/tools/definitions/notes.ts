@@ -281,8 +281,14 @@ export function createNotesAITools(
       description:
         "Produce a concise summary of notes (optionally filtered by query), including counts and short highlights.",
       inputSchema: z.object({
-        query: z.string().optional().describe("Optional search query to filter notes"),
-        limit: z.number().optional().describe("Max notes to include in highlights (default 5)"),
+        query: z
+          .string()
+          .optional()
+          .describe("Optional search query to filter notes"),
+        limit: z
+          .number()
+          .optional()
+          .describe("Max notes to include in highlights (default 5)"),
       }),
       execute: dedupe("summarizeNotes", async (params) => {
         let notes: any[] = [];
@@ -327,10 +333,17 @@ export function createNotesAITools(
         "Merge multiple notes into a single new note (ordered by creation time).",
       inputSchema: z.object({
         noteIds: z.array(z.string()).min(2).describe("IDs of notes to merge"),
-        newTitle: z.string().optional().describe("Optional title for the merged note"),
+        newTitle: z
+          .string()
+          .optional()
+          .describe("Optional title for the merged note"),
       }),
       execute: dedupe("mergeNotes", async (params) => {
-        return notesService.mergeNotes({ userId, noteIds: params.noteIds, newTitle: params.newTitle });
+        return notesService.mergeNotes({
+          userId,
+          noteIds: params.noteIds,
+          newTitle: params.newTitle,
+        });
       }),
     }),
     extractTasksFromNote: tool({
@@ -345,19 +358,33 @@ export function createNotesAITools(
         if (params.noteId) {
           note = await notesQueryService.getNote(userId, params.noteId);
         } else if (params.searchQuery) {
-          const res = await notesQueryService.searchNotes({ userId, query: params.searchQuery, limit: 5, includeArchived: false });
+          const res = await notesQueryService.searchNotes({
+            userId,
+            query: params.searchQuery,
+            limit: 5,
+            includeArchived: false,
+          });
           if (res.notes.length === 0) {
-            return { success: false, tasks: [], message: `No note found for "${params.searchQuery}"` };
+            return {
+              success: false,
+              tasks: [],
+              message: `No note found for "${params.searchQuery}"`,
+            };
           }
           note = res.notes[0];
         }
-        if (!note) return { success: false, tasks: [], message: "Note not found" };
-        const { tasks } = utilityService.extractTasksFromText(note.content || "");
+        if (!note)
+          return { success: false, tasks: [], message: "Note not found" };
+        const { tasks } = utilityService.extractTasksFromText(
+          note.content || "",
+        );
         return {
           success: true,
           noteId: note.id,
           tasks,
-          message: tasks.length ? `Found ${tasks.length} task(s) in note.` : "No clear tasks found in the note.",
+          message: tasks.length
+            ? `Found ${tasks.length} task(s) in note.`
+            : "No clear tasks found in the note.",
         };
       }),
     }),

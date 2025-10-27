@@ -1,7 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { DedupeFunction, ToolServices } from "../tool-definitions";
-
 export function createInteractionAITools(
   userId: string,
   services: ToolServices,
@@ -38,7 +37,9 @@ export function createInteractionAITools(
         "Select a candidate entity (e.g., reminder/list) for a pending action disambiguation.",
       inputSchema: z.object({
         pendingId: z.string().describe("Pending action ID"),
-        entityType: z.string().describe("Entity type, e.g., 'reminder'|'list'|'note'"),
+        entityType: z
+          .string()
+          .describe("Entity type, e.g., 'reminder'|'list'|'note'"),
         candidateId: z.string().describe("Chosen entity ID"),
       }),
       execute: dedupe("selectCandidate", async (params) => {

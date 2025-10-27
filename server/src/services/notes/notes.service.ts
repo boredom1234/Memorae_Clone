@@ -248,7 +248,11 @@ export class NotesService {
   }): Promise<UserNote> {
     try {
       if (!params.noteIds || params.noteIds.length < 2) {
-        throw new AppError("Provide at least two notes to merge", 400, "MERGE_NOTES_INVALID");
+        throw new AppError(
+          "Provide at least two notes to merge",
+          400,
+          "MERGE_NOTES_INVALID",
+        );
       }
       const { data: notes, error } = await this.supabase
         .from("user_notes")
@@ -257,10 +261,16 @@ export class NotesService {
         .in("id", params.noteIds);
       if (error) throw error;
       if (!notes || notes.length === 0) {
-        throw new AppError("No notes found to merge", 404, "MERGE_NOTES_NOT_FOUND");
+        throw new AppError(
+          "No notes found to merge",
+          404,
+          "MERGE_NOTES_NOT_FOUND",
+        );
       }
-      // Sort by created_at ascending for readability
-      notes.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      notes.sort(
+        (a: any, b: any) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      );
       const mergedContent = notes
         .map((n: any, idx: number) => {
           const titleLine = n.title ? `# ${n.title}\n` : "";
@@ -282,9 +292,17 @@ export class NotesService {
         .select()
         .single();
       if (createError || !newNote) {
-        throw new AppError("Failed to create merged note", 500, "MERGE_NOTES_CREATE_ERROR");
+        throw new AppError(
+          "Failed to create merged note",
+          500,
+          "MERGE_NOTES_CREATE_ERROR",
+        );
       }
-      logInfo("Notes merged", { userId: params.userId, count: notes.length, newNoteId: newNote.id });
+      logInfo("Notes merged", {
+        userId: params.userId,
+        count: notes.length,
+        newNoteId: newNote.id,
+      });
       return this.mapDatabaseNote(newNote);
     } catch (error) {
       logError("Error in mergeNotes", error, params);

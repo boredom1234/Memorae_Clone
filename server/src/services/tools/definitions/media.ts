@@ -99,7 +99,10 @@ export function createMediaAITools(
         "Create reminders from an image's extracted text (OCR). If OCR wasn't run, ask to run ocrMediaAttachment first.",
       inputSchema: z.object({
         attachmentId: z.string().describe("Media attachment ID"),
-        maxReminders: z.number().optional().describe("Max reminders to create (default 5)"),
+        maxReminders: z
+          .number()
+          .optional()
+          .describe("Max reminders to create (default 5)"),
       }),
       execute: dedupe("createRemindersFromImage", async (params) => {
         const attach = await mediaService.getAttachment(params.attachmentId);
@@ -113,23 +116,32 @@ export function createMediaAITools(
         }
         const settings = await userService.getUserSettings(userId);
         const tz = settings?.timezone || "UTC";
-        // Extract candidate tasks from OCR text
-        const { tasks } = utilityService.extractTasksFromText(attach.extractedText || "");
-        const candidates = tasks.length > 0 ? tasks : (attach.extractedText || "").split(/\r?\n/).slice(0, 20);
+        const { tasks } = utilityService.extractTasksFromText(
+          attach.extractedText || "",
+        );
+        const candidates =
+          tasks.length > 0
+            ? tasks
+            : (attach.extractedText || "").split(/\r?\n/).slice(0, 20);
         const limit = Math.min(params.maxReminders || 5, 20);
         let created = 0;
         const errors: string[] = [];
         for (const line of candidates.slice(0, limit)) {
           const text = (line || "").trim();
           if (!text) continue;
-          // Try parse date/time from line; if none, suggest a time
-          const parsed = utilityService.parseNaturalLanguageDate({ text, timezone: tz });
+          const parsed = utilityService.parseNaturalLanguageDate({
+            text,
+            timezone: tz,
+          });
           let reminderTime: string | null = null;
           if (parsed.success && parsed.extractedDates.length > 0) {
             reminderTime = utilityService.pickBestDate(parsed.extractedDates);
           }
           if (!reminderTime) {
-            const suggest = utilityService.suggestReminderTime({ taskDescription: text, timezone: tz });
+            const suggest = utilityService.suggestReminderTime({
+              taskDescription: text,
+              timezone: tz,
+            });
             reminderTime = suggest.suggestedTimes[0]?.time || null;
           }
           if (!reminderTime) {
@@ -165,7 +177,10 @@ export function createMediaAITools(
         "Extract list items from an image and add them to a list (create if missing).",
       inputSchema: z.object({
         attachmentId: z.string().describe("Media attachment ID"),
-        listName: z.string().optional().describe("Target list name; created if missing"),
+        listName: z
+          .string()
+          .optional()
+          .describe("Target list name; created if missing"),
       }),
       execute: dedupe("extractListFromImage", async (params) => {
         const attach = await mediaService.getAttachment(params.attachmentId);
@@ -180,11 +195,21 @@ export function createMediaAITools(
         const text = attach.extractedText;
         const { items } = utilityService.parseListItemsFromText(text);
         if (items.length === 0) {
-          return { success: false, added: 0, message: "No list items recognized in the image." };
+          return {
+            success: false,
+            added: 0,
+            message: "No list items recognized in the image.",
+          };
         }
-        const listName = params.listName || (/\b(shop|grocery|buy)\b/i.test(text) ? "Shopping" : "From Image");
+        const listName =
+          params.listName ||
+          (/\b(shop|grocery|buy)\b/i.test(text) ? "Shopping" : "From Image");
         try {
-          const res = await listItemService.addItemToList({ userId, listName, items: items.slice(0, 100) });
+          const res = await listItemService.addItemToList({
+            userId,
+            listName,
+            items: items.slice(0, 100),
+          });
           return {
             success: true,
             added: res.addedCount,
@@ -192,9 +217,12 @@ export function createMediaAITools(
             message: `Added ${res.addedCount} item(s) to list "${listName}"`,
           };
         } catch (e: any) {
-          // Try create the list then add
           try {
-            await listService.createList({ userId, name: listName, items: items.slice(0, 100) });
+            await listService.createList({
+              userId,
+              name: listName,
+              items: items.slice(0, 100),
+            });
             return {
               success: true,
               added: Math.min(items.length, 100),
@@ -202,7 +230,11 @@ export function createMediaAITools(
               message: `Created list "${listName}" with ${Math.min(items.length, 100)} item(s).`,
             };
           } catch (e2: any) {
-            return { success: false, added: 0, message: e2?.message || "Failed to add items" };
+            return {
+              success: false,
+              added: 0,
+              message: e2?.message || "Failed to add items",
+            };
           }
         }
       }),

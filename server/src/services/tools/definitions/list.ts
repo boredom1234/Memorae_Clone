@@ -411,7 +411,10 @@ export function createListAITools(
         sourceListName: z.string().optional(),
         targetListId: z.string().optional(),
         targetListName: z.string().optional(),
-        deleteSource: z.boolean().optional().describe("Delete source list after merge"),
+        deleteSource: z
+          .boolean()
+          .optional()
+          .describe("Delete source list after merge"),
       }),
       execute: dedupe("mergeLists", async (params) => {
         return await listService.mergeLists({

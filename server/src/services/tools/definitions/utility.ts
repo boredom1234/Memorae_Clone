@@ -6,7 +6,13 @@ export function createUtilityAITools(
   services: ToolServices,
   dedupe: DedupeFunction,
 ) {
-  const { utilityService, userService, reminderQueryService, listService, listQueryService } = services;
+  const {
+    utilityService,
+    userService,
+    reminderQueryService,
+    listService,
+    listQueryService,
+  } = services;
   return {
     getCurrentTime: tool({
       description:
@@ -70,7 +76,10 @@ export function createUtilityAITools(
         "Convert natural language recurrence (e.g., 'every weekday', 'every 2nd Saturday') into an RRULE. Provide startTime if available to set BYHOUR/BYMINUTE.",
       inputSchema: z.object({
         natural: z.string().describe("Natural language recurrence description"),
-        startTime: z.string().optional().describe("Start ISO datetime to infer time components"),
+        startTime: z
+          .string()
+          .optional()
+          .describe("Start ISO datetime to infer time components"),
       }),
       execute: dedupe("buildRecurrenceRule", async (params) => {
         const settings = await userService.getUserSettings(userId);
@@ -96,10 +105,22 @@ export function createUtilityAITools(
       description:
         "Compute the next N occurrence timestamps for a given RRULE or reminderId.",
       inputSchema: z.object({
-        rrule: z.string().optional().describe("RRULE; provide either this or reminderId"),
-        reminderId: z.string().optional().describe("Reminder ID; alternative to RRULE"),
-        count: z.number().optional().describe("Number of occurrences to return (default 5)"),
-        startTime: z.string().optional().describe("Start from this ISO time if provided"),
+        rrule: z
+          .string()
+          .optional()
+          .describe("RRULE; provide either this or reminderId"),
+        reminderId: z
+          .string()
+          .optional()
+          .describe("Reminder ID; alternative to RRULE"),
+        count: z
+          .number()
+          .optional()
+          .describe("Number of occurrences to return (default 5)"),
+        startTime: z
+          .string()
+          .optional()
+          .describe("Start from this ISO time if provided"),
       }),
       execute: dedupe("getNextOccurrences", async (params) => {
         const settings = await userService.getUserSettings(userId);
@@ -154,7 +175,9 @@ export function createUtilityAITools(
       description:
         "Parse multiple list items from unstructured text or pasted lines/CSV/bullets.",
       inputSchema: z.object({
-        text: z.string().describe("Raw text containing items (lines, commas, bullets)"),
+        text: z
+          .string()
+          .describe("Raw text containing items (lines, commas, bullets)"),
       }),
       execute: dedupe("parseItemsFromText", async (params) => {
         return utilityService.parseListItemsFromText(params.text);
@@ -184,7 +207,9 @@ export function createUtilityAITools(
         includeSeconds: z
           .boolean()
           .optional()
-          .describe("Include seconds in the formatted output (default true when under 1 hour)"),
+          .describe(
+            "Include seconds in the formatted output (default true when under 1 hour)",
+          ),
       }),
       execute: dedupe("calculateTimeDifference", async (params) => {
         return utilityService.calculateTimeDifference({
