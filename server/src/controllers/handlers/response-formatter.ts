@@ -1,5 +1,11 @@
 import { formatInZone } from "../../utils/time-utils";
 export class ResponseFormatter {
+  private escapeMarkdown(text: string): string {
+    if (!text || typeof text !== 'string') return text;
+    // Escape Telegram Markdown special characters
+    return text.replace(/([*_`\[\]()~>#+=|{}.!-])/g, '\\$1');
+  }
+
   getResponseMessage(result: any, timezone?: string): string {
     const unwrap = (obj: any) => {
       if (!obj || typeof obj !== "object") return obj;
@@ -32,7 +38,7 @@ export class ResponseFormatter {
           const ts = timezone
             ? formatInZone(rem.reminderTime, timezone)
             : new Date(rem.reminderTime).toLocaleString();
-          return `${i + 1}. ${rem.title} - ${ts}`;
+          return `${i + 1}. ${this.escapeMarkdown(rem.title)} - ${ts}`;
         })
         .join("\n")}`;
     }
@@ -46,7 +52,7 @@ export class ResponseFormatter {
           const ts = timezone
             ? formatInZone(rem.reminderTime, timezone)
             : new Date(rem.reminderTime).toLocaleString();
-          return `${i + 1}. ${rem.title} - ${ts}`;
+          return `${i + 1}. ${this.escapeMarkdown(rem.title)} - ${ts}`;
         })
         .join("\n")}`;
     }
@@ -61,23 +67,23 @@ export class ResponseFormatter {
             ? `\n${l.items
                 .map(
                   (item: any) =>
-                    `   ${item.isCompleted ? "✅" : "⬜"} ${item.content}`,
+                    `   ${item.isCompleted ? "✅" : "⬜"} ${this.escapeMarkdown(item.content)}`,
                 )
                 .join("\n")}`
             : "";
-          return `${i + 1}. ${l.name} (${l.itemCount} items)${itemsText}`;
+          return `${i + 1}. ${this.escapeMarkdown(l.name)} (${l.itemCount} items)${itemsText}`;
         })
         .join("\n\n")}`;
     }
     if ((r as any).items && Array.isArray((r as any).items)) {
       const items = (r as any).items as any[];
       if (items.length === 0) {
-        return `List "${(r as any).listName || "Unknown"}" is empty.`;
+        return `List "${this.escapeMarkdown((r as any).listName || "Unknown")}" is empty.`;
       }
-      return `📝 ${(r as any).listName}:\n${items
+      return `📝 ${this.escapeMarkdown((r as any).listName)}:\n${items
         .map(
           (item: any, i: number) =>
-            `${i + 1}. ${item.isCompleted ? "✅" : "⬜"} ${item.content}`,
+            `${i + 1}. ${item.isCompleted ? "✅" : "⬜"} ${this.escapeMarkdown(item.content)}`,
         )
         .join("\n")}`;
     }
