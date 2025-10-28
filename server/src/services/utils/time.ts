@@ -1,7 +1,6 @@
 import * as chrono from "chrono-node";
 import { DateTime } from "luxon";
 import {
-  wallClockToUTCFromZone,
   formatInZone,
   createFutureDateInZone,
   ensureFutureInZone,
@@ -499,19 +498,24 @@ export function parseNaturalLanguageDate(params: {
           const isAbsolute = result.start.isCertain("day");
           const hasTimeOnly =
             result.start.isCertain("hour") && !result.start.isCertain("day");
-          let finalDate = date;
+          let finalDT: DateTime | null = null;
           if (hasTimeOnly) {
+            const hour = (result.start as any).get?.("hour") ?? date.getHours();
+            const minute =
+              (result.start as any).get?.("minute") ?? date.getMinutes();
             const today = DateTime.now().setZone(validatedParams.timezone);
-            finalDate = today
-              .set({
-                hour: date.getHours(),
-                minute: date.getMinutes(),
-                second: 0,
-                millisecond: 0,
-              })
-              .toJSDate();
+            finalDT = today.set({
+              hour: Number.isFinite(hour) ? hour : 0,
+              minute: Number.isFinite(minute) ? minute : 0,
+              second: 0,
+              millisecond: 0,
+            });
           } else if (isAbsolute) {
             const raw = normalizedText.toLowerCase();
+            const comp = result.start as any;
+            const hour = comp.get?.("hour") ?? date.getHours();
+            const minute = comp.get?.("minute") ?? date.getMinutes();
+            const second = comp.get?.("second") ?? date.getSeconds();
             if (/\b(today|tomorrow|yesterday|tonight)\b/.test(raw)) {
               const base = DateTime.fromJSDate(referenceDate, {
                 zone: validatedParams.timezone,
@@ -520,23 +524,34 @@ export function parseNaturalLanguageDate(params: {
               if (/\btomorrow\b/.test(raw)) targetDay = base.plus({ days: 1 });
               else if (/\byesterday\b/.test(raw))
                 targetDay = base.minus({ days: 1 });
-              const hour = date.getHours();
-              const minute = date.getMinutes();
-              const second = date.getSeconds();
-              finalDate = targetDay
-                .set({
-                  hour: isNaN(hour) ? 0 : hour,
-                  minute: isNaN(minute) ? 0 : minute,
-                  second: isNaN(second) ? 0 : second,
+              finalDT = targetDay.set({
+                hour: Number.isFinite(hour) ? hour : 0,
+                minute: Number.isFinite(minute) ? minute : 0,
+                second: Number.isFinite(second) ? second : 0,
+                millisecond: 0,
+              });
+            } else {
+              const year = comp.get?.("year") ?? date.getFullYear();
+              const month = comp.get?.("month") ?? date.getMonth() + 1;
+              const day = comp.get?.("day") ?? date.getDate();
+              finalDT = DateTime.fromObject(
+                {
+                  year,
+                  month,
+                  day,
+                  hour: Number.isFinite(hour) ? hour : 0,
+                  minute: Number.isFinite(minute) ? minute : 0,
+                  second: Number.isFinite(second) ? second : 0,
                   millisecond: 0,
-                })
-                .toJSDate();
+                },
+                { zone: validatedParams.timezone },
+              );
             }
           }
           const utcISO =
             isAbsolute || hasTimeOnly
-              ? wallClockToUTCFromZone(finalDate, validatedParams.timezone)
-              : finalDate.toISOString();
+              ? (finalDT ?? DateTime.fromJSDate(date)).toUTC().toISO()!
+              : date.toISOString();
           return {
             originalText: result.text,
             parsedDate: utcISO,
