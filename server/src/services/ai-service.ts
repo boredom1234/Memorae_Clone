@@ -143,10 +143,20 @@ export class AIService {
     let selectedToolName = selectedToolNameFromRouter;
     if (selectedToolNameFromRouter === "no_tool_needed") {
       const heuristic = heuristicToolSelection(textForRouting);
+      const retrievalHeuristics = new Set([
+        "getUpcomingReminders",
+        "listReminders",
+        "searchReminders",
+        "getLists",
+        "getListItems",
+        "listNotes",
+        "searchNotes",
+      ]);
       const allowHeuristic =
         commandLike ||
         heuristic === "createNote" ||
-        heuristic === "conversational_with_context";
+        heuristic === "conversational_with_context" ||
+        retrievalHeuristics.has(heuristic as any);
       if (heuristic !== "no_tool_needed" && allowHeuristic) {
         if (heuristic === "conversational_with_context") {
           selectedToolName = "no_tool_needed";
@@ -173,6 +183,24 @@ export class AIService {
       content: msg.content,
     }));
     if (selectedToolName === "no_tool_needed") {
+      try {
+        const recentTexts = [...conversationHistory]
+          .slice(-6)
+          .map((m) => (m.content || "").toLowerCase())
+          .join(" ");
+        const prevAboutReminders = /\b(reminder|reminders|upcoming)\b/.test(
+          recentTexts,
+        );
+        const referentialFollowUp =
+          /(what|which|any|anything)\b.*\b(else|other|more|next)\b/i.test(
+            textForProcessing,
+          ) || /\bafter that\b/i.test(textForProcessing);
+        if (prevAboutReminders && referentialFollowUp) {
+          selectedToolName = "getUpcomingReminders";
+        }
+      } catch {}
+    }
+    if (selectedToolName === "no_tool_needed") {
       this.logger.info(
         "No tool will be used. Generating conversational response.",
       );
@@ -182,6 +210,26 @@ export class AIService {
             ...messages,
             { role: "user" as const, content: textForProcessing },
           ];
+          try {
+            const recentTexts = [...conversationHistory]
+              .slice(-6)
+              .map((m) => (m.content || "").toLowerCase())
+              .join(" ");
+            const prevAboutReminders = /\b(reminder|reminders|upcoming)\b/.test(
+              recentTexts,
+            );
+            const isReferential =
+              /(what|which|any|anything)\b.*\b(else|other|more|next)\b/i.test(
+                textForProcessing,
+              ) || /\bafter that\b/i.test(textForProcessing);
+            if (prevAboutReminders && isReferential) {
+              return {
+                text: "Would you like me to list your upcoming reminders?",
+                toolCalls: [],
+                toolResults: [],
+              };
+            }
+          } catch {}
           const result = await generateText({
             model: modelConfig.instance,
             system: conversationalPrompt(timezone, summary),

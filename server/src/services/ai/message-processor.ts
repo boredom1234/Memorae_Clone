@@ -31,6 +31,21 @@ export function enrichMessageWithContext(
       return `reminders for ${timeframeMap[timeframeOnly]}`;
     }
   }
+  try {
+    const prev = [...conversationHistory]
+      .reverse()
+      .find((m) => m.role === "user" || m.role === "assistant");
+    const prevText = prev?.content?.toLowerCase() || "";
+    const wasAboutReminders =
+      /\b(reminder|reminders|upcoming|next\s+reminder)\b/.test(prevText);
+    const referentialNext =
+      /\b(any|anything|what|which)\b.*\b(else|other|more)\b.*\b(after|next)\b/.test(
+        text,
+      ) || /^(and\s+)?(what\s+else|anything\s+else|any\s+other)\b/.test(text);
+    if (wasAboutReminders && referentialNext) {
+      return "upcoming reminders";
+    }
+  } catch {}
   return message;
 }
 export function isCommandLike(message: string): boolean {
@@ -121,6 +136,14 @@ export function heuristicToolSelection(message: string): string {
     )
   ) {
     return "listReminders";
+  }
+  if (
+    /\b(any|anything|what|which)\b.*\b(else|other|more)\b.*\b(after|next)\b/.test(
+      text,
+    ) ||
+    /^(and\s+)?(what\s+else|anything\s+else|any\s+other)\b/.test(text)
+  ) {
+    return "getUpcomingReminders";
   }
   if (
     /(what\s+reminders?.*(today|tomorrow|this\s+week|this\s+month)|reminders?\s+(for\s+)?(today|tomorrow|this\s+week|this\s+month)|(today|tomorrow|this\s+week|this\s+month).*reminders?|upcoming\s+reminders?|my\s+upcoming\s+reminders?|today'?s?\s+reminders?)/.test(
