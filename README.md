@@ -1,126 +1,149 @@
 # Memorae Clone (Server)
 
-Fastify + TypeScript backend for a WhatsApp-based AI reminder/notification assistant.
+Fastify + TypeScript backend for a WhatsApp/Telegram-based AI reminder/notification assistant.
 
 ## Quick Start
 
 Run these inside `server/`:
 
-```bash
-npm install
-cp .env.example .env   # or copy manually on Windows
-npm run dev
-```
+  ```bash
+  npm install
+  cp .env.example .env   # or copy manually on Windows
+  npm run dev
+  ```
 
-## Env (minimal)
+## Environment
 
-- `PORT`, `HOST`
-- `AI_PROVIDER` and the matching API key (e.g., `OPENAI_API_KEY`, `GROQ_API_KEY`)
-- `WHATSAPP_SESSION_PATH`
-- `WHATSAPP_ALLOWED_NUMBERS`
+  Configure the app via `.env` in `server/` (copy from `.env.example`). Key groups:
 
-See `server/.env.example` for all options.
+  - **Required**
+  - `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`
+  - Optional: `SUPABASE_ANON_KEY`
+  - **Server**
+    - `PORT` (default 3000), `HOST` (default 0.0.0.0), `NODE_ENV`
+  - **Messaging platform**
+    - `MESSAGING_PLATFORM` = `whatsapp` | `telegram` | `both` (default `both`)
+  - **WhatsApp**
+    - `WHATSAPP_SESSION_PATH` (default `./whatsapp-session`)
+    - `WHATSAPP_ALLOWED_NUMBERS` (comma-separated, optional)
+    - `WHATSAPP_MESSAGE_FILTER_MODE` (1|2|3, optional)
+  - **Telegram**
+    - `TELEGRAM_BOT_TOKEN` (required if `MESSAGING_PLATFORM` is `telegram` or `both`)
+    - `TELEGRAM_ALLOWED_USERS` (comma-separated user IDs, optional)
+  - **AI provider**
+    - `AI_PROVIDER` (e.g., `openai`, `groq`, `mistral`, `anthropic`, `google`, etc.)
+    - Matching API key must be set (e.g., `OPENAI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, ...)
+    - `AI_MODEL` (default `gpt-4o-mini`)
+    - Optional advanced: Azure (`AZURE_OPENAI_API_KEY`, `AZURE_RESOURCE_NAME`, `AZURE_DEPLOYMENT_NAME`), Vertex (`VERTEX_PROJECT_ID`, `VERTEX_LOCATION`), AWS (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`)
+  - **OCR (optional)**
+    - `MISTRAL_API_KEY` to enable image OCR via Mistral Pixtral
 
-## Scripts (server/)
+  See `server/.env.example` for a complete list.
 
-- `npm run dev` – watch & run `src/index.ts`
-- `npm run build` – compile TypeScript
-- `npm start` – run built server
-- `npm run lint` – lint sources
+  ## Scripts (server/)
 
-## API (overview)
+  - `npm run dev` – watch & run `src/index.ts`
+  - `npm run build` – compile TypeScript
+  - `npm start` – run built server
+  - `npm run lint` – lint sources
 
-- `GET /health`
-- `GET /api/v1`
-- `POST /api/v1/whatsapp/send`
-- `GET /api/v1/whatsapp/status`
-- `POST /api/v1/notifications/send-reminder-to-contact`
-- `GET /api/v1/notifications/history`
-- `POST /api/v1/notifications/send-custom`
+  ## API (overview)
 
-## Tech
+  - `GET /health`
+  - `GET /api/v1`
+  - `POST /api/v1/whatsapp/send`
+  - `GET /api/v1/whatsapp/status`
+  - `POST /api/v1/notifications/send-reminder-to-contact`
+  - `GET /api/v1/notifications/history`
+  - `POST /api/v1/notifications/send-custom`
+Notes:
+- `x-user-id` header is required for `POST /api/v1/notifications/send-reminder-to-contact` and `POST /api/v1/notifications/send-custom`.
+- `GET /api/v1/notifications/history` accepts `x-user-id` (optional) for user-scoped history.
+See `server/src/controllers/notification-controller.ts`.
 
-- Fastify, TypeScript, Baileys (WhatsApp), Vercel AI SDK, Supabase client
-- Mistral AI Pixtral (OCR/Vision)
+  ## Tech
 
-## Features
+  - Fastify, TypeScript, Baileys (WhatsApp), Vercel AI SDK, Supabase client
+  - Mistral AI Pixtral (OCR/Vision)
 
-### 📸 Image OCR Support
+  ## Features
 
-Send images via WhatsApp to extract text using Mistral AI's vision model:
+  ### Image OCR Support
 
-- **Simple extraction**: Send image without caption to extract all text
-- **Smart processing**: Send image with caption (e.g., "Create reminders from this list") to process extracted content
-- **Supported formats**: JPEG, PNG, WebP, GIF, BMP
-- **Use cases**: Shopping lists, to-do items, receipts, business cards, meeting notes
+  Send images via WhatsApp to extract text using Mistral AI's vision model:
 
-See [OCR_FEATURE.md](./OCR_FEATURE.md) for detailed documentation.
+  - **Simple extraction**: Send image without caption to extract all text
+  - **Smart processing**: Send image with caption (e.g., "Create reminders from this list") to process extracted content
+  - **Supported formats**: JPEG, PNG, WebP, GIF, BMP
+  - **Use cases**: Shopping lists, to-do items, receipts, business cards, meeting notes
 
-**Setup**: Add `MISTRAL_API_KEY` to your `.env` file.
+Implementation: see `server/src/services/ocr-service.ts`.
+ 
+  **Setup**: Add `MISTRAL_API_KEY` to your `.env` file.
 
-## AI Tool-Calling Architecture
+  ## AI Tool-Calling Architecture
 
-### Hallucination Prevention
+  ### Hallucination Prevention
 
-The system implements multiple layers to ensure precise tool-calling and prevent AI hallucinations:
+  The system implements multiple layers to ensure precise tool-calling and prevent AI hallucinations:
 
-#### 1. **Tool-Calling Guarantees**
+  #### 1. **Tool-Calling Guarantees**
 
-- **No action claims without tool results**: If an action intent is detected but no tools are executed, the system asks for clarification instead of trusting the AI's text response.
-- **Server-side time parsing**: All time/date parsing happens server-side using the user's timezone as the single source of truth. The AI can provide `naturalTimeText` (e.g., "tomorrow at 3pm") which is parsed by `UtilityService.parseNaturalLanguageDate()`.
-- **Automatic future-time enforcement**: Times that have passed are automatically rolled forward (e.g., "3pm" when it's 4pm becomes "tomorrow at 3pm").
+  - **No action claims without tool results**: If an action intent is detected but no tools are executed, the system asks for clarification instead of trusting the AI's text response.
+  - **Server-side time parsing**: All time/date parsing happens server-side using the user's timezone as the single source of truth. The AI can provide `naturalTimeText` (e.g., "tomorrow at 3pm") which is parsed by `UtilityService.parseNaturalLanguageDate()`.
+  - **Automatic future-time enforcement**: Times that have passed are automatically rolled forward (e.g., "3pm" when it's 4pm becomes "tomorrow at 3pm").
 
-#### 2. **Disambiguation Flow**
+  #### 2. **Disambiguation Flow**
 
-When multiple items match a search query:
+  When multiple items match a search query:
 
-- Tools return `{ needsSelection: true, candidates: [...] }`
-- System presents a numbered list to the user
-- User replies with a number (e.g., "1", "2") to select
-- Selection state is stored in `ConversationContext.candidateItems`
+  - Tools return `{ needsSelection: true, candidates: [...] }`
+  - System presents a numbered list to the user
+  - User replies with a number (e.g., "1", "2") to select
+  - Selection state is stored in `ConversationContext.candidateItems`
 
-Example:
+  Example:
 
-```
-User: "Delete my reminder"
-AI: "I found multiple reminders. Which one do you want to delete?
+  ```
+  User: "Delete my reminder"
+  AI: "I found multiple reminders. Which one do you want to delete?
 
-1. Call dentist - 2025-10-05 3:00 PM
-2. Team meeting - 2025-10-06 10:00 AM
+  1. Call dentist - 2025-10-05 3:00 PM
+  2. Team meeting - 2025-10-06 10:00 AM
 
-Reply with the number of your choice."
-User: "1"
-AI: [Deletes reminder #1]
-```
+  Reply with the number of your choice."
+  User: "1"
+  AI: [Deletes reminder #1]
+  ```
 
-#### 3. **Confirmation Flow**
+  #### 3. **Confirmation Flow**
 
-For destructive actions (especially recurring reminders):
+  For destructive actions (especially recurring reminders):
 
-- Tools return `{ needsConfirmation: true, message: "...", action: "...", targetId: "..." }`
-- System asks user to confirm with "yes" or "no"
-- Confirmation state is stored in `ConversationContext.needsConfirmation`
+  - Tools return `{ needsConfirmation: true, message: "...", action: "...", targetId: "..." }`
+  - System asks user to confirm with "yes" or "no"
+  - Confirmation state is stored in `ConversationContext.needsConfirmation`
 
-Example:
+  Example:
 
-```
-User: "Delete my daily standup reminder"
-AI: "This is a recurring reminder. Are you sure you want to delete it? Reply 'yes' to confirm."
-User: "yes"
-AI: [Deletes recurring reminder]
-```
+  ```
+  User: "Delete my daily standup reminder"
+  AI: "This is a recurring reminder. Are you sure you want to delete it? Reply 'yes' to confirm."
+  User: "yes"
+  AI: [Deletes recurring reminder]
+  ```
 
-#### 4. **Intent-Based Tool Restriction**
+  #### 4. **Intent-Based Tool Restriction**
 
-- `UtilityService.detectIntent()` pre-classifies user intent
-- `ToolsRegistry.getAISDKToolsSubset()` provides only relevant tools for that intent
-- Prevents the model from choosing wrong tools or hallucinating capabilities
+  - `UtilityService.detectIntent()` pre-classifies user intent
+  - Tools are restricted via `ToolsRegistry.getRelevantToolGroup()` and the router in `server/src/services/tools/tool-router.ts`
+  - Prevents the model from choosing wrong tools or hallucinating capabilities
 
-#### 5. **Semantic Validation**
+  #### 5. **Semantic Validation**
 
-- Titles are normalized (trim, collapse whitespace)
-- Empty or meaningless updates are rejected
-- Deduplication prevents identical tool calls within the same request
+  - Titles are normalized (trim, collapse whitespace)
+  - Empty or meaningless updates are rejected
+  - Deduplication prevents identical tool calls within the same request
 
 ### Time Parsing Flow
 
@@ -144,7 +167,7 @@ const parsed = utilityService.parseNaturalLanguageDate({
 const bestDate = utilityService.pickBestDate(parsed.extractedDates);
 
 // Server ensures future time
-const finalTime = utilityService.ensureFuture(bestDate, timezone);
+const finalTime = utilityService.ensureFuture(bestDate, "America/New_York");
 
 // Reminder created with server-parsed time
 ```
