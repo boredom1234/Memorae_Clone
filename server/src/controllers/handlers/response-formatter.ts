@@ -4,6 +4,17 @@ export class ResponseFormatter {
     if (!text || typeof text !== "string") return text;
     return text.replace(/([*_`\[\]()~>#+=|{}.!-])/g, "\\$1");
   }
+  private stripMarkdown(text: string): string {
+    if (!text || typeof text !== "string") return text;
+    return text
+      .replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/\*\s+/g, "• ")
+      .replace(/\*([^*\n]+)\*/g, "$1")
+      .replace(/__([^_]+)__/g, "$1")
+      .replace(/_([^_\n]+)_/g, "$1")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+  }
   getResponseMessage(result: any, timezone?: string): string {
     const unwrap = (obj: any) => {
       if (!obj || typeof obj !== "object") return obj;
@@ -36,10 +47,21 @@ export class ResponseFormatter {
         text.trim() &&
         !text.match(/^(processed your request\.?|done\.?)$/i)
       ) {
-        return text;
+        return this.stripMarkdown(text);
       }
     }
-    if ((r as any).message) return (r as any).message;
+    if ((r as any).message) {
+      try {
+        const sched = (r as any).scheduledFor || (r as any).scheduled_for;
+        if (sched) {
+          const ts = timezone
+            ? formatInZone(sched, timezone, "MMM d, yyyy 'at' h:mm a")
+            : new Date(sched).toLocaleString();
+          return `${(r as any).message} for ${ts}.`;
+        }
+      } catch {}
+      return (r as any).message;
+    }
     if ((r as any).reminders) {
       const reminders = (r as any).reminders;
       if (reminders.length === 0) {

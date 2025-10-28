@@ -413,6 +413,75 @@ export function parseNaturalLanguageDate(params: {
         "Time expression is too short to parse meaningfully.",
       );
     }
+    const lc = normalizedText.toLowerCase();
+    const looksRelative =
+      /(in|from now|after|within|later|following|timer|alarm)\b/.test(lc) ||
+      /^\s*\d+\s*(years?|yrs?|y|months?|mos?|mo|mths?|mth|weeks?|wks?|wk|w|days?|d|hours?|hrs?|hr|h|minutes?|mins?|min|m)\b/.test(
+        lc,
+      );
+    const hasExplicitClock =
+      /\b(\d{1,2}[:.]\d{2}\s*(am|pm)?)\b/i.test(lc) ||
+      /\b(\d{1,2}\s*(am|pm))\b/i.test(lc);
+    if (looksRelative && !hasExplicitClock) {
+      const durRegex =
+        /(\d+(?:\.\d+)?)\s*(years?|yrs?|y|months?|mos?|mo|mths?|mth|weeks?|wks?|wk|w|days?|d|hours?|hrs?|hr|h|minutes?|mins?|min|m)\b/gi;
+      let match: RegExpExecArray | null;
+      let years = 0,
+        months = 0,
+        weeks = 0,
+        days = 0,
+        hours = 0,
+        minutes = 0;
+      while ((match = durRegex.exec(lc)) !== null) {
+        const val = parseFloat(match[1]);
+        const unitLower = match[2].toLowerCase();
+        if (/^y(ears?)?$|yrs?$/.test(unitLower)) years += val;
+        else if (/^mo(nths?)?$|mos?$|mths?$|mth$/.test(unitLower))
+          months += val;
+        else if (/^w(eeks?)?$|wks?$|wk$/.test(unitLower)) weeks += val;
+        else if (/^d(ays?)?$/.test(unitLower)) days += val;
+        else if (/^h(ours?)?$|hrs?$|hr$/.test(unitLower)) hours += val;
+        else if (/^m(in(utes?)?)?$|mins?$/.test(unitLower)) minutes += val;
+      }
+      if (years + months + weeks + days + hours + minutes === 0) {
+        const combo =
+          lc.match(
+            /(\d+)\s*(hrs?|hours?)\s*(?:and\s*)?(\d+)\s*(mins?|minutes?)/i,
+          ) || lc.match(/(\d+)\s*hour\s*(\d+)\s*minutes?/i);
+        if (combo) {
+          hours = parseFloat(combo[1]);
+          minutes = parseFloat(combo[3] || combo[2]);
+        }
+      }
+      const extractedDatesRel: Array<{
+        originalText: string;
+        parsedDate: string;
+        confidence: number;
+        type: "absolute" | "relative";
+      }> = [];
+      if (years + months + weeks + days + hours + minutes > 0) {
+        const futureDate = DateTime.fromJSDate(referenceDate, {
+          zone: validatedParams.timezone,
+        })
+          .plus({ years, months, weeks, days, hours, minutes })
+          .toUTC()
+          .toISO();
+        if (futureDate) {
+          extractedDatesRel.push({
+            originalText: validatedParams.text,
+            parsedDate: futureDate,
+            confidence: 0.9,
+            type: "relative",
+          });
+        }
+      }
+      if (extractedDatesRel.length > 0) {
+        logPerformance("parseNaturalLanguageDate", Date.now() - startTime, {
+          count: extractedDatesRel.length,
+        });
+        return { success: true, extractedDates: extractedDatesRel };
+      }
+    }
     const results = chrono.parse(normalizedText, referenceDate);
     logWarn("Chrono parse results", {
       resultsCount: results.length,
@@ -441,6 +510,28 @@ export function parseNaturalLanguageDate(params: {
                 millisecond: 0,
               })
               .toJSDate();
+          } else if (isAbsolute) {
+            const raw = normalizedText.toLowerCase();
+            if (/\b(today|tomorrow|yesterday|tonight)\b/.test(raw)) {
+              const base = DateTime.fromJSDate(referenceDate, {
+                zone: validatedParams.timezone,
+              });
+              let targetDay = base;
+              if (/\btomorrow\b/.test(raw)) targetDay = base.plus({ days: 1 });
+              else if (/\byesterday\b/.test(raw))
+                targetDay = base.minus({ days: 1 });
+              const hour = date.getHours();
+              const minute = date.getMinutes();
+              const second = date.getSeconds();
+              finalDate = targetDay
+                .set({
+                  hour: isNaN(hour) ? 0 : hour,
+                  minute: isNaN(minute) ? 0 : minute,
+                  second: isNaN(second) ? 0 : second,
+                  millisecond: 0,
+                })
+                .toJSDate();
+            }
           }
           const utcISO =
             isAbsolute || hasTimeOnly
