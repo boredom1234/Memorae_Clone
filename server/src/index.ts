@@ -5,6 +5,7 @@ import { WhatsAppManager } from "./services/whatsapp-manager";
 import { TelegramManager } from "./services/telegram-manager";
 import { ReminderCleanupService } from "./services/reminder-cleanup.service";
 import { setWhatsAppManager, setTelegramManager } from "./services/runtime";
+import { logger } from "./utils/logger";
 async function start() {
   let whatsappManager: WhatsAppManager | null = null;
   let telegramManager: TelegramManager | null = null;
@@ -58,7 +59,7 @@ async function start() {
       });
     });
   } catch (error) {
-    console.error("Error starting server:", error);
+    logger.error({ error }, "Error starting server");
     if (cleanupService) {
       cleanupService.stop();
     }

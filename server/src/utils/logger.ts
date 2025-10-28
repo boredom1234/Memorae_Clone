@@ -1,18 +1,39 @@
 import pino from "pino";
+const isProd = process.env.NODE_ENV === "production";
 export const logger = pino({
-  level: process.env.LOG_LEVEL || "info",
-  transport:
-    process.env.NODE_ENV !== "production"
-      ? {
-          target: "pino-pretty",
-          options: {
-            colorize: true,
-            translateTime: "HH:MM:ss Z",
-            ignore: "pid,hostname",
-          },
-        }
-      : undefined,
+  level: process.env.LOG_LEVEL || (isProd ? "info" : "debug"),
+  base: { service: "memorae-server" },
+  timestamp: pino.stdTimeFunctions.isoTime,
+  redact: {
+    paths: [
+      "*.password",
+      "*.token",
+      "*.accessToken",
+      "*.refreshToken",
+      "*.apiKey",
+      "headers.authorization",
+      "req.headers.authorization",
+      "request.headers.authorization",
+      "config.ai.*ApiKey",
+      "config.*.*ApiKey",
+      "process.env.*_KEY",
+      "process.env.*_TOKEN",
+    ],
+    censor: "[REDACTED]",
+  },
+  transport: !isProd
+    ? {
+        target: "pino-pretty",
+        options: {
+          colorize: true,
+          translateTime: "UTC:yyyy-mm-dd'T'HH:MM:ss.l'Z'",
+          ignore: "pid,hostname",
+        },
+      }
+    : undefined,
 });
+export const createLogger = (bindings: Record<string, any>) =>
+  logger.child(bindings || {});
 export const logInfo = (message: string, data?: any) => {
   logger.info(data || {}, message);
 };
@@ -68,3 +89,18 @@ export const logAudit = (
     `Audit: ${action} on ${resource} by user ${userId}`,
   );
 };
+export async function withTiming<T>(
+  operation: string,
+  fn: () => Promise<T>,
+  metadata?: Record<string, any>,
+): Promise<T> {
+  const start = Date.now();
+  try {
+    const result = await fn();
+    logPerformance(operation, Date.now() - start, metadata);
+    return result;
+  } catch (error: any) {
+    logError(`Operation failed: ${operation}`, error, metadata);
+    throw error;
+  }
+}

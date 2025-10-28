@@ -13,9 +13,9 @@ import { fireworks } from "@ai-sdk/fireworks";
 import { deepseek } from "@ai-sdk/deepseek";
 import { cerebras } from "@ai-sdk/cerebras";
 import { config } from "../../config/env";
-import pino from "pino";
-const logger = pino({ level: "info" });
-export function getDefaultModel() {
+import { createLogger } from "../../utils/logger";
+const logger = createLogger({ component: "ModelManager" });
+export function getDefaultModel(): any {
   const provider = config.ai.provider.toLowerCase();
   const model = config.ai.model;
   logger.info(`Configuring AI: Provider=${provider}, Model=${model}`);

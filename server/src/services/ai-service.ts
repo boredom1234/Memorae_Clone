@@ -1,5 +1,4 @@
 import { generateText, stepCountIs } from "ai";
-import pino from "pino";
 import { ToolsRegistry } from "./tools-registry";
 import { routeToTool } from "./tools/tool-router";
 import { TranslationService } from "./translation-service";
@@ -21,8 +20,9 @@ import {
   handleGenericRetrieval,
 } from "./ai/response-handler";
 import { isStateChangingTool } from "./ai/tool-utils";
+import { createLogger } from "../utils/logger";
 export class AIService {
-  private logger = pino({ level: "info" });
+  private logger = createLogger({ component: "AIService" });
   private defaultModel: any;
   private fallbackModels: any[] = [];
   private translationService: TranslationService;

@@ -1,7 +1,7 @@
 import { FastifyError, FastifyReply, FastifyRequest } from "fastify";
 import { AppError } from "./errors";
-import pino from "pino";
-const logger = pino({ level: "info" });
+import { createLogger } from "./logger";
+const logger = createLogger({ component: "ErrorHandler" });
 export interface ErrorResponse {
   error: string;
   message: string;
