@@ -116,6 +116,23 @@ function keywordMap(userQuery: string, available: string[]): string | null {
   if (/\b(archive)\s+(all|every)\s+(note|notes)\b/.test(q)) {
     return tryReturn("bulkArchiveNotes");
   }
+  // Note operations - duplicate, merge, summarize, extract
+  if (/\b(duplicate|copy)\s+(the\s+)?(note|notes)\b/.test(q)) {
+    return tryReturn("duplicateNote");
+  }
+  if (/\b(summarize|summary)\s+(my\s+)?(note|notes)\b/.test(q)) {
+    return tryReturn("summarizeNotes");
+  }
+  if (/\b(merge|combine|join)\s+(the\s+)?(note|notes)\b/.test(q)) {
+    return tryReturn("mergeNotes");
+  }
+  if (
+    /\b(extract|get)\s+(tasks?|todos?)\s+(from|in)\s+(the\s+)?(note|notes)\b/.test(
+      q
+    )
+  ) {
+    return tryReturn("extractTasksFromNote");
+  }
   // Single Notes
   if (
     /\b(remember this|take a note|make a note|note this|^note:|save this|store this|create (a )?note)\b/.test(
@@ -139,6 +156,27 @@ function keywordMap(userQuery: string, available: string[]): string | null {
     /\b(delete|remove)\s+(all|every)\s+lists?\s+(except|but|besides)\b/.test(q)
   ) {
     return tryReturn("bulkDeleteListsExcept");
+  }
+  // List operations - archive, duplicate, move, reorder, clear
+  if (/\b(archive)\s+(the\s+)?(.+?\s+)?list\b/.test(q)) {
+    return tryReturn("archiveList");
+  }
+  if (/\b(duplicate|copy)\s+(the\s+)?(.+?\s+)?list\b/.test(q)) {
+    return tryReturn("duplicateList");
+  }
+  if (
+    /\b(move|transfer)\s+.+\s+(to|into)\s+(another|different)\s+list\b/.test(q)
+  ) {
+    return tryReturn("moveItemToList");
+  }
+  if (/\b(reorder|rearrange|sort)\s+(the\s+)?(.+?\s+)?list\b/.test(q)) {
+    return tryReturn("reorderListItems");
+  }
+  if (/\b(clear|remove)\s+(completed|done|checked)\s+(items?)?\b/.test(q)) {
+    return tryReturn("clearCompletedItems");
+  }
+  if (/\b(complete|check|mark)\s+(all|every)\s+(items?)?\b/.test(q)) {
+    return tryReturn("bulkCompleteItems");
   }
   // Single list deletion
   if (/\b(delete|remove)\s+(the\s+)?(.+?\s+)?list\b/.test(q)) {
@@ -166,6 +204,36 @@ function keywordMap(userQuery: string, available: string[]): string | null {
   }
   if (/\b(remove|delete|take off)\s+.+\s+from\s+.+\s+list\b/.test(q)) {
     return tryReturn("removeItemFromList");
+  }
+  // Reminder operations - archive, batch
+  if (/\b(archive)\s+(the\s+)?(reminder|reminders)\b/.test(q)) {
+    return tryReturn("archiveReminder");
+  }
+  if (
+    /\b(create|set|add)\s+(multiple|several|batch)\s+(reminder|reminders)\b/.test(
+      q
+    ) ||
+    // "Set reminder X and reminder Y" or "Set reminder on X and on Y"
+    /\b(and\s+(also\s+)?(set|create|add)?\s*(a\s+)?reminder|and\s+on\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec))\b/.test(
+      q
+    )
+  ) {
+    return tryReturn("batchCreateReminders");
+  }
+  // Media operations
+  if (
+    /\b(create|extract|get)\s+(reminder|reminders)\s+(from|in)\s+(this\s+)?(image|photo|picture)\b/.test(
+      q
+    )
+  ) {
+    return tryReturn("createRemindersFromImage");
+  }
+  if (
+    /\b(extract|get)\s+(list|items)\s+(from|in)\s+(this\s+)?(image|photo|picture)\b/.test(
+      q
+    )
+  ) {
+    return tryReturn("extractListFromImage");
   }
   // Notifications
   if (/\b(send|message|notify)\b.*\b(contact|someone|friend)\b/.test(q)) {

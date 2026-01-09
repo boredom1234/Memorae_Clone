@@ -65,14 +65,14 @@ export class TelegramManager {
       const { data: user, error } = await this.supabase
         .from("users")
         .select(
-          "telegram_id, phone_number, name, timezone, notification_enabled, quiet_hours_enabled, quiet_hours_start, quiet_hours_end, quiet_hours_days",
+          "telegram_id, phone_number, name, timezone, notification_enabled, quiet_hours_enabled, quiet_hours_start, quiet_hours_end, quiet_hours_days"
         )
         .eq("id", reminder.userId)
         .single();
       if (error || !user) {
         this.logger.error(
           { error, userId: reminder.userId },
-          "Failed to get user for reminder notification",
+          "Failed to get user for reminder notification"
         );
         return;
       }
@@ -85,7 +85,7 @@ export class TelegramManager {
         if (existingNotifs && existingNotifs.length > 0) {
           this.logger.info(
             { reminderId: reminder.id },
-            "Skipping notification - already sent",
+            "Skipping notification - already sent"
           );
           return;
         }
@@ -109,24 +109,25 @@ export class TelegramManager {
             : undefined,
         timeZone: user.timezone || "UTC",
       });
-      let message = `🔔 Hey! Time for: *${reminder.title}*\n\n`;
-      if (reminder.notes) {
-        message += `${reminder.notes}\n\n`;
-      }
-      message += `⏰ Scheduled for ${dateStr} at ${timeStr}`;
-      if (reminder.priority === "high") {
-        message += ` 🔥`;
-      } else if (reminder.priority === "medium") {
-        message += ` ⚡`;
-      }
-      if (reminder.isRecurring) {
-        message += `\n🔁 This is a recurring reminder`;
-      }
+
+      // Generate natural language message using AI
+      const { generateReminderMessage } = await import(
+        "../utils/reminder-message-generator"
+      );
+      const message = await generateReminderMessage({
+        title: reminder.title,
+        notes: reminder.notes,
+        priority: reminder.priority,
+        isRecurring: reminder.isRecurring,
+        timeStr,
+        dateStr,
+        userName: user.name,
+      });
       const notificationsEnabled = user.notification_enabled !== false;
       if (!notificationsEnabled) {
         this.logger.info(
           { userId: reminder.userId },
-          "Notifications disabled for user, skipping",
+          "Notifications disabled for user, skipping"
         );
         await this.supabase.from("notification_history").insert({
           user_id: reminder.userId,
@@ -148,7 +149,7 @@ export class TelegramManager {
             tz,
             start,
             end,
-            user.quiet_hours_days as string[] | undefined,
+            user.quiet_hours_days as string[] | undefined
           );
         } catch (e) {
           this.logger.warn({ e }, "Quiet hours check failed");
@@ -158,7 +159,7 @@ export class TelegramManager {
       if (withinQuietHours) {
         this.logger.info(
           { userId: reminder.userId },
-          "Within quiet hours, deferring notification",
+          "Within quiet hours, deferring notification"
         );
         await this.supabase.from("notification_history").insert({
           user_id: reminder.userId,
@@ -199,7 +200,7 @@ export class TelegramManager {
               title: reminder.title,
               user: user.name || user.phone_number,
             },
-            `✅ Reminder notification sent`,
+            `✅ Reminder notification sent`
           );
         } else {
           await this.supabase.from("notification_history").insert({
@@ -224,7 +225,7 @@ export class TelegramManager {
               reminderId: reminder.id,
               userId: reminder.userId,
             },
-            "Failed to send reminder notification",
+            "Failed to send reminder notification"
           );
         }
       }
@@ -306,7 +307,7 @@ export class TelegramManager {
           .single();
         if (!user?.telegram_id) {
           this.logger.error(
-            `No Telegram ID found for user ${notification.user_id} in notification ${notification.id}`,
+            `No Telegram ID found for user ${notification.user_id} in notification ${notification.id}`
           );
           return false;
         }
@@ -314,7 +315,7 @@ export class TelegramManager {
       }
       if (isNaN(chatId) || chatId <= 0) {
         this.logger.error(
-          `Invalid chat ID: ${chatId} for notification ${notification.id}`,
+          `Invalid chat ID: ${chatId} for notification ${notification.id}`
         );
         return false;
       }
@@ -325,7 +326,7 @@ export class TelegramManager {
       });
       if (success) {
         this.logger.info(
-          `Successfully retried notification ${notification.id}`,
+          `Successfully retried notification ${notification.id}`
         );
         try {
           if (notification.reminder_id && notification.recipient_telegram_id) {
@@ -353,7 +354,7 @@ export class TelegramManager {
     } catch (error) {
       this.logger.error(
         { error },
-        `Error retrying notification ${notification.id}`,
+        `Error retrying notification ${notification.id}`
       );
       return false;
     }

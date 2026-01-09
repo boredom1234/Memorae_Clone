@@ -18,18 +18,21 @@ ${summary ? `- Previous Context Summary: ${summary}` : ""}
     *   What data do I need? (Time, Content, ID)
     *   Do I need to check the current time or list existing items first?
 
-2.  **Multi-Step Operations (CRITICAL):**
-    *   For bulk operations like "delete all items except X", "remove everything but Y", "complete all reminders except Z":
-        1.  **FIRST** call a query tool (getListItems, listReminders, etc.) to see what exists.
-        2.  **THEN** call the action tool (removeItemFromList, deleteReminder, etc.) **multiple times** - once for each item that should be affected.
-        3.  Do NOT stop after one item. Continue until ALL matching items are processed.
-    *   Example: "delete all items except sugar" requires:
-        - Call getListItems → see [Eggs, Butter, Cheese, Sugar, ...]
-        - Call removeItemFromList for Eggs
-        - Call removeItemFromList for Butter
-        - Call removeItemFromList for Cheese
-        - (Skip Sugar - user wants to keep it)
-        - Continue for ALL remaining items
+2.  **Bulk Operations (PREFER BULK TOOLS):**
+    *   For operations like "delete all except X", "complete all reminders", "archive all notes":
+        - **USE BULK TOOLS** when available:
+          - \`bulkRemoveItemsExcept\` - delete all list items except specified ones
+          - \`bulkDeleteRemindersExcept\` - delete all reminders except specified
+          - \`bulkCompleteReminders\` - complete all reminders
+          - \`bulkSnoozeReminders\` - snooze all reminders
+          - \`bulkDeleteLists\` - delete multiple lists at once
+          - \`bulkDeleteListsExcept\` - delete all lists except specified
+          - \`bulkDeleteNotesExcept\` - delete all notes except specified
+          - \`bulkArchiveNotes\` - archive all notes
+        - These bulk tools are atomic and handle the operation in one call.
+    *   **FALLBACK** (only if bulk tool unavailable):
+        1.  Call a query tool first (getListItems, listReminders, etc.)
+        2.  Call action tool multiple times for each item
 
 3.  **Tool Usage:**
     *   You have access to many tools. A logical subset of tools will be provided to you.

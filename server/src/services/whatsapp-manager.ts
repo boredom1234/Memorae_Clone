@@ -65,14 +65,14 @@ export class WhatsAppManager {
       const { data: user, error } = await this.supabase
         .from("users")
         .select(
-          "whatsapp_id, phone_number, name, timezone, notification_enabled, quiet_hours_enabled, quiet_hours_start, quiet_hours_end, quiet_hours_days",
+          "whatsapp_id, phone_number, name, timezone, notification_enabled, quiet_hours_enabled, quiet_hours_start, quiet_hours_end, quiet_hours_days"
         )
         .eq("id", reminder.userId)
         .single();
       if (error || !user) {
         this.logger.error(
           { error, userId: reminder.userId },
-          "Failed to get user for reminder notification",
+          "Failed to get user for reminder notification"
         );
         return;
       }
@@ -85,7 +85,7 @@ export class WhatsAppManager {
         if (existingNotifs && existingNotifs.length > 0) {
           this.logger.info(
             { reminderId: reminder.id },
-            "Skipping notification - already sent",
+            "Skipping notification - already sent"
           );
           return;
         }
@@ -109,24 +109,25 @@ export class WhatsAppManager {
             : undefined,
         timeZone: user.timezone || "UTC",
       });
-      let message = `🔔 Hey! Time for: *${reminder.title}*\n\n`;
-      if (reminder.notes) {
-        message += `${reminder.notes}\n\n`;
-      }
-      message += `⏰ Scheduled for ${dateStr} at ${timeStr}`;
-      if (reminder.priority === "high") {
-        message += ` 🔥`;
-      } else if (reminder.priority === "medium") {
-        message += ` ⚡`;
-      }
-      if (reminder.isRecurring) {
-        message += `\n🔁 This is a recurring reminder`;
-      }
+
+      // Generate natural language message using AI
+      const { generateReminderMessage } = await import(
+        "../utils/reminder-message-generator"
+      );
+      const message = await generateReminderMessage({
+        title: reminder.title,
+        notes: reminder.notes,
+        priority: reminder.priority,
+        isRecurring: reminder.isRecurring,
+        timeStr,
+        dateStr,
+        userName: user.name,
+      });
       const notificationsEnabled = user.notification_enabled !== false;
       if (!notificationsEnabled) {
         this.logger.info(
           { userId: reminder.userId },
-          "Notifications disabled for user, skipping",
+          "Notifications disabled for user, skipping"
         );
         await this.supabase.from("notification_history").insert({
           user_id: reminder.userId,
@@ -148,7 +149,7 @@ export class WhatsAppManager {
             tz,
             start,
             end,
-            user.quiet_hours_days as string[] | undefined,
+            user.quiet_hours_days as string[] | undefined
           );
         } catch (e) {
           this.logger.warn({ e }, "Quiet hours check failed");
@@ -158,7 +159,7 @@ export class WhatsAppManager {
       if (withinQuietHours) {
         this.logger.info(
           { userId: reminder.userId },
-          "Within quiet hours, deferring notification",
+          "Within quiet hours, deferring notification"
         );
         await this.supabase.from("notification_history").insert({
           user_id: reminder.userId,
@@ -198,7 +199,7 @@ export class WhatsAppManager {
               title: reminder.title,
               user: user.name || user.phone_number,
             },
-            `✅ Reminder notification sent`,
+            `✅ Reminder notification sent`
           );
         } else {
           await this.supabase.from("notification_history").insert({
@@ -222,7 +223,7 @@ export class WhatsAppManager {
               reminderId: reminder.id,
               userId: reminder.userId,
             },
-            "Failed to send reminder notification",
+            "Failed to send reminder notification"
           );
         }
       }
@@ -301,7 +302,7 @@ export class WhatsAppManager {
       });
       if (success) {
         this.logger.info(
-          `Successfully retried notification ${notification.id}`,
+          `Successfully retried notification ${notification.id}`
         );
         try {
           if (notification.reminder_id && notification.recipient_whatsapp_id) {
@@ -329,7 +330,7 @@ export class WhatsAppManager {
     } catch (error) {
       this.logger.error(
         { error },
-        `Error retrying notification ${notification.id}`,
+        `Error retrying notification ${notification.id}`
       );
       return false;
     }

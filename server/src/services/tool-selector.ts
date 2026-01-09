@@ -62,6 +62,9 @@ export function getRelevantToolGroup(
     "updateNote",
     "deleteNote",
     "duplicateNote",
+    "summarizeNotes",
+    "mergeNotes",
+    "extractTasksFromNote",
     "pinNote",
     "archiveNote",
     "listNotes",
@@ -73,6 +76,8 @@ export function getRelevantToolGroup(
     "getMediaHistory",
     "searchMediaByText",
     "getMediaStats",
+    "createRemindersFromImage",
+    "extractListFromImage",
     "linkMediaAttachment",
     "unlinkMediaAttachment",
     "transcribeMediaAttachment",
@@ -110,6 +115,11 @@ export function getRelevantToolGroup(
       selectedTools.getNextOccurrences = allTools.getNextOccurrences;
     if (allTools.resolveReminderByText)
       selectedTools.resolveReminderByText = allTools.resolveReminderByText;
+
+    // Always include batch creation when creating reminders
+    if (primaryToolName === "createReminder" && allTools.batchCreateReminders) {
+      selectedTools.batchCreateReminders = allTools.batchCreateReminders;
+    }
   }
   if (reminderQueryTools.includes(primaryToolName)) {
     if (allTools.getCurrentTime)
@@ -382,6 +392,28 @@ export function getRelevantTools(
     add("listNotes");
   }
 
+  // Note operations - duplicate, merge, summarize, extract
+  if (/(duplicate|copy)\s+(the\s+)?(note|notes)/.test(text)) {
+    add("duplicateNote");
+    add("listNotes");
+  }
+  if (/(summarize|summary)\s+(my\s+)?(note|notes)/.test(text)) {
+    add("summarizeNotes");
+    add("listNotes");
+  }
+  if (/(merge|combine|join)\s+(the\s+)?(note|notes)/.test(text)) {
+    add("mergeNotes");
+    add("listNotes");
+  }
+  if (
+    /(extract|get)\s+(tasks?|todos?)\s+(from|in)\s+(the\s+)?(note|notes)/.test(
+      text
+    )
+  ) {
+    add("extractTasksFromNote");
+    add("listNotes");
+  }
+
   // Bulk note patterns - "delete all notes except", "archive all notes"
   if (
     /(delete|remove|clear)\s+(all|every)\s+(note|notes)\s+(except|but|besides)/.test(
@@ -394,6 +426,63 @@ export function getRelevantTools(
   if (/(archive)\s+(all|every)\s+(note|notes)/.test(text)) {
     add("bulkArchiveNotes");
     add("listNotes");
+  }
+
+  // Media operations - extract from image
+  if (
+    /(create|extract|get)\s+(reminder|reminders)\s+(from|in)\s+(this\s+)?(image|photo|picture)/.test(
+      text
+    )
+  ) {
+    add("createRemindersFromImage");
+  }
+  if (
+    /(extract|get)\s+(list|items)\s+(from|in)\s+(this\s+)?(image|photo|picture)/.test(
+      text
+    )
+  ) {
+    add("extractListFromImage");
+  }
+
+  // List operations - archive, duplicate, move, reorder, clear
+  if (/(archive)\s+(the\s+)?(.+?\s+)?list/.test(text)) {
+    add("archiveList");
+    add("getLists");
+  }
+  if (/(duplicate|copy)\s+(the\s+)?(.+?\s+)?list/.test(text)) {
+    add("duplicateList");
+    add("getLists");
+  }
+  if (
+    /(move|transfer)\s+.+\s+(to|into)\s+(another|different)\s+list/.test(text)
+  ) {
+    add("moveItemToList");
+    add("getLists");
+  }
+  if (/(reorder|rearrange|sort)\s+(the\s+)?(.+?\s+)?list/.test(text)) {
+    add("reorderListItems");
+    add("getLists");
+  }
+  if (/(clear|remove)\s+(completed|done|checked)\s+(items?)?/.test(text)) {
+    add("clearCompletedItems");
+    add("getLists");
+  }
+  if (/(complete|check|mark)\s+(all|every)\s+(items?)?/.test(text)) {
+    add("bulkCompleteItems");
+    add("getLists");
+  }
+
+  // Reminder operations - archive, batch
+  if (/(archive)\s+(the\s+)?(reminder|reminders)/.test(text)) {
+    add("archiveReminder");
+    add("listReminders");
+  }
+  if (
+    /(create|set|add)\s+(multiple|several|batch)\s+(reminder|reminders)/.test(
+      text
+    )
+  ) {
+    add("batchCreateReminders");
   }
 
   // Time queries
