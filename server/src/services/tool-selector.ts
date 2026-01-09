@@ -30,13 +30,14 @@ export function getRelevantToolGroup(
     "bulkDeleteRemindersExcept",
     "bulkCompleteReminders",
     "bulkSnoozeReminders",
-  ];
-  const reminderQueryTools = [
     "listReminders",
     "getUpcomingReminders",
     "searchReminders",
     "listOverdueReminders",
   ];
+  // Deprecated: Merged into reminderTools
+  const reminderQueryTools: string[] = [];
+
   const listTools = [
     "createList",
     "deleteList",
@@ -56,7 +57,10 @@ export function getRelevantToolGroup(
     "getListItems",
     "searchLists",
     "getListStats",
+    "resolveListByName",
+    "parseItemsFromText",
   ];
+
   const noteTools = [
     "createNote",
     "updateNote",
@@ -72,6 +76,7 @@ export function getRelevantToolGroup(
     "bulkDeleteNotesExcept",
     "bulkArchiveNotes",
   ];
+
   const mediaTools = [
     "getMediaHistory",
     "searchMediaByText",
@@ -83,9 +88,8 @@ export function getRelevantToolGroup(
     "transcribeMediaAttachment",
     "ocrMediaAttachment",
     "extractMediaEntities",
-    "createRemindersFromImage",
-    "extractListFromImage",
   ];
+
   const notificationTools = [
     "sendReminderToContact",
     "getNotificationHistory",
@@ -94,7 +98,9 @@ export function getRelevantToolGroup(
     "bulkRetryFailedNotifications",
     "sendCustomMessage",
   ];
+
   const userTools = ["getUserSettings", "updateUserSettings", "setQuietHours"];
+
   if (reminderTools.includes(primaryToolName)) {
     if (allTools.getCurrentTime)
       selectedTools.getCurrentTime = allTools.getCurrentTime;
@@ -102,6 +108,8 @@ export function getRelevantToolGroup(
       selectedTools.searchReminders = allTools.searchReminders;
     if (allTools.listReminders)
       selectedTools.listReminders = allTools.listReminders;
+    if (allTools.getUpcomingReminders)
+      selectedTools.getUpcomingReminders = allTools.getUpcomingReminders;
     if (allTools.parseNaturalLanguageDate)
       selectedTools.parseNaturalLanguageDate =
         allTools.parseNaturalLanguageDate;
@@ -115,18 +123,25 @@ export function getRelevantToolGroup(
       selectedTools.getNextOccurrences = allTools.getNextOccurrences;
     if (allTools.resolveReminderByText)
       selectedTools.resolveReminderByText = allTools.resolveReminderByText;
+    if (allTools.calculateTimeDifference)
+      selectedTools.calculateTimeDifference = allTools.calculateTimeDifference;
+
+    // Include all mutation tools to allow "search then delete" flows
+    if (allTools.deleteReminder) selectedTools.deleteReminder = allTools.deleteReminder;
+    if (allTools.updateReminder) selectedTools.updateReminder = allTools.updateReminder;
+    if (allTools.completeReminder) selectedTools.completeReminder = allTools.completeReminder;
 
     // Always include batch creation when creating reminders
     if (primaryToolName === "createReminder" && allTools.batchCreateReminders) {
       selectedTools.batchCreateReminders = allTools.batchCreateReminders;
     }
   }
-  if (reminderQueryTools.includes(primaryToolName)) {
-    if (allTools.getCurrentTime)
-      selectedTools.getCurrentTime = allTools.getCurrentTime;
-    if (allTools.calculateTimeDifference)
-      selectedTools.calculateTimeDifference = allTools.calculateTimeDifference;
+
+  // Merged into above block, but keeping structure for safety if logic diverges later
+  if (false) {
+    // Logic moved to reminderTools block
   }
+
   if (
     context?.originalMessage &&
     /\b(time left|how long|how much time|when is|remaining time|time until)\b/i.test(
@@ -156,43 +171,26 @@ export function getRelevantToolGroup(
       selectedTools.searchReminders = allTools.searchReminders;
     }
   }
+
   if (listTools.includes(primaryToolName)) {
     if (allTools.getLists) selectedTools.getLists = allTools.getLists;
-    if (
-      (primaryToolName === "addItemToList" ||
-        primaryToolName === "removeItemFromList" ||
-        primaryToolName === "updateListItem" ||
-        primaryToolName === "bulkCompleteItems" ||
-        primaryToolName === "clearCompletedItems" ||
-        primaryToolName === "moveItemToList" ||
-        primaryToolName === "reorderListItems") &&
-      allTools.getListItems
-    ) {
-      selectedTools.getListItems = allTools.getListItems;
-    }
-    if (allTools.resolveListByName)
-      selectedTools.resolveListByName = allTools.resolveListByName;
-    if (allTools.parseItemsFromText)
-      selectedTools.parseItemsFromText = allTools.parseItemsFromText;
-    if (
-      (primaryToolName === "deleteList" ||
-        primaryToolName === "archiveList" ||
-        primaryToolName === "duplicateList") &&
-      allTools.getLists
-    ) {
-      selectedTools.getLists = allTools.getLists;
-    }
+    if (allTools.getListItems) selectedTools.getListItems = allTools.getListItems;
+    if (allTools.resolveListByName) selectedTools.resolveListByName = allTools.resolveListByName;
+    if (allTools.parseItemsFromText) selectedTools.parseItemsFromText = allTools.parseItemsFromText;
+
+    // Include mutation tools for "search then update" flows
+    if (allTools.addItemToList) selectedTools.addItemToList = allTools.addItemToList;
+    if (allTools.removeItemFromList) selectedTools.removeItemFromList = allTools.removeItemFromList;
+    if (allTools.updateListItem) selectedTools.updateListItem = allTools.updateListItem;
+    if (allTools.deleteList) selectedTools.deleteList = allTools.deleteList;
   }
+
   if (noteTools.includes(primaryToolName)) {
-    if (
-      (primaryToolName === "updateNote" ||
-        primaryToolName === "deleteNote" ||
-        primaryToolName === "duplicateNote") &&
-      allTools.searchNotes
-    ) {
-      selectedTools.searchNotes = allTools.searchNotes;
-    }
+    if (allTools.searchNotes) selectedTools.searchNotes = allTools.searchNotes;
     if (allTools.listNotes) selectedTools.listNotes = allTools.listNotes;
+    if (allTools.createNote) selectedTools.createNote = allTools.createNote;
+    if (allTools.updateNote) selectedTools.updateNote = allTools.updateNote;
+    if (allTools.deleteNote) selectedTools.deleteNote = allTools.deleteNote;
   }
   if (mediaTools.includes(primaryToolName)) {
     if (allTools.getMediaHistory)

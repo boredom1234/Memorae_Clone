@@ -40,6 +40,8 @@ export interface UpcomingReminder {
   title: string;
   reminderTime: string;
   timeUntil: string;
+  isRecurring?: boolean;
+  recurrenceRule?: string;
 }
 export interface SearchResult {
   id: string;

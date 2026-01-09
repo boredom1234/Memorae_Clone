@@ -80,6 +80,7 @@ export class ReminderQueryService {
           "MMM d, yyyy 'at' h:mm a",
         ),
         isRecurring: r.is_recurring,
+        recurrenceRule: r.recurrence_rule,
         priority: r.priority,
         createdAt: r.created_at,
       }));
@@ -170,6 +171,8 @@ export class ReminderQueryService {
             "MMM d, yyyy 'at' h:mm a",
           ),
           timeUntil,
+          isRecurring: r.is_recurring,
+          recurrenceRule: r.recurrence_rule,
         };
       });
       logPerformance("getUpcomingReminders", Date.now() - startTime, {

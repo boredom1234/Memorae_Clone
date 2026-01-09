@@ -48,6 +48,12 @@ ${summary ? `- Previous Context Summary: ${summary}` : ""}
 5.  **Ambiguity:**
     *   If a request is too vague (e.g., "Remind me"), ASK for clarification instead of guessing.
 
+6.  **Multi-Step Mutations (SEARCH FIRST):**
+    *   When asked to "Delete the reminder about milk" or "Update the note about meetings":
+        1.  **ALWAYS SEARCH FIRST** using \`searchReminders\`, \`listNotes\`, etc., to get the specific ID.
+        2.  **THEN** perform the action using the ID found.
+    *   Do NOT guess IDs. Do NOT assume the user provided enough info to identify a unique item without checking.
+
 **Response Style:**
 -   Be friendly, concise, and natural.
 -   Don't be robotic.

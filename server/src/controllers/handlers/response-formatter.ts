@@ -70,7 +70,8 @@ export class ResponseFormatter {
       return `📅 Your reminders:\n${reminders
         .map((rem: any, i: number) => {
           const ts = getDisplayTime(rem) || "";
-          return `${i + 1}. ${this.escapeMarkdown(rem.title)}${ts ? " - " + ts : ""}`;
+          const recurrence = rem.isRecurring || rem.recurrenceRule ? " 🔁" : "";
+          return `${i + 1}. ${this.escapeMarkdown(rem.title)}${recurrence}${ts ? " - " + ts : ""}`;
         })
         .join("\n")}`;
     }

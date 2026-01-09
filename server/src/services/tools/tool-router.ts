@@ -81,7 +81,8 @@ function keywordMap(userQuery: string, available: string[]): string | null {
   }
   // Single Reminders
   if (
-    /\b(remind me|set (a )?reminder|schedule (a )?(reminder|alarm)|timer|alarm|ping me|nudge me|alert me)\b/.test(
+    // Stricter regex: require "remind me to/about/that" or explicit "set reminder"
+    /\b(remind me\s+(to|about|that)|set (a )?reminder|schedule (a )?(reminder|alarm)|timer|alarm|ping me|nudge me|alert me)\b/.test(
       q
     )
   ) {
@@ -135,7 +136,9 @@ function keywordMap(userQuery: string, available: string[]): string | null {
   }
   // Single Notes
   if (
-    /\b(remember this|take a note|make a note|note this|^note:|save this|store this|create (a )?note)\b/.test(
+    // Stricter regex: removed "save this", "store this", "remember this" which are too generic
+    // "Note:" at start or "create note" are safe.
+    /\b(take a note|make a note|note this|^note:|create (a )?note)\b/.test(
       q
     )
   ) {
@@ -280,18 +283,23 @@ ROUTING RULES:
    - "show notes" → YES, use listNotes
    - "time left for reminder" → YES, use listReminders (NOT getCurrentTime)
    - "how long until" → YES, use getUpcomingReminders (NOT getCurrentTime)
-   
+
 2. **MUTATION TOOLS** (create, update, delete) - ONLY use when user clearly wants to modify data:
    - Must have enough context to perform the action
    - If unclear, prefer "no_tool_needed" to let AI ask for clarification
-   
-3. **getCurrentTime** - ONLY use when user asks EXPLICITLY for current time/date:
+
+3. **COMPOSITE REQUESTS** (Multiple actions):
+   - If user asks to "Find X and Delete it", select the **SEARCH/RETRIEVAL** tool first.
+   - If user asks to "Add item and set reminder", select the **ADD ITEM** tool.
+   - The system will automatically provide access to related tools once the primary domain is selected.
+
+4. **getCurrentTime** - ONLY use when user asks EXPLICITLY for current time/date:
    - "what time is it?" → YES
    - "what's the date?" → YES
    - "time left for reminder" → NO (use listReminders instead)
    - "how long until" → NO (use getUpcomingReminders instead)
-   
-4. **NO TOOL** for:
+
+5. **NO TOOL** for:
    - Greetings, off-topic questions, gratitude
    - Vague follow-ups without context ("what?", "when?", "which one?")
    - General knowledge questions not related to user's data
@@ -314,6 +322,11 @@ EXAMPLES - RETRIEVAL TOOLS (LOW threshold):
 "show my notes" → {"toolName": "listNotes"}
 "search my notes for meeting" → {"toolName": "searchNotes"}
 "find reminders about doctor" → {"toolName": "searchReminders"}
+
+EXAMPLES - COMPOSITE/MUTATION (Select Primary):
+"Find the milk reminder and delete it" → {"toolName": "searchReminders"} (Find first)
+"Add eggs to list and remind me in 1 hour" → {"toolName": "addItemToList"} (Add item first)
+"Update the meeting note and pin it" → {"toolName": "updateNote"}
 
 EXAMPLES - getCurrentTime (ONLY explicit time requests):
 "what time is it?" → {"toolName": "getCurrentTime"}
