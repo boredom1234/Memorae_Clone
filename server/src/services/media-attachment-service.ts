@@ -38,11 +38,11 @@ export class MediaAttachmentService {
   private logger = pino({ level: "info" });
   private supabase = getSupabaseClient();
   async saveAttachment(
-    params: CreateMediaAttachmentParams,
+    params: CreateMediaAttachmentParams
   ): Promise<MediaAttachment> {
     try {
       this.logger.info(
-        `Saving media attachment: type=${params.mediaType}, user=${params.userId}`,
+        `Saving media attachment: type=${params.mediaType}, user=${params.userId}`
       );
       const { data, error } = await this.supabase
         .from("media_attachments")
@@ -115,7 +115,7 @@ export class MediaAttachmentService {
   }> {
     try {
       this.logger.info(
-        `Transcribe request for attachment ${attachmentId} - queued for future processing`,
+        `Transcribe request for attachment ${attachmentId} - queued for future processing`
       );
       return {
         success: true,
@@ -132,7 +132,7 @@ export class MediaAttachmentService {
   }> {
     try {
       this.logger.info(
-        `OCR request for attachment ${attachmentId} - queued for future processing`,
+        `OCR request for attachment ${attachmentId} - queued for future processing`
       );
       return { success: true, message: "OCR queued (not yet implemented)" };
     } catch (error: any) {
@@ -146,7 +146,7 @@ export class MediaAttachmentService {
   }> {
     try {
       this.logger.info(
-        `Entity extraction request for attachment ${attachmentId} - queued`,
+        `Entity extraction request for attachment ${attachmentId} - queued`
       );
       return {
         success: true,
@@ -184,10 +184,10 @@ export class MediaAttachmentService {
       const linkedTo = params.reminderId
         ? "reminder"
         : params.listItemId
-          ? "list item"
-          : "note";
+        ? "list item"
+        : "note";
       this.logger.info(
-        `Media attachment ${params.attachmentId} linked to ${linkedTo}`,
+        `Media attachment ${params.attachmentId} linked to ${linkedTo}`
       );
     } catch (error: any) {
       this.logger.error({ error }, "Error linking media attachment");
@@ -200,7 +200,7 @@ export class MediaAttachmentService {
       mediaType?: "image" | "audio" | "video" | "document";
       limit?: number;
       offset?: number;
-    },
+    }
   ): Promise<{
     attachments: MediaAttachment[];
     total: number;
@@ -220,7 +220,7 @@ export class MediaAttachmentService {
       if (options?.offset) {
         query = query.range(
           options.offset,
-          options.offset + (options.limit || 10) - 1,
+          options.offset + (options.limit || 10) - 1
         );
       }
       const { data, error, count } = await query;
@@ -238,7 +238,7 @@ export class MediaAttachmentService {
     }
   }
   async getAttachmentsByReminder(
-    reminderId: string,
+    reminderId: string
   ): Promise<MediaAttachment[]> {
     try {
       const { data, error } = await this.supabase
@@ -257,7 +257,7 @@ export class MediaAttachmentService {
     }
   }
   async getAttachmentsByListItem(
-    listItemId: string,
+    listItemId: string
   ): Promise<MediaAttachment[]> {
     try {
       const { data, error } = await this.supabase
@@ -268,7 +268,7 @@ export class MediaAttachmentService {
       if (error) {
         this.logger.error({ error }, "Failed to get list item attachments");
         throw new Error(
-          `Failed to get list item attachments: ${error.message}`,
+          `Failed to get list item attachments: ${error.message}`
         );
       }
       return (data || []).map(this.mapToMediaAttachment);
@@ -300,7 +300,7 @@ export class MediaAttachmentService {
     options?: {
       mediaType?: "image" | "audio" | "video" | "document";
       limit?: number;
-    },
+    }
   ): Promise<MediaAttachment[]> {
     try {
       let query = this.supabase
@@ -329,7 +329,7 @@ export class MediaAttachmentService {
   }
   async getUnlinkedAttachments(
     userId: string,
-    limit: number = 10,
+    limit: number = 10
   ): Promise<MediaAttachment[]> {
     try {
       const { data, error } = await this.supabase
@@ -377,7 +377,7 @@ export class MediaAttachmentService {
       const { data, error } = await this.supabase
         .from("media_attachments")
         .select(
-          "media_type, extracted_text, reminder_id, list_item_id, note_id",
+          "media_type, extracted_text, reminder_id, list_item_id, note_id"
         )
         .eq("user_id", userId);
       if (error) {
@@ -407,6 +407,11 @@ export class MediaAttachmentService {
     }
   }
   private mapToMediaAttachment(data: any): MediaAttachment {
+    const createdAtDate = new Date(data.created_at);
+    const validCreatedAt = !isNaN(createdAtDate.getTime())
+      ? createdAtDate
+      : new Date();
+
     return {
       id: data.id,
       userId: data.user_id,
@@ -420,7 +425,7 @@ export class MediaAttachmentService {
       reminderId: data.reminder_id,
       listItemId: data.list_item_id,
       noteId: data.note_id,
-      createdAt: new Date(data.created_at),
+      createdAt: validCreatedAt,
       processedAt: data.processed_at ? new Date(data.processed_at) : undefined,
     };
   }

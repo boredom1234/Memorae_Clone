@@ -24,7 +24,7 @@ export function getTools(
   notesQueryService: NotesQueryService,
   notificationService: NotificationService,
   mediaService: MediaAttachmentService,
-  activityService: ActivityService,
+  activityService: ActivityService
 ) {
   return {
     createReminder: {
@@ -34,7 +34,8 @@ export function getTools(
         reminderTime: "string (ISO 8601)",
         timezone: "string",
         isRecurring: "boolean",
-        recurrenceRule: "string (optional)",
+        recurrenceRule:
+          "string (optional) - MUST be a valid iCalendar RRULE (e.g., 'FREQ=DAILY;INTERVAL=1'). DO NOT use natural language like 'every day'. Use suggestReminderTime first if unsure.",
         notes: "string (optional)",
         priority: "'low' | 'medium' | 'high' (optional)",
       },
@@ -47,7 +48,8 @@ export function getTools(
         title: "string (optional)",
         reminderTime: "string (optional)",
         isRecurring: "boolean (optional)",
-        recurrenceRule: "string (optional)",
+        recurrenceRule:
+          "string (optional) - MUST be a valid iCalendar RRULE. DO NOT use natural language.",
         notes: "string (optional)",
         priority: "'low' | 'medium' | 'high' (optional)",
       },
@@ -62,7 +64,8 @@ export function getTools(
       handler: reminderService.deleteReminder.bind(reminderService),
     },
     listReminders: {
-      description: "List reminders with filters",
+      description:
+        "List/Filter reminders by structured criteria (date, status, priority). Use this for 'my pending reminders' or 'reminders for tomorrow'. DO NOT use for text search.",
       parameters: {
         status: "'pending' | 'completed' | 'all' (optional)",
         startDate: "string (optional)",
@@ -81,7 +84,7 @@ export function getTools(
         snoozeDuration: "number (optional)",
       },
       handler: reminderActionsService.snoozeReminder.bind(
-        reminderActionsService,
+        reminderActionsService
       ),
     },
     completeReminder: {
@@ -90,7 +93,7 @@ export function getTools(
         reminderId: "string",
       },
       handler: reminderActionsService.completeReminder.bind(
-        reminderActionsService,
+        reminderActionsService
       ),
     },
     getUpcomingReminders: {
@@ -103,7 +106,8 @@ export function getTools(
         reminderQueryService.getUpcomingReminders.bind(reminderQueryService),
     },
     searchReminders: {
-      description: "Search reminders",
+      description:
+        "Search reminders by text content query. Use this for 'reminders about milk' or 'find the doctor appointment'.",
       parameters: {
         query: "string",
         filters: "object (optional)",
@@ -447,7 +451,7 @@ export function getTools(
         timezone: "string",
       },
       handler: reminderActionsService.snoozeReminderByText.bind(
-        reminderActionsService,
+        reminderActionsService
       ),
     },
     bulkUpdateReminderStatus: {
@@ -457,7 +461,7 @@ export function getTools(
         status: "'completed' | 'cancelled' | 'pending'",
       },
       handler: reminderActionsService.bulkUpdateStatus.bind(
-        reminderActionsService,
+        reminderActionsService
       ),
     },
     retryNotification: {

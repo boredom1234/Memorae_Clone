@@ -57,7 +57,7 @@ export class ReminderScheduler {
       try {
         const { data: claimed, error: rpcError } = await this.supabase.rpc(
           "claim_due_reminders",
-          { now_ts: now, batch_size: 50 },
+          { now_ts: now, batch_size: 50 }
         );
         if (!rpcError && Array.isArray(claimed)) {
           dueReminders = claimed as any[];
@@ -70,7 +70,7 @@ export class ReminderScheduler {
         const { data, error } = await this.supabase
           .from("reminders")
           .select(
-            "id, user_id, title, notes, priority, reminder_time, is_recurring, recurrence_rule, recurrence_end_date",
+            "id, user_id, title, notes, priority, reminder_time, is_recurring, recurrence_rule, recurrence_end_date"
           )
           .eq("status", "pending")
           .lte("reminder_time", now)
@@ -118,7 +118,7 @@ export class ReminderScheduler {
             const nextOccurrence = this.calculateNextOccurrence(
               reminder.reminder_time,
               reminder.recurrence_rule,
-              reminder.recurrence_end_date,
+              reminder.recurrence_end_date
             );
             if (nextOccurrence) {
               await this.supabase
@@ -181,83 +181,96 @@ export class ReminderScheduler {
   private calculateNextOccurrence(
     currentTime: string,
     recurrenceRule: string,
-    endDate?: string | null,
+    endDate?: string | null
   ): Date | null {
     try {
-      const current = new Date(currentTime);
       const now = new Date();
-      let next: Date | null = null;
+      let current = new Date(currentTime);
       const rule = recurrenceRule.toLowerCase().trim();
+      let iterations = 0;
+      const MAX_ITERATIONS = 1000; // Prevent infinite loops
+
+      // Initial check if we need to parse complex RRULE first
       if (rule.startsWith("freq=")) {
-        return this.parseRRULE(rule, current, endDate);
-      }
-      if (rule === "daily" || rule === "every day") {
-        next = new Date(current);
-        next.setDate(next.getDate() + 1);
-      } else if (rule === "weekly" || rule === "every week") {
-        next = new Date(current);
-        next.setDate(next.getDate() + 7);
-      } else if (rule === "monthly" || rule === "every month") {
-        next = new Date(current);
-        next.setMonth(next.getMonth() + 1);
-      } else if (rule === "yearly" || rule === "every year") {
-        next = new Date(current);
-        next.setFullYear(next.getFullYear() + 1);
-      } else if (rule.match(/^every (\d+) days?$/)) {
-        const match = rule.match(/^every (\d+) days?$/);
-        const days = parseInt(match![1], 10);
-        next = new Date(current);
-        next.setDate(next.getDate() + days);
-      } else if (rule.match(/^every (\d+) weeks?$/)) {
-        const match = rule.match(/^every (\d+) weeks?$/);
-        const weeks = parseInt(match![1], 10);
-        next = new Date(current);
-        next.setDate(next.getDate() + weeks * 7);
-      } else if (rule.match(/^every (\d+) months?$/)) {
-        const match = rule.match(/^every (\d+) months?$/);
-        const months = parseInt(match![1], 10);
-        next = new Date(current);
-        next.setMonth(next.getMonth() + months);
-      } else if (rule.match(/^every (\d+) hours?$/)) {
-        const match = rule.match(/^every (\d+) hours?$/);
-        const hours = parseInt(match![1], 10);
-        next = new Date(current);
-        next.setHours(next.getHours() + hours);
-      } else if (rule.match(/^every (\d+) minutes?$/)) {
-        const match = rule.match(/^every (\d+) minutes?$/);
-        const minutes = parseInt(match![1], 10);
-        next = new Date(current);
-        next.setMinutes(next.getMinutes() + minutes);
-      } else if (rule.match(/^every (\d+) seconds?$/)) {
-        const match = rule.match(/^every (\d+) seconds?$/);
-        const seconds = parseInt(match![1], 10);
-        next = new Date(current);
-        next.setSeconds(next.getSeconds() + seconds);
-      } else if (rule.match(/weekdays?/)) {
-        next = new Date(current);
-        do {
-          next.setDate(next.getDate() + 1);
-        } while (next.getDay() === 0 || next.getDay() === 6);
-      } else if (rule.match(/weekends?/)) {
-        next = new Date(current);
-        next.setDate(next.getDate() + 1);
-        while (next.getDay() !== 0 && next.getDay() !== 6) {
-          next.setDate(next.getDate() + 1);
+        // Note: parseRRULE itself might need similar iterative treatment if it handles "catch up" logic,
+        // but for now we focus on the simple rules which are more manually handled here.
+        // If parseRRULE returns a date in the past, we might need a loop here too.
+        // However, the original code had recursion inside calculationNextOccurrence calling itself OR parseRRULE.
+        // Let's assume parseRRULE calculates ONE next step.
+
+        let next = this.parseRRULE(rule, current, endDate);
+        // If standard RRULE parser returns something in past, loop until future
+        while (next && next <= now && iterations < MAX_ITERATIONS) {
+          next = this.parseRRULE(rule, next, endDate);
+          iterations++;
         }
-      } else {
+        return next && next > now ? next : null;
+      }
+
+      let next: Date | null = new Date(current);
+
+      // Loop until we find a future date
+      while (next && next <= now && iterations < MAX_ITERATIONS) {
+        iterations++;
+        const base = new Date(next); // Use the calculated 'next' as base for the NEXT step
+
+        if (rule === "daily" || rule === "every day") {
+          next.setDate(base.getDate() + 1);
+        } else if (rule === "weekly" || rule === "every week") {
+          next.setDate(base.getDate() + 7);
+        } else if (rule === "monthly" || rule === "every month") {
+          next.setMonth(base.getMonth() + 1);
+        } else if (rule === "yearly" || rule === "every year") {
+          next.setFullYear(base.getFullYear() + 1);
+        } else if (rule.match(/^every (\d+) days?$/)) {
+          const match = rule.match(/^every (\d+) days?$/);
+          const days = parseInt(match![1], 10);
+          next.setDate(base.getDate() + days);
+        } else if (rule.match(/^every (\d+) weeks?$/)) {
+          const match = rule.match(/^every (\d+) weeks?$/);
+          const weeks = parseInt(match![1], 10);
+          next.setDate(base.getDate() + weeks * 7);
+        } else if (rule.match(/^every (\d+) months?$/)) {
+          const match = rule.match(/^every (\d+) months?$/);
+          const months = parseInt(match![1], 10);
+          next.setMonth(base.getMonth() + months);
+        } else if (rule.match(/^every (\d+) hours?$/)) {
+          const match = rule.match(/^every (\d+) hours?$/);
+          const hours = parseInt(match![1], 10);
+          next.setHours(base.getHours() + hours);
+        } else if (rule.match(/^every (\d+) minutes?$/)) {
+          const match = rule.match(/^every (\d+) minutes?$/);
+          const minutes = parseInt(match![1], 10);
+          next.setMinutes(base.getMinutes() + minutes);
+        } else if (rule.match(/^every (\d+) seconds?$/)) {
+          const match = rule.match(/^every (\d+) seconds?$/);
+          const seconds = parseInt(match![1], 10);
+          next.setSeconds(base.getSeconds() + seconds);
+        } else if (rule.match(/weekdays?/)) {
+          do {
+            next.setDate(next.getDate() + 1);
+          } while (next.getDay() === 0 || next.getDay() === 6);
+        } else if (rule.match(/weekends?/)) {
+          next.setDate(next.getDate() + 1);
+          while (next.getDay() !== 0 && next.getDay() !== 6) {
+            next.setDate(next.getDate() + 1);
+          }
+        } else {
+          // Default/Fallthrough
+          logWarn(
+            `Unknown recurrence rule: ${recurrenceRule}, attempting natural language parse (defaulting to +1 day)`
+          );
+          next.setDate(base.getDate() + 1);
+        }
+      }
+
+      if (iterations >= MAX_ITERATIONS) {
         logWarn(
-          `Unknown recurrence rule: ${recurrenceRule}, attempting natural language parse`,
+          `Recurrence calculation hit max iterations for rule: ${recurrenceRule}`
         );
-        next = new Date(current);
-        next.setDate(next.getDate() + 1);
+        return null; // Stop if we can't find a future date reasonably
       }
-      if (next && next <= now) {
-        return this.calculateNextOccurrence(
-          next.toISOString(),
-          recurrenceRule,
-          endDate,
-        );
-      }
+
       if (next && endDate) {
         const end = new Date(endDate);
         if (next > end) {
@@ -280,19 +293,16 @@ export class ReminderScheduler {
   private parseRRULE(
     rrule: string,
     current: Date,
-    endDate?: string | null,
+    endDate?: string | null
   ): Date | null {
     try {
       const now = new Date();
       let next = new Date(current);
-      const parts = rrule.split(";").reduce(
-        (acc, part) => {
-          const [key, value] = part.split("=");
-          acc[key.toLowerCase()] = value.toLowerCase();
-          return acc;
-        },
-        {} as Record<string, string>,
-      );
+      const parts = rrule.split(";").reduce((acc, part) => {
+        const [key, value] = part.split("=");
+        acc[key.toLowerCase()] = value.toLowerCase();
+        return acc;
+      }, {} as Record<string, string>);
       const freq = parts["freq"];
       const interval = parseInt(parts["interval"] || "1", 10);
       const byDayStr = parts["byday"];
@@ -324,7 +334,7 @@ export class ReminderScheduler {
         base: Date,
         year: number,
         month: number,
-        day: number,
+        day: number
       ) => {
         const d = new Date(base);
         d.setFullYear(year, month, day);
@@ -335,7 +345,7 @@ export class ReminderScheduler {
         const candidates: Date[] = [];
         const base = new Date(current);
         const searchStart = new Date(
-          Math.max(base.getTime() + 60000, Date.now()),
+          Math.max(base.getTime() + 60000, Date.now())
         );
         const weeksToScan = Math.max(4, interval * 4);
         for (let w = 0; w < weeksToScan; w++) {
@@ -349,7 +359,7 @@ export class ReminderScheduler {
               base.getHours(),
               base.getMinutes(),
               base.getSeconds(),
-              base.getMilliseconds(),
+              base.getMilliseconds()
             );
             if (candidate > searchStart) candidates.push(candidate);
           }
@@ -363,7 +373,7 @@ export class ReminderScheduler {
         month: number,
         weekday: number,
         n: number,
-        baseTime: Date,
+        baseTime: Date
       ): Date | null => {
         if (n > 0) {
           const firstOfMonth = new Date(year, month, 1);

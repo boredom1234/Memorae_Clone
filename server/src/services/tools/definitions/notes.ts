@@ -4,7 +4,7 @@ import { DedupeFunction, ToolServices } from "../tool-definitions";
 export function createNotesAITools(
   userId: string,
   services: ToolServices,
-  dedupe: DedupeFunction,
+  dedupe: DedupeFunction
 ) {
   const { notesService, notesQueryService, utilityService } = services;
   return {
@@ -19,25 +19,25 @@ export function createNotesAITools(
           .string()
           .optional()
           .describe(
-            "Optional title for the note - ALWAYS try to generate a descriptive title from the content",
+            "Optional title for the note - ALWAYS try to generate a descriptive title from the content"
           ),
         category: z
           .string()
           .optional()
           .describe(
-            "Category like 'personal', 'work', 'general', 'shopping', 'health', 'finance' - infer from content context",
+            "Category like 'personal', 'work', 'general', 'shopping', 'health', 'finance' - infer from content context"
           ),
         tags: z
           .array(z.string())
           .optional()
           .describe(
-            "Optional tags for organization - extract relevant keywords from content as tags",
+            "Optional tags for organization - extract relevant keywords from content as tags"
           ),
         isPinned: z
           .boolean()
           .optional()
           .describe(
-            "Mark as important/pinned - set to true if user says 'important', 'remember this', 'don\'t forget'",
+            "Mark as important/pinned - set to true if user says 'important', 'remember this', 'don't forget'"
           ),
       }),
       execute: dedupe("createNote", async (params) => {
@@ -171,7 +171,7 @@ export function createNotesAITools(
           params.searchQuery.trim().length === 0
         ) {
           throw new Error(
-            "Search query is required to find the note to update.",
+            "Search query is required to find the note to update."
           );
         }
         const searchResult = await notesQueryService.searchNotes({
@@ -182,7 +182,7 @@ export function createNotesAITools(
         });
         if (searchResult.notes.length === 0) {
           throw new Error(
-            `Could not find any notes matching "${params.searchQuery}"`,
+            `Could not find any notes matching "${params.searchQuery}"`
           );
         }
         if (searchResult.notes.length > 1) {
@@ -226,7 +226,7 @@ export function createNotesAITools(
         });
         if (searchResult.notes.length === 0) {
           throw new Error(
-            `Could not find any notes matching "${params.searchQuery}"`,
+            `Could not find any notes matching "${params.searchQuery}"`
           );
         }
         if (searchResult.notes.length > 1) {
@@ -266,7 +266,7 @@ export function createNotesAITools(
         });
         if (searchResult.notes.length === 0) {
           throw new Error(
-            `Could not find any notes matching "${params.searchQuery}"`,
+            `Could not find any notes matching "${params.searchQuery}"`
           );
         }
         if (searchResult.notes.length > 1) {
@@ -337,7 +337,11 @@ export function createNotesAITools(
           recent7d: stats.recent,
           categories: stats.categories,
           highlights,
-          message: `You have ${stats.total} notes. ${highlights.length > 0 ? "Here are some highlights:\n" + highlights.join("\n") : ""}`,
+          message: `You have ${stats.total} notes. ${
+            highlights.length > 0
+              ? "Here are some highlights:\n" + highlights.join("\n")
+              : ""
+          }`,
         };
       }),
     }),
@@ -389,7 +393,7 @@ export function createNotesAITools(
         if (!note)
           return { success: false, tasks: [], message: "Note not found" };
         const { tasks } = utilityService.extractTasksFromText(
-          note.content || "",
+          note.content || ""
         );
         return {
           success: true,
@@ -398,6 +402,191 @@ export function createNotesAITools(
           message: tasks.length
             ? `Found ${tasks.length} task(s) in note.`
             : "No clear tasks found in the note.",
+        };
+      }),
+    }),
+    bulkDeleteNotesExcept: tool({
+      description:
+        "Delete ALL notes EXCEPT the ones specified. Use when user says 'delete all notes except X', 'clear notes but keep Y', 'remove every note except Z'. This is the PREFERRED tool for bulk note deletion.",
+      inputSchema: z.object({
+        keepTitles: z
+          .array(z.string())
+          .describe(
+            "Note titles/keywords to KEEP (everything else will be deleted)"
+          ),
+        category: z
+          .string()
+          .optional()
+          .describe("Filter by category (only delete notes in this category)"),
+      }),
+      execute: dedupe("bulkDeleteNotesExcept", async (params) => {
+        // Fetch all notes
+        const allNotes = await notesQueryService.listNotes({
+          userId,
+          category: params.category,
+          onlyPinned: false,
+          limit: 100,
+          includeArchived: false,
+          sortBy: "created",
+          sortOrder: "desc",
+        } as any);
+
+        if (!allNotes.notes || allNotes.notes.length === 0) {
+          return {
+            success: true,
+            deletedCount: 0,
+            message: "No notes to delete.",
+          };
+        }
+
+        // Normalize keep titles for comparison
+        const keepTitlesLower = params.keepTitles.map((t) =>
+          t.toLowerCase().trim()
+        );
+
+        // Find notes to delete (everything NOT in keepTitles)
+        const toDelete = allNotes.notes.filter((n: any) => {
+          const titleLower = (n.title || "").toLowerCase().trim();
+          const contentLower = (n.content || "").toLowerCase();
+          return !keepTitlesLower.some(
+            (keep) =>
+              titleLower.includes(keep) ||
+              keep.includes(titleLower) ||
+              contentLower.includes(keep)
+          );
+        });
+
+        if (toDelete.length === 0) {
+          return {
+            success: true,
+            deletedCount: 0,
+            keptCount: allNotes.notes.length,
+            message: `No notes to delete. All ${allNotes.notes.length} notes match your keep list.`,
+          };
+        }
+
+        // Delete each non-matching note
+        let deletedCount = 0;
+        const errors: string[] = [];
+
+        for (const note of toDelete) {
+          try {
+            await notesService.deleteNote(userId, note.id);
+            deletedCount++;
+          } catch (error: any) {
+            errors.push(`${note.title || "Untitled"}: ${error.message}`);
+          }
+        }
+
+        const keptCount = allNotes.notes.length - deletedCount;
+
+        return {
+          success: errors.length === 0,
+          deletedCount,
+          keptCount,
+          keptTitles: params.keepTitles,
+          message:
+            errors.length > 0
+              ? `Deleted ${deletedCount} notes, kept ${keptCount}. Errors: ${errors.join(
+                  "; "
+                )}`
+              : `Successfully deleted ${deletedCount} notes. Kept ${keptCount} notes (${params.keepTitles.join(
+                  ", "
+                )}).`,
+          errors: errors.length > 0 ? errors : undefined,
+        };
+      }),
+    }),
+    bulkArchiveNotes: tool({
+      description:
+        "Archive ALL notes or all except specified ones. Use when user says 'archive all notes', 'archive old notes', 'archive everything except X'.",
+      inputSchema: z.object({
+        exceptTitles: z
+          .array(z.string())
+          .optional()
+          .describe("Note titles to SKIP (don't archive these)"),
+        category: z
+          .string()
+          .optional()
+          .describe("Filter by category (only archive notes in this category)"),
+      }),
+      execute: dedupe("bulkArchiveNotes", async (params) => {
+        // Fetch all notes
+        const allNotes = await notesQueryService.listNotes({
+          userId,
+          category: params.category,
+          onlyPinned: false,
+          limit: 100,
+          includeArchived: false,
+          sortBy: "created",
+          sortOrder: "desc",
+        } as any);
+
+        if (!allNotes.notes || allNotes.notes.length === 0) {
+          return {
+            success: true,
+            archivedCount: 0,
+            message: "No notes to archive.",
+          };
+        }
+
+        // Normalize except titles
+        const exceptLower = (params.exceptTitles || []).map((t) =>
+          t.toLowerCase().trim()
+        );
+
+        // Find notes to archive
+        const toArchive = allNotes.notes.filter((n: any) => {
+          if (exceptLower.length === 0) return true;
+          const titleLower = (n.title || "").toLowerCase().trim();
+          const contentLower = (n.content || "").toLowerCase();
+          return !exceptLower.some(
+            (ex) =>
+              titleLower.includes(ex) ||
+              ex.includes(titleLower) ||
+              contentLower.includes(ex)
+          );
+        });
+
+        if (toArchive.length === 0) {
+          return {
+            success: true,
+            archivedCount: 0,
+            skippedCount: allNotes.notes.length,
+            message: "No notes to archive (all matched your exception list).",
+          };
+        }
+
+        // Archive each note (update with isArchived: true)
+        let archivedCount = 0;
+        const errors: string[] = [];
+
+        for (const note of toArchive) {
+          try {
+            await notesService.updateNote({
+              userId,
+              noteId: note.id,
+              isArchived: true,
+            } as any);
+            archivedCount++;
+          } catch (error: any) {
+            errors.push(`${note.title || "Untitled"}: ${error.message}`);
+          }
+        }
+
+        const skippedCount = allNotes.notes.length - archivedCount;
+
+        return {
+          success: errors.length === 0,
+          archivedCount,
+          skippedCount,
+          message:
+            errors.length > 0
+              ? `Archived ${archivedCount} notes. Errors: ${errors.join("; ")}`
+              : `Successfully archived ${archivedCount} notes.${
+                  skippedCount > 0 ? ` Skipped ${skippedCount}.` : ""
+                }`,
+          errors: errors.length > 0 ? errors : undefined,
         };
       }),
     }),

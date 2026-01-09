@@ -93,7 +93,7 @@ export function validateBody<T>(schema: z.ZodSchema<T>) {
         throw new AppError(
           `Validation failed: ${errorMessages}`,
           400,
-          "VALIDATION_ERROR",
+          "VALIDATION_ERROR"
         );
       }
       throw error;
@@ -113,7 +113,7 @@ export function validateQuery<T>(schema: z.ZodSchema<T>) {
         throw new AppError(
           `Query validation failed: ${errorMessages}`,
           400,
-          "VALIDATION_ERROR",
+          "VALIDATION_ERROR"
         );
       }
       throw error;
@@ -127,10 +127,24 @@ export const userRateLimit = new Map<
     resetTime: number;
   }
 >();
+export let rateLimitCleanupInterval: NodeJS.Timeout | null = null;
+
 export function rateLimitByUser(
   maxRequests: number = 60,
-  windowMs: number = 60000,
+  windowMs: number = 60000
 ) {
+  // Start cleanup interval if not already running
+  if (!rateLimitCleanupInterval) {
+    rateLimitCleanupInterval = setInterval(() => {
+      const now = Date.now();
+      for (const [key, value] of userRateLimit.entries()) {
+        if (now > value.resetTime) {
+          userRateLimit.delete(key);
+        }
+      }
+    }, 60000 * 5); // Clean up every 5 minutes
+  }
+
   return async (request: FastifyRequest) => {
     const userId =
       (request.headers["x-user-id"] as string) ||
@@ -146,7 +160,7 @@ export function rateLimitByUser(
       throw new AppError(
         "Rate limit exceeded. Please try again later.",
         429,
-        "RATE_LIMIT_EXCEEDED",
+        "RATE_LIMIT_EXCEEDED"
       );
     }
     userLimit.count++;
@@ -222,7 +236,7 @@ export const sendCustomMessageSchema = z.object({
       z.object({
         id: z.string().min(1).max(64).transform(sanitizeInput),
         label: z.string().min(1).max(100).transform(sanitizeInput),
-      }),
+      })
     )
     .optional(),
 });

@@ -1,115 +1,106 @@
-import { generateText, stepCountIs } from "ai";
+import { generateText } from "ai";
 import { ToolsRegistry } from "./tools-registry";
 import { routeToTool } from "./tools/tool-router";
 import { TranslationService } from "./translation-service";
 import { ConversationMessage } from "../types/conversation";
-import {
-  conversationalPrompt,
-  toolSystemPrompt,
-  noToolAccessPrompt,
-  directToolSystemPrompt,
-} from "./ai/prompts";
-import {
-  enrichMessageWithContext,
-  isCommandLike,
-  heuristicToolSelection,
-} from "./ai/message-processor";
+import { systemPrompt } from "./ai/prompts";
+import { enrichMessageWithContext } from "./ai/message-processor";
 import { getDefaultModel, getFallbackModels } from "./ai/model-manager";
-import {
-  handleTimeLeftQuery,
-  handleGenericRetrieval,
-} from "./ai/response-handler";
-import { isStateChangingTool } from "./ai/tool-utils";
 import { createLogger } from "../utils/logger";
+
 export class AIService {
   private logger = createLogger({ component: "AIService" });
   private defaultModel: any;
   private fallbackModels: any[] = [];
   private translationService: TranslationService;
+
   constructor() {
     this.initializeModels();
     this.translationService = new TranslationService();
   }
+
   private initializeModels() {
     this.defaultModel = getDefaultModel();
     this.fallbackModels = getFallbackModels();
     this.logger.info(
-      `AI Service initialized with ${this.fallbackModels.length} fallback models`,
+      `AI Service initialized with ${this.fallbackModels.length} fallback models`
     );
   }
+
+  /**
+   * Check if tool execution had failures that warrant a retry
+   */
   private hasToolFailures(
     result: any,
-    expectTools: boolean,
-    toolStats?: any,
-  ): {
-    failed: boolean;
-    summary: string;
-  } {
+    expectTools: boolean
+  ): { failed: boolean; summary: string } {
     try {
-      const executed = toolStats?.executed === true;
-      const noToolActivity =
-        expectTools &&
-        !executed &&
-        (!result.toolCalls || result.toolCalls.length === 0) &&
-        (!result.toolResults || result.toolResults.length === 0);
-      if (noToolActivity) {
+      const toolCalls = result.toolCalls || [];
+      const toolResults = result.toolResults || [];
+
+      // If we expected tools but none were called
+      if (expectTools && toolCalls.length === 0 && toolResults.length === 0) {
+        // Relaxed: If AI gave a substantial response, treat as OK (maybe asked for clarification)
+        if (result.text && result.text.length > 20) {
+          return { failed: false, summary: "" };
+        }
         return {
           failed: true,
-          summary:
-            "No tool was executed even though a tool was expected. Please select and invoke the right tool with valid parameters.",
+          summary: "No tool was executed even though a tool was expected.",
         };
       }
-      const trs: any[] = Array.isArray(result.toolResults)
-        ? (result.toolResults as any[])
-        : [];
-      for (const tr of trs) {
-        const out =
-          tr && typeof tr === "object" && "output" in tr
-            ? (tr as any).output
-            : tr;
-        const msg =
-          (out && (out.message || out.error || out.errorMessage)) || "";
-        const hasFailure =
-          (out && out.success === false) ||
-          (typeof out === "object" && ("error" in out || "errorCode" in out)) ||
-          /invalid|missing|required|parse|format|not found|could not|failed|error/i.test(
-            String(msg || ""),
-          );
-        if (hasFailure) {
-          const toolName = (tr as any)?.toolName || "unknown_tool";
+
+      // Check for errors in tool results
+      for (const tr of toolResults) {
+        const output = tr?.output ?? tr;
+        if (output?.success === false || output?.error) {
           return {
             failed: true,
-            summary: `Tool ${toolName} reported a failure: ${String(msg || "unknown error")}`,
+            summary: `Tool failed: ${
+              output.error || output.message || "unknown error"
+            }`,
           };
         }
       }
-    } catch {}
+    } catch (err: any) {
+      this.logger.warn({ err }, "Error checking for tool failures");
+    }
     return { failed: false, summary: "" };
   }
-  private buildRepairAssistantContent(
+
+  /**
+   * Build a repair context for self-healing retry
+   */
+  private buildRepairContext(
     selectedToolName: string,
     originalText: string,
-    failureSummary: string,
+    failureSummary: string
   ): string {
     return [
       "[SYSTEM REPAIR CONTEXT]",
-      `Router-selected primary tool: ${selectedToolName}`,
-      `Original user text: "${originalText}"`,
-      `Failure summary: ${failureSummary}`,
-      "Instructions: Analyze the failure, fix invalid or missing parameters, and retry the appropriate tool(s).",
-      "Prefer using helper tools such as parseNaturalLanguageDate, getCurrentTime, searchReminders, listReminders, resolveListByName, calculateTimeDifference as needed.",
-      "Ensure reminder/list IDs are resolved via search tools when ambiguous.",
-      "Ensure times are valid ISO and in the future when appropriate; if not, parse from naturalTimeText.",
-      "Make at most one concise repair-and-retry cycle, then produce the final answer based on tool results.",
+      `Primary tool: ${selectedToolName}`,
+      `Original request: "${originalText}"`,
+      `Failure: ${failureSummary}`,
+      "Instructions: Analyze the failure, fix parameters, and retry the tool.",
+      "Use helper tools (parseNaturalLanguageDate, getCurrentTime, searchReminders, etc.) to resolve ambiguities.",
     ].join("\n");
   }
+
+  /**
+   * Main entry point for processing user messages.
+   * Flow:
+   * 1. Translate & Enrich Context
+   * 2. Route to best tool using dedicated LLM router
+   * 3. Get relevant tool group (primary + helpers)
+   * 4. Execute with main LLM, with retry on failure
+   */
   async processMessage(
     message: string,
     userId: string,
     timezone: string,
     toolsRegistry: ToolsRegistry,
     conversationHistory: ConversationMessage[] = [],
-    summary?: string,
+    summary?: string
   ): Promise<{
     text: string;
     toolCalls: any[];
@@ -120,6 +111,7 @@ export class AIService {
       this.logger.error("No AI models configured");
       throw new Error("AI service not available - no models configured");
     }
+
     const modelsToTry = [
       { provider: "primary", instance: this.defaultModel },
       ...this.fallbackModels.map((f) => ({
@@ -127,442 +119,253 @@ export class AIService {
         instance: f.instance,
       })),
     ].filter((m) => m.instance);
-    const translation =
-      await this.translationService.translateToEnglish(message);
-    const textForProcessing = translation.translatedText || message;
-    const textForRouting = enrichMessageWithContext(
+
+    // 1. Prepare Input
+    const translation = await this.translationService.translateToEnglish(
+      message
+    );
+    const textForProcessing =
+      (translation && translation.translatedText) || message;
+    const textWithContext = enrichMessageWithContext(
       textForProcessing,
-      conversationHistory,
+      conversationHistory
     );
+
+    // 2. Route to best tool using dedicated router
     const toolDefinitions = toolsRegistry.getToolDefinitions(userId);
-    const selectedToolNameFromRouter = await routeToTool(
-      textForRouting,
-      toolDefinitions,
+    const selectedToolName = await routeToTool(
+      textWithContext,
+      toolDefinitions
     );
-    const commandLike = isCommandLike(textForRouting);
-    let selectedToolName = selectedToolNameFromRouter;
-    if (selectedToolNameFromRouter === "no_tool_needed") {
-      const heuristic = heuristicToolSelection(textForRouting);
-      const retrievalHeuristics = new Set([
-        "getUpcomingReminders",
-        "listReminders",
-        "searchReminders",
-        "getLists",
-        "getListItems",
-        "listNotes",
-        "searchNotes",
-      ]);
-      const allowHeuristic =
-        commandLike ||
-        heuristic === "createNote" ||
-        heuristic === "conversational_with_context" ||
-        retrievalHeuristics.has(heuristic as any);
-      if (heuristic !== "no_tool_needed" && allowHeuristic) {
-        if (heuristic === "conversational_with_context") {
-          selectedToolName = "no_tool_needed";
-        } else {
-          const maybeTool = toolsRegistry.getSingleAISDKTool(
-            userId,
-            heuristic,
-            {
-              originalMessage: textForProcessing,
-              timezone,
-            },
-          );
-          if (maybeTool && Object.keys(maybeTool).length > 0) {
-            this.logger.info(
-              `Router returned no_tool_needed; heuristic selected ${heuristic}`,
-            );
-            selectedToolName = heuristic;
-          }
-        }
+
+    this.logger.info(
+      { selectedToolName, queryLength: textWithContext.length },
+      "Tool router result"
+    );
+
+    // 3. Get relevant tools
+    const context = { originalMessage: textForProcessing, timezone };
+    let tools: any;
+    let willUseTools = false;
+
+    if (selectedToolName === "no_tool_needed") {
+      // Conversational mode - no tools
+      tools = {};
+      willUseTools = false;
+    } else {
+      // Get the primary tool + helper tools
+      tools = toolsRegistry.getRelevantToolGroup(
+        userId,
+        selectedToolName,
+        context
+      );
+      willUseTools =
+        Object.keys(tools).filter((k) => k !== "__stats").length > 0;
+
+      if (!willUseTools) {
+        this.logger.warn(
+          { selectedToolName },
+          "Selected tool not found, falling back to conversational"
+        );
       }
     }
+
+    // 4. Prepare conversation messages
     const messages = conversationHistory.map((msg) => ({
       role: msg.role as "user" | "assistant",
       content: msg.content,
     }));
-    if (selectedToolName === "no_tool_needed") {
-      try {
-        const recentTexts = [...conversationHistory]
-          .slice(-6)
-          .map((m) => (m.content || "").toLowerCase())
-          .join(" ");
-        const prevAboutReminders = /\b(reminder|reminders|upcoming)\b/.test(
-          recentTexts,
-        );
-        const referentialFollowUp =
-          /(what|which|any|anything)\b.*\b(else|other|more|next)\b/i.test(
-            textForProcessing,
-          ) || /\bafter that\b/i.test(textForProcessing);
-        if (prevAboutReminders && referentialFollowUp) {
-          selectedToolName = "getUpcomingReminders";
-        }
-      } catch {}
-    }
-    if (selectedToolName === "no_tool_needed") {
-      this.logger.info(
-        "No tool will be used. Generating conversational response.",
-      );
-      for (const modelConfig of modelsToTry) {
-        try {
-          const messagesWithCurrent = [
-            ...messages,
-            { role: "user" as const, content: textForProcessing },
-          ];
-          try {
-            const recentTexts = [...conversationHistory]
-              .slice(-6)
-              .map((m) => (m.content || "").toLowerCase())
-              .join(" ");
-            const prevAboutReminders = /\b(reminder|reminders|upcoming)\b/.test(
-              recentTexts,
-            );
-            const isReferential =
-              /(what|which|any|anything)\b.*\b(else|other|more|next)\b/i.test(
-                textForProcessing,
-              ) || /\bafter that\b/i.test(textForProcessing);
-            if (prevAboutReminders && isReferential) {
-              return {
-                text: "Would you like me to list your upcoming reminders?",
-                toolCalls: [],
-                toolResults: [],
-              };
-            }
-          } catch {}
-          const result = await generateText({
-            model: modelConfig.instance,
-            system: conversationalPrompt(timezone, summary),
-            messages: messagesWithCurrent,
-          });
-          let safeText = result.text;
-          try {
-            const claimsAction =
-              /\b(saved|created|added|set|scheduled|deleted|removed|updated)\b/i.test(
-                safeText || "",
-              ) && /\b(note|reminder|list|item)\b/i.test(safeText || "");
-            if (claimsAction) {
-              safeText =
-                "I haven't saved anything yet. Would you like me to save that as a note?";
-            }
-          } catch {}
-          return { text: safeText, toolCalls: [], toolResults: [] };
-        } catch (error: any) {
-          this.logger.warn(
-            { error: error.message, provider: modelConfig.provider },
-            `Conversational request failed with ${modelConfig.provider}, trying next fallback`,
-          );
-          continue;
-        }
-      }
-      throw new Error(
-        "All AI models failed to generate a conversational response.",
-      );
-    }
-    const willUseTools = selectedToolName !== "no_tool_needed";
-    if (willUseTools) {
-      this.logger.info(
-        `Tool router selected: ${selectedToolName} - will provide to LLM`,
-      );
-    } else {
-      this.logger.info(
-        `No tool selected by router. Using conversational response.`,
-      );
-    }
-    const tools = toolsRegistry.getRelevantToolGroup(userId, selectedToolName, {
-      originalMessage: textForProcessing,
-      timezone,
-    });
-    if (!tools || Object.keys(tools).length === 0) {
-      this.logger.error(
-        `Selected tool "${selectedToolName}" not available. Falling back to conversational response.`,
-      );
-      for (const modelConfig of modelsToTry) {
-        try {
-          const messagesWithCurrent = [
-            ...messages,
-            { role: "user" as const, content: textForProcessing },
-          ];
-          const result = await generateText({
-            model: modelConfig.instance,
-            system: noToolAccessPrompt(timezone, textForProcessing),
-            messages: messagesWithCurrent,
-          });
-          let safeText = result.text;
-          try {
-            const claimsAction =
-              /\b(saved|created|added|set|scheduled|deleted|removed|updated)\b/i.test(
-                safeText || "",
-              ) && /\b(note|reminder|list|item)\b/i.test(safeText || "");
-            if (claimsAction) {
-              safeText =
-                "I haven't saved anything yet. Would you like me to save that as a note?";
-            }
-          } catch {}
-          return { text: safeText, toolCalls: [], toolResults: [] };
-        } catch (error: any) {
-          this.logger.warn(
-            { error: error.message, provider: modelConfig.provider },
-            `Conversational fallback failed with ${modelConfig.provider}, trying next fallback`,
-          );
-        }
-      }
-    }
+
+    // 5. Execute with LLM
     let lastError: Error | null = null;
+    const MAX_STEPS = 10;
+
     for (const modelConfig of modelsToTry) {
       try {
         this.logger.info(
-          `Attempting tool execution with ${modelConfig.provider}`,
+          {
+            provider: modelConfig.provider,
+            willUseTools,
+            toolCount: Object.keys(tools).length,
+          },
+          `Attempting execution with ${modelConfig.provider}`
         );
-        const systemPrompt = toolSystemPrompt(
-          selectedToolName,
-          textForProcessing,
-          isStateChangingTool(selectedToolName),
-          timezone,
-          summary,
-        );
-        const effectiveTools = willUseTools ? tools : ({} as any);
+
+        const prompt = systemPrompt(timezone, summary);
+
+        // Limit response length to avoid hitting Telegram's 4096 char limit
+        // 2048 tokens ≈ ~8000 chars (with buffer for chunking if needed)
+        const MAX_TOKENS = 2048;
+
         let result = await generateText({
           model: modelConfig.instance,
-          system: systemPrompt,
+          system: prompt,
+          messages: [
+            ...messages,
+            { role: "user" as const, content: textWithContext },
+          ],
+          tools: willUseTools ? tools : undefined,
+          maxSteps: MAX_STEPS,
+          maxTokens: MAX_TOKENS,
+        } as any);
+
+        // Check for failures and attempt self-healing retry
+        const failure = this.hasToolFailures(result, willUseTools);
+        if (failure.failed) {
+          this.logger.warn(
+            { reason: failure.summary },
+            "Tool execution failed, attempting self-healing retry"
+          );
+
+          const repairMessages = [
+            ...messages,
+            { role: "user" as const, content: textWithContext },
+            {
+              role: "assistant" as const,
+              content: this.buildRepairContext(
+                selectedToolName,
+                textForProcessing,
+                failure.summary
+              ),
+            },
+          ];
+
+          result = (await generateText({
+            model: modelConfig.instance,
+            system: prompt,
+            messages: repairMessages,
+            tools: willUseTools ? tools : undefined,
+            maxSteps: MAX_STEPS,
+          } as any)) as any;
+        }
+
+        const toolCalls = (result as any).toolCalls || [];
+        const toolResults = (result as any).toolResults || [];
+        const toolsExecuted = toolCalls.length > 0;
+
+        // Generate fallback text if LLM didn't provide one after tool execution
+        let finalText = result.text;
+        if (
+          (!finalText || finalText.trim().length === 0) &&
+          toolResults.length > 0
+        ) {
+          const firstResult = toolResults[0]?.output ?? toolResults[0];
+          if (firstResult?.message) {
+            finalText = firstResult.message;
+          } else if (firstResult?.success === true) {
+            finalText = "Done!";
+          } else if (firstResult?.success === false) {
+            finalText = `I couldn't complete that: ${
+              firstResult.error || "validation failed"
+            }`;
+          } else {
+            finalText = "Processed your request.";
+          }
+        }
+
+        this.logger.info(
+          {
+            provider: modelConfig.provider,
+            toolCalls: toolCalls.length,
+            responseLength: finalText?.length || 0,
+          },
+          "Execution successful"
+        );
+
+        return {
+          text: finalText,
+          toolCalls,
+          toolResults,
+          _toolsExecuted: toolsExecuted,
+        };
+      } catch (error: any) {
+        lastError = error;
+        this.logger.warn(
+          { error: error.message, provider: modelConfig.provider },
+          `Execution failed with ${modelConfig.provider}, trying next fallback`
+        );
+        continue;
+      }
+    }
+
+    this.logger.error(
+      { error: lastError?.message || "Unknown error" },
+      "All AI models failed"
+    );
+    throw new Error(
+      `AI service unavailable: ${lastError?.message || "All providers failed"}`
+    );
+  }
+
+  /**
+   * Process message with pre-defined tools (for special flows)
+   */
+  async processMessageWithTools(
+    message: string,
+    _userId: string,
+    timezone: string,
+    tools: any,
+    conversationHistory: ConversationMessage[] = [],
+    summary?: string
+  ): Promise<{
+    text: string;
+    toolCalls: any[];
+    toolResults: any[];
+    _toolsExecuted?: boolean;
+  }> {
+    if (!this.defaultModel && this.fallbackModels.length === 0) {
+      throw new Error("AI service not available - no models configured");
+    }
+
+    const modelsToTry = [
+      { provider: "primary", instance: this.defaultModel },
+      ...this.fallbackModels.map((f) => ({
+        provider: f.provider,
+        instance: f.instance,
+      })),
+    ].filter((m) => m.instance);
+
+    const messages = conversationHistory.map((msg) => ({
+      role: msg.role as "user" | "assistant",
+      content: msg.content,
+    }));
+
+    const translation = await this.translationService.translateToEnglish(
+      message
+    );
+    const textForProcessing = translation.translatedText || message;
+
+    let lastError: Error | null = null;
+
+    for (const modelConfig of modelsToTry) {
+      try {
+        const prompt = systemPrompt(timezone, summary);
+
+        const result = await generateText({
+          model: modelConfig.instance,
+          system: prompt,
           messages: [
             ...messages,
             { role: "user" as const, content: textForProcessing },
           ],
-          tools: effectiveTools,
-          stopWhen: stepCountIs(8),
+          tools: tools,
           maxSteps: 10,
         } as any);
-        const failure = this.hasToolFailures(
-          result,
-          willUseTools,
-          (effectiveTools as any).__stats,
-        );
-        if (failure.failed) {
-          this.logger.warn(
-            { provider: modelConfig.provider, reason: failure.summary },
-            "Tool call failed or not executed; attempting self-healing retry",
-          );
-          const repairMessages = [
-            ...messages,
-            { role: "user" as const, content: textForProcessing },
-            {
-              role: "assistant" as const,
-              content: this.buildRepairAssistantContent(
-                selectedToolName,
-                textForProcessing,
-                failure.summary,
-              ),
-            },
-          ];
-          result = (await generateText({
-            model: modelConfig.instance,
-            system: systemPrompt,
-            messages: repairMessages,
-            tools: effectiveTools,
-            stopWhen: stepCountIs(8),
-            maxSteps: 10,
-          } as any)) as any;
-        }
-        const toolStats = (effectiveTools as any).__stats;
-        const toolsActuallyExecutedFinal = toolStats?.executed === true;
-        this.logger.info(
-          {
-            provider: modelConfig.provider,
-            toolExecuted: toolsActuallyExecutedFinal,
-            toolCallsCount: result.toolCalls?.length || 0,
-            toolResultsCount: result.toolResults?.length || 0,
-            hasText: !!result.text,
-            textPreview: result.text?.substring(0, 100),
-          },
-          `AI processed message with ${modelConfig.provider}`,
-        );
-        if (willUseTools && !toolsActuallyExecutedFinal) {
-          this.logger.warn(
-            {
-              selectedTool: selectedToolName,
-              textLength: textForProcessing.length,
-              hasToolCalls: result.toolCalls?.length > 0,
-            },
-            `Tool ${selectedToolName} was provided but not executed by LLM`,
-          );
-        }
-        let finalText = result.text;
-        if (
-          (!finalText || finalText.trim().length === 0) &&
-          (result.toolResults?.length || 0) > 0
-        ) {
-          this.logger.warn(
-            "LLM did not generate text after tool execution. Using fallback.",
-          );
-          try {
-            const first = (result.toolResults as any[])[0];
-            const output = first?.output ?? first;
-            if (output?.message) finalText = output.message;
-            else if (output?.success === false && output?.error) {
-              finalText = `I couldn't complete that: ${output.message || "validation failed"}. Please clarify the time or details.`;
-            } else if (output?.success === true) {
-              finalText = `Done.`;
-            }
-          } catch {}
-          if (!finalText || finalText.trim().length === 0) {
-            finalText = "Processed your request.";
-          }
-        }
-        try {
-          const timeLeftText = await handleTimeLeftQuery(
-            textForProcessing,
-            result,
-            toolsRegistry,
-            userId,
-            timezone,
-          );
-          if (timeLeftText) {
-            finalText = timeLeftText;
-          }
-        } catch (e: any) {
-          this.logger.warn(
-            { error: e?.message },
-            "Deterministic time-left fallback failed",
-          );
-        }
-        try {
-          finalText = await handleGenericRetrieval(
-            finalText,
-            textForProcessing,
-            toolsRegistry,
-            userId,
-          );
-        } catch (e: any) {
-          this.logger.warn(
-            { error: e?.message },
-            "General deterministic retrieval fallback failed",
-          );
-        }
+
         return {
-          text: finalText,
-          toolCalls: result.toolCalls,
-          toolResults: result.toolResults,
-          _toolsExecuted: toolsActuallyExecutedFinal,
-        };
-      } catch (error: any) {
-        lastError = error;
-        this.logger.warn(
-          { error: error.message, provider: modelConfig.provider },
-          `Tool execution failed with ${modelConfig.provider}, trying next fallback`,
-        );
-        continue;
-      }
-    }
-    this.logger.error(
-      { error: lastError?.message || "Unknown error" },
-      "All AI models failed to process message with the selected tool",
-    );
-    throw new Error(
-      `AI service unavailable: ${lastError?.message || "All providers failed"}`,
-    );
-  }
-  async processMessageWithTools(
-    message: string,
-    userId: string,
-    timezone: string,
-    tools: any,
-    conversationHistory: ConversationMessage[] = [],
-    summary?: string,
-  ): Promise<{
-    text: string;
-    toolCalls: any[];
-    toolResults: any[];
-    _toolsExecuted?: boolean;
-  }> {
-    if (!this.defaultModel && this.fallbackModels.length === 0) {
-      this.logger.error("No AI models configured");
-      throw new Error("AI service not available - no models configured");
-    }
-    const modelsToTry = [
-      { provider: "primary", instance: this.defaultModel },
-      ...this.fallbackModels.map((f) => ({
-        provider: f.provider,
-        instance: f.instance,
-      })),
-    ].filter((m) => m.instance);
-    const messages = conversationHistory.map((msg) => ({
-      role: msg.role as "user" | "assistant",
-      content: msg.content,
-    }));
-    const translation =
-      await this.translationService.translateToEnglish(message);
-    const textForProcessing = translation.translatedText || message;
-    const effectiveTools = tools;
-    const messagesWithCurrent = [
-      ...messages,
-      { role: "user" as const, content: textForProcessing },
-    ];
-    let lastError: Error | null = null;
-    for (const modelConfig of modelsToTry) {
-      try {
-        const systemPrompt = directToolSystemPrompt(timezone, userId, summary);
-        let result = await generateText({
-          model: modelConfig.instance,
-          system: systemPrompt,
-          messages: messagesWithCurrent,
-          tools: effectiveTools,
-          stopWhen: stepCountIs(8),
-          maxSteps: 10,
-        } as any);
-        const failure = this.hasToolFailures(
-          result,
-          true,
-          (effectiveTools as any).__stats,
-        );
-        if (failure.failed) {
-          this.logger.warn(
-            { provider: modelConfig.provider, reason: failure.summary },
-            "Direct tool run failed or did not execute; attempting self-healing retry",
-          );
-          const repairMessages = [
-            ...messagesWithCurrent,
-            {
-              role: "assistant" as const,
-              content: this.buildRepairAssistantContent(
-                "direct-tools",
-                textForProcessing,
-                failure.summary,
-              ),
-            },
-          ];
-          result = (await generateText({
-            model: modelConfig.instance,
-            system: systemPrompt,
-            messages: repairMessages,
-            tools: effectiveTools,
-            stopWhen: stepCountIs(8),
-            maxSteps: 10,
-          } as any)) as any;
-        }
-        const toolStats = (effectiveTools as any).__stats;
-        const toolsActuallyExecuted = toolStats?.executed === true;
-        return {
-          text: (result as any).text,
+          text: result.text,
           toolCalls: (result as any).toolCalls || [],
           toolResults: (result as any).toolResults || [],
-          _toolsExecuted: toolsActuallyExecuted,
+          _toolsExecuted: ((result as any).toolCalls || []).length > 0,
         };
       } catch (error: any) {
         lastError = error;
-        this.logger.warn(
-          { error: error.message, provider: modelConfig.provider },
-          `Direct tool execution failed with ${modelConfig.provider}, trying next fallback`,
-        );
         continue;
       }
     }
-    this.logger.error(
-      { error: lastError?.message || "Unknown error" },
-      "All AI models failed to process message with provided tools",
-    );
+
     throw new Error(
-      `AI service unavailable: ${lastError?.message || "All providers failed"}`,
+      `AI service unavailable: ${lastError?.message || "All providers failed"}`
     );
   }
 }

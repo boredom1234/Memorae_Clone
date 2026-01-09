@@ -4,7 +4,7 @@ import { DedupeFunction, ToolServices } from "../tool-definitions";
 export function createReminderAITools(
   userId: string,
   services: ToolServices,
-  dedupe: DedupeFunction,
+  dedupe: DedupeFunction
 ) {
   const {
     reminderService,
@@ -23,13 +23,13 @@ export function createReminderAITools(
           .string()
           .optional()
           .describe(
-            "ISO 8601 datetime string when the reminder should trigger. Provide this OR naturalTimeText.",
+            "ISO 8601 datetime string when the reminder should trigger. Provide this OR naturalTimeText."
           ),
         naturalTimeText: z
           .string()
           .optional()
           .describe(
-            'Natural language time description extracted from user message (e.g., "tomorrow at 3pm", "in 30 minutes", "next Monday 9am", "now"). STRONGLY PREFERRED over reminderTime - always try to extract this from the user\'s message. For recurring reminders without explicit time, use "now" or "in 1 minute".',
+            'Natural language time description extracted from user message (e.g., "tomorrow at 3pm", "in 30 minutes", "next Monday 9am", "now"). STRONGLY PREFERRED over reminderTime - always try to extract this from the user\'s message. For recurring reminders without explicit time, use "now" or "in 1 minute".'
           ),
         isRecurring: z
           .boolean()
@@ -40,19 +40,19 @@ export function createReminderAITools(
           .string()
           .optional()
           .describe(
-            'Recurrence rule. Accepts either plain English (e.g., "daily", "every 2 weeks", "weekdays") OR iCalendar RRULE (e.g., "FREQ=MONTHLY;BYDAY=SA;BYSETPOS=2,4" for 2nd and 4th Saturday).',
+            'Recurrence rule. Accepts either plain English (e.g., "daily", "every 2 weeks", "weekdays") OR iCalendar RRULE (e.g., "FREQ=MONTHLY;BYDAY=SA;BYSETPOS=2,4" for 2nd and 4th Saturday).'
           ),
         notes: z
           .string()
           .optional()
           .describe(
-            "Additional notes - ALWAYS try to extract context from the user's message to fill this field",
+            "Additional notes - ALWAYS try to extract context from the user's message to fill this field"
           ),
         priority: z
           .enum(["low", "medium", "high"])
           .optional()
           .describe(
-            "Priority level - infer from urgency keywords (urgent/ASAP/important=high, later/sometime=low, default=medium)",
+            "Priority level - infer from urgency keywords (urgent/ASAP/important=high, later/sometime=low, default=medium)"
           ),
       }),
       execute: dedupe("createReminder", async (params) => {
@@ -80,7 +80,7 @@ export function createReminderAITools(
             });
             if (parsed.success && parsed.extractedDates.length > 0) {
               const bestDate = utilityService.pickBestDate(
-                parsed.extractedDates,
+                parsed.extractedDates
               );
               if (bestDate) {
                 finalTime = bestDate;
@@ -95,7 +95,7 @@ export function createReminderAITools(
             finalTime = now.toISOString();
           } else {
             throw new Error(
-              "Could not determine reminder time. Please specify a valid date/time.",
+              "Could not determine reminder time. Please specify a valid date/time."
             );
           }
         }
@@ -145,7 +145,7 @@ export function createReminderAITools(
           params.searchQuery.trim().length === 0
         ) {
           throw new Error(
-            "Search query is required to find the reminder to update.",
+            "Search query is required to find the reminder to update."
           );
         }
         const settings = await userService.getUserSettings(userId);
@@ -158,7 +158,7 @@ export function createReminderAITools(
         });
         if (searchResult.results.length === 0) {
           throw new Error(
-            "Could not find any reminders matching that description.",
+            "Could not find any reminders matching that description."
           );
         }
         if (searchResult.results.length > 1) {
@@ -192,7 +192,7 @@ export function createReminderAITools(
             });
             if (parsed.success && parsed.extractedDates.length > 0) {
               const bestDate = utilityService.pickBestDate(
-                parsed.extractedDates,
+                parsed.extractedDates
               );
               if (bestDate) {
                 finalTime = bestDate;
@@ -200,7 +200,7 @@ export function createReminderAITools(
             }
             if (!finalTime && params.naturalTimeText) {
               throw new Error(
-                `Could not parse the time "${params.naturalTimeText}". Please try a different format like "3:00 PM" or "15:30".`,
+                `Could not parse the time "${params.naturalTimeText}". Please try a different format like "3:00 PM" or "15:30".`
               );
             }
           }
@@ -209,7 +209,7 @@ export function createReminderAITools(
           const parsedDate = new Date(finalTime);
           if (isNaN(parsedDate.getTime())) {
             throw new Error(
-              `Invalid time format: "${finalTime}". Please try a different format.`,
+              `Invalid time format: "${finalTime}". Please try a different format.`
             );
           }
           if (parsedDate.getTime() <= Date.now()) {
@@ -221,7 +221,7 @@ export function createReminderAITools(
           : undefined;
         if (!normalizedTitle && !finalTime && !params.priority) {
           throw new Error(
-            "Please specify what you want to update (title, time, or priority).",
+            "Please specify what you want to update (title, time, or priority)."
           );
         }
         return await reminderService.updateReminder({
@@ -249,7 +249,7 @@ export function createReminderAITools(
         });
         if (searchResult.results.length === 0) {
           throw new Error(
-            "Could not find any reminders matching that description.",
+            "Could not find any reminders matching that description."
           );
         }
         if (searchResult.results.length > 1) {
@@ -348,13 +348,13 @@ export function createReminderAITools(
           .string()
           .optional()
           .describe(
-            "ISO 8601 datetime when the reminder should trigger after snoozing",
+            "ISO 8601 datetime when the reminder should trigger after snoozing"
           ),
         naturalTimeText: z
           .string()
           .optional()
           .describe(
-            'Natural language time (e.g., "in 10 minutes", "tomorrow 3pm")',
+            'Natural language time (e.g., "in 10 minutes", "tomorrow 3pm")'
           ),
       }),
       execute: dedupe("snoozeReminder", async (params) => {
@@ -364,7 +364,7 @@ export function createReminderAITools(
           params.searchQuery.trim().length === 0
         ) {
           throw new Error(
-            "Search query is required to find the reminder to snooze.",
+            "Search query is required to find the reminder to snooze."
           );
         }
         const settings = await userService.getUserSettings(userId);
@@ -377,7 +377,7 @@ export function createReminderAITools(
         });
         if (searchResult.results.length === 0) {
           throw new Error(
-            "Could not find any reminders matching that description.",
+            "Could not find any reminders matching that description."
           );
         }
         if (searchResult.results.length > 1) {
@@ -412,7 +412,7 @@ export function createReminderAITools(
         }
         if (!finalTime) {
           throw new Error(
-            "Please specify when to snooze until (e.g., 'in 10 minutes', 'tomorrow 3pm').",
+            "Please specify when to snooze until (e.g., 'in 10 minutes', 'tomorrow 3pm')."
           );
         }
         const parsedDate = new Date(finalTime);
@@ -458,7 +458,7 @@ export function createReminderAITools(
               reminderTime: z
                 .string()
                 .describe(
-                  "ISO 8601 datetime string when the reminder should trigger",
+                  "ISO 8601 datetime string when the reminder should trigger"
                 ),
               isRecurring: z
                 .boolean()
@@ -468,9 +468,9 @@ export function createReminderAITools(
                 .string()
                 .optional()
                 .describe(
-                  'Recurrence rule in plain English or RRULE. Examples: "daily" or "FREQ=WEEKLY;BYDAY=MO,WE,FR".',
+                  'Recurrence rule in plain English or RRULE. Examples: "daily" or "FREQ=WEEKLY;BYDAY=MO,WE,FR".'
                 ),
-            }),
+            })
           )
           .describe("Array of reminders to create"),
       }),
@@ -502,6 +502,302 @@ export function createReminderAITools(
           userId,
           reminderId: searchResult.results[0].id,
         });
+      }),
+    }),
+    bulkDeleteRemindersExcept: tool({
+      description:
+        "Delete ALL reminders EXCEPT the ones specified. Use when user says 'delete all reminders except X', 'clear reminders but keep Y', 'remove every reminder except Z'. This is the PREFERRED tool for bulk reminder deletion.",
+      inputSchema: z.object({
+        keepTitles: z
+          .array(z.string())
+          .describe(
+            "Reminder titles/keywords to KEEP (everything else will be deleted)"
+          ),
+        status: z
+          .enum(["pending", "completed", "all"])
+          .optional()
+          .describe("Which reminders to consider (default: pending)"),
+      }),
+      execute: dedupe("bulkDeleteRemindersExcept", async (params) => {
+        // Fetch all reminders
+        const allReminders = await reminderQueryService.listReminders({
+          userId,
+          status: params.status || "pending",
+          limit: 100,
+          sortBy: "time",
+        });
+
+        if (!allReminders.reminders || allReminders.reminders.length === 0) {
+          return {
+            success: true,
+            deletedCount: 0,
+            message: "No reminders to delete.",
+          };
+        }
+
+        // Normalize keep titles for comparison
+        const keepTitlesLower = params.keepTitles.map((t) =>
+          t.toLowerCase().trim()
+        );
+
+        // Find reminders to delete (everything NOT in keepTitles)
+        const toDelete = allReminders.reminders.filter((r: any) => {
+          const titleLower = (r.title || "").toLowerCase().trim();
+          return !keepTitlesLower.some(
+            (keep) => titleLower.includes(keep) || keep.includes(titleLower)
+          );
+        });
+
+        if (toDelete.length === 0) {
+          return {
+            success: true,
+            deletedCount: 0,
+            keptCount: allReminders.reminders.length,
+            message: `No reminders to delete. All ${allReminders.reminders.length} reminders match your keep list.`,
+          };
+        }
+
+        // Delete each non-matching reminder
+        let deletedCount = 0;
+        const errors: string[] = [];
+
+        for (const reminder of toDelete) {
+          try {
+            await reminderService.deleteReminder({
+              userId,
+              reminderId: reminder.id,
+            });
+            deletedCount++;
+          } catch (error: any) {
+            errors.push(`${reminder.title}: ${error.message}`);
+          }
+        }
+
+        const keptCount = allReminders.reminders.length - deletedCount;
+
+        return {
+          success: errors.length === 0,
+          deletedCount,
+          keptCount,
+          keptTitles: params.keepTitles,
+          message:
+            errors.length > 0
+              ? `Deleted ${deletedCount} reminders, kept ${keptCount}. Errors: ${errors.join(
+                  "; "
+                )}`
+              : `Successfully deleted ${deletedCount} reminders. Kept ${keptCount} reminders (${params.keepTitles.join(
+                  ", "
+                )}).`,
+          errors: errors.length > 0 ? errors : undefined,
+        };
+      }),
+    }),
+    bulkCompleteReminders: tool({
+      description:
+        "Mark ALL pending reminders as complete, or all except specified ones. Use when user says 'complete all reminders', 'mark all as done', 'finish all reminders except X'.",
+      inputSchema: z.object({
+        exceptTitles: z
+          .array(z.string())
+          .optional()
+          .describe("Reminder titles to SKIP (don't complete these)"),
+      }),
+      execute: dedupe("bulkCompleteReminders", async (params) => {
+        // Fetch all pending reminders
+        const allReminders = await reminderQueryService.listReminders({
+          userId,
+          status: "pending",
+          limit: 100,
+          sortBy: "time",
+        });
+
+        if (!allReminders.reminders || allReminders.reminders.length === 0) {
+          return {
+            success: true,
+            completedCount: 0,
+            message: "No pending reminders to complete.",
+          };
+        }
+
+        // Normalize except titles
+        const exceptLower = (params.exceptTitles || []).map((t) =>
+          t.toLowerCase().trim()
+        );
+
+        // Find reminders to complete
+        const toComplete = allReminders.reminders.filter((r: any) => {
+          if (exceptLower.length === 0) return true;
+          const titleLower = (r.title || "").toLowerCase().trim();
+          return !exceptLower.some(
+            (ex) => titleLower.includes(ex) || ex.includes(titleLower)
+          );
+        });
+
+        if (toComplete.length === 0) {
+          return {
+            success: true,
+            completedCount: 0,
+            skippedCount: allReminders.reminders.length,
+            message:
+              "No reminders to complete (all matched your exception list).",
+          };
+        }
+
+        // Complete each reminder
+        let completedCount = 0;
+        const errors: string[] = [];
+
+        for (const reminder of toComplete) {
+          try {
+            await reminderActionsService.completeReminder({
+              userId,
+              reminderId: reminder.id,
+            });
+            completedCount++;
+          } catch (error: any) {
+            errors.push(`${reminder.title}: ${error.message}`);
+          }
+        }
+
+        const skippedCount = allReminders.reminders.length - completedCount;
+
+        return {
+          success: errors.length === 0,
+          completedCount,
+          skippedCount,
+          message:
+            errors.length > 0
+              ? `Completed ${completedCount} reminders. Errors: ${errors.join(
+                  "; "
+                )}`
+              : `Successfully completed ${completedCount} reminders.${
+                  skippedCount > 0 ? ` Skipped ${skippedCount}.` : ""
+                }`,
+          errors: errors.length > 0 ? errors : undefined,
+        };
+      }),
+    }),
+    bulkSnoozeReminders: tool({
+      description:
+        "Snooze ALL pending reminders to a new time, or all except specified ones. Use when user says 'snooze all reminders', 'postpone everything until tomorrow', 'delay all reminders except X'.",
+      inputSchema: z.object({
+        exceptTitles: z
+          .array(z.string())
+          .optional()
+          .describe("Reminder titles to SKIP (don't snooze these)"),
+        snoozeUntil: z
+          .string()
+          .optional()
+          .describe("ISO 8601 datetime to snooze until"),
+        naturalTimeText: z
+          .string()
+          .optional()
+          .describe("Natural language time like 'tomorrow 9am', 'in 2 hours'"),
+      }),
+      execute: dedupe("bulkSnoozeReminders", async (params) => {
+        const settings = await userService.getUserSettings(userId);
+        const ctx = (params as any)._context || {};
+        const tz = ctx.timezone || settings?.timezone || "UTC";
+
+        // Parse snooze time
+        let snoozeTime = params.snoozeUntil;
+        if (params.naturalTimeText || !snoozeTime) {
+          const textToParse =
+            params.naturalTimeText || params.snoozeUntil || "";
+          if (textToParse.trim()) {
+            const parsed = utilityService.parseNaturalLanguageDate({
+              text: textToParse,
+              timezone: tz,
+            });
+            if (parsed.success && parsed.extractedDates.length > 0) {
+              snoozeTime =
+                utilityService.pickBestDate(parsed.extractedDates) ||
+                snoozeTime;
+            }
+          }
+        }
+
+        if (!snoozeTime) {
+          // Default: snooze 1 hour
+          const oneHourLater = new Date();
+          oneHourLater.setHours(oneHourLater.getHours() + 1);
+          snoozeTime = oneHourLater.toISOString();
+        }
+
+        // Fetch all pending reminders
+        const allReminders = await reminderQueryService.listReminders({
+          userId,
+          status: "pending",
+          limit: 100,
+          sortBy: "time",
+        });
+
+        if (!allReminders.reminders || allReminders.reminders.length === 0) {
+          return {
+            success: true,
+            snoozedCount: 0,
+            message: "No pending reminders to snooze.",
+          };
+        }
+
+        // Normalize except titles
+        const exceptLower = (params.exceptTitles || []).map((t) =>
+          t.toLowerCase().trim()
+        );
+
+        // Find reminders to snooze
+        const toSnooze = allReminders.reminders.filter((r: any) => {
+          if (exceptLower.length === 0) return true;
+          const titleLower = (r.title || "").toLowerCase().trim();
+          return !exceptLower.some(
+            (ex) => titleLower.includes(ex) || ex.includes(titleLower)
+          );
+        });
+
+        if (toSnooze.length === 0) {
+          return {
+            success: true,
+            snoozedCount: 0,
+            skippedCount: allReminders.reminders.length,
+            message:
+              "No reminders to snooze (all matched your exception list).",
+          };
+        }
+
+        // Snooze each reminder
+        let snoozedCount = 0;
+        const errors: string[] = [];
+
+        for (const reminder of toSnooze) {
+          try {
+            await reminderActionsService.snoozeReminder({
+              userId,
+              reminderId: reminder.id,
+              snoozeUntil: snoozeTime,
+              snoozeDuration: 0,
+            });
+            snoozedCount++;
+          } catch (error: any) {
+            errors.push(`${reminder.title}: ${error.message}`);
+          }
+        }
+
+        const skippedCount = allReminders.reminders.length - snoozedCount;
+
+        return {
+          success: errors.length === 0,
+          snoozedCount,
+          skippedCount,
+          snoozedUntil: snoozeTime,
+          message:
+            errors.length > 0
+              ? `Snoozed ${snoozedCount} reminders until ${snoozeTime}. Errors: ${errors.join(
+                  "; "
+                )}`
+              : `Successfully snoozed ${snoozedCount} reminders until ${snoozeTime}.${
+                  skippedCount > 0 ? ` Skipped ${skippedCount}.` : ""
+                }`,
+          errors: errors.length > 0 ? errors : undefined,
+        };
       }),
     }),
   };

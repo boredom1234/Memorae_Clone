@@ -4,7 +4,7 @@ import { DedupeFunction, ToolServices } from "../tool-definitions";
 export function createListAITools(
   userId: string,
   services: ToolServices,
-  dedupe: DedupeFunction,
+  dedupe: DedupeFunction
 ) {
   const { listService, listItemService, listQueryService } = services;
   return {
@@ -17,20 +17,20 @@ export function createListAITools(
           .string()
           .optional()
           .describe(
-            "Description of the list - ALWAYS try to infer purpose from context (e.g., 'Shopping list for groceries', 'Tasks for work project')",
+            "Description of the list - ALWAYS try to infer purpose from context (e.g., 'Shopping list for groceries', 'Tasks for work project')"
           ),
         items: z.array(z.string()).optional().describe("Initial items to add"),
         icon: z
           .string()
           .optional()
           .describe(
-            "Icon/emoji for the list - infer from list type (🛒 for shopping, ✅ for todo, 📝 for notes, 🎯 for goals, etc.)",
+            "Icon/emoji for the list - infer from list type (🛒 for shopping, ✅ for todo, 📝 for notes, 🎯 for goals, etc.)"
           ),
         color: z
           .string()
           .optional()
           .describe(
-            "Color for the list - suggest based on category (blue for work, green for shopping, red for urgent, etc.)",
+            "Color for the list - suggest based on category (blue for work, green for shopping, red for urgent, etc.)"
           ),
       }),
       execute: dedupe("createList", async (params) => {
@@ -104,7 +104,7 @@ export function createListAITools(
         listName: z
           .string()
           .describe(
-            "Name of the list - ALWAYS extract from user message (e.g., 'shopping', 'groceries', 'todo', 'work'). If not specified, try to infer or default to 'General'.",
+            "Name of the list - ALWAYS extract from user message (e.g., 'shopping', 'groceries', 'todo', 'work'). If not specified, try to infer or default to 'General'."
           ),
         items: z
           .array(z.string())
@@ -124,7 +124,7 @@ export function createListAITools(
         }
         const invalidItems = params.items.filter(
           (item) =>
-            !item || typeof item !== "string" || item.trim().length === 0,
+            !item || typeof item !== "string" || item.trim().length === 0
         );
         if (invalidItems.length > 0) {
           throw new Error("All items must be non-empty strings.");
@@ -185,7 +185,9 @@ export function createListAITools(
             batches: batches.length,
             message:
               errors.length > 0
-                ? `Added ${totalAdded} of ${params.items.length} items. Errors: ${errors.join("; ")}`
+                ? `Added ${totalAdded} of ${
+                    params.items.length
+                  } items. Errors: ${errors.join("; ")}`
                 : `Successfully added all ${totalAdded} items in ${batches.length} batches.`,
             errors: errors.length > 0 ? errors : undefined,
           };
@@ -223,7 +225,7 @@ export function createListAITools(
           .boolean()
           .optional()
           .describe(
-            "Whether to include archived lists (default: false, only active lists)",
+            "Whether to include archived lists (default: false, only active lists)"
           ),
       }),
       execute: dedupe("getLists", async (params) => {
@@ -273,11 +275,220 @@ export function createListAITools(
             error.message?.includes("not found")
           ) {
             throw new Error(
-              `Could not find list \"${params.listName}\". Check the list name and try again.`,
+              `Could not find list \"${params.listName}\". Check the list name and try again.`
             );
           }
           throw error;
         }
+      }),
+    }),
+    bulkRemoveItemsExcept: tool({
+      description:
+        "Remove ALL items from a list EXCEPT the ones specified. Use when user says 'delete all except X', 'remove everything but Y', 'clear list except Z'. This is the PREFERRED tool for bulk removal operations.",
+      inputSchema: z.object({
+        listName: z.string().describe("Name of the list"),
+        keepItems: z
+          .array(z.string())
+          .describe(
+            "Items to KEEP (everything else will be removed). Use item names/text, not IDs."
+          ),
+      }),
+      execute: dedupe("bulkRemoveItemsExcept", async (params) => {
+        // First, get all items in the list
+        const listItems = await listQueryService.getListItems({
+          userId,
+          listName: params.listName,
+          includeCompleted: true,
+        });
+
+        if (!listItems.items || listItems.items.length === 0) {
+          return {
+            success: true,
+            removedCount: 0,
+            message: "List is already empty.",
+          };
+        }
+
+        // Normalize keep items for comparison
+        const keepItemsLower = params.keepItems.map((item) =>
+          item.toLowerCase().trim()
+        );
+
+        // Find items to remove (everything NOT in keepItems)
+        const itemsToRemove = listItems.items.filter((item) => {
+          const contentLower = item.content.toLowerCase().trim();
+          return !keepItemsLower.some(
+            (keep) => contentLower.includes(keep) || keep.includes(contentLower)
+          );
+        });
+
+        if (itemsToRemove.length === 0) {
+          return {
+            success: true,
+            removedCount: 0,
+            keptCount: listItems.items.length,
+            message: `No items to remove. All ${listItems.items.length} items match your keep list.`,
+          };
+        }
+
+        // Remove each item
+        let removedCount = 0;
+        const errors: string[] = [];
+
+        for (const item of itemsToRemove) {
+          try {
+            await listItemService.removeItemFromList({
+              userId,
+              listName: params.listName,
+              itemText: item.content,
+            });
+            removedCount++;
+          } catch (error: any) {
+            errors.push(`${item.content}: ${error.message}`);
+          }
+        }
+
+        const keptCount = listItems.items.length - removedCount;
+
+        return {
+          success: errors.length === 0,
+          removedCount,
+          keptCount,
+          keptItems: params.keepItems,
+          message:
+            errors.length > 0
+              ? `Removed ${removedCount} items, kept ${keptCount}. Errors: ${errors.join(
+                  "; "
+                )}`
+              : `Successfully removed ${removedCount} items. Kept ${keptCount} items (${params.keepItems.join(
+                  ", "
+                )}).`,
+          errors: errors.length > 0 ? errors : undefined,
+        };
+      }),
+    }),
+    bulkDeleteLists: tool({
+      description:
+        "Delete multiple lists at once. Use when user says 'delete these lists', 'delete Shopping and Tasks lists'. This deletes entire lists, not just their items.",
+      inputSchema: z.object({
+        listNames: z.array(z.string()).describe("Names of the lists to delete"),
+      }),
+      execute: dedupe("bulkDeleteLists", async (params) => {
+        if (!params.listNames || params.listNames.length === 0) {
+          throw new Error("Please specify which lists to delete.");
+        }
+
+        let deletedCount = 0;
+        const errors: string[] = [];
+        const deletedLists: string[] = [];
+
+        for (const listName of params.listNames) {
+          try {
+            await listService.deleteList({
+              userId,
+              listName,
+            });
+            deletedCount++;
+            deletedLists.push(listName);
+          } catch (error: any) {
+            errors.push(`${listName}: ${error.message}`);
+          }
+        }
+
+        return {
+          success: errors.length === 0,
+          deletedCount,
+          deletedLists,
+          message:
+            errors.length > 0
+              ? `Deleted ${deletedCount} lists. Errors: ${errors.join("; ")}`
+              : `Successfully deleted ${deletedCount} lists: ${deletedLists.join(
+                  ", "
+                )}.`,
+          errors: errors.length > 0 ? errors : undefined,
+        };
+      }),
+    }),
+    bulkDeleteListsExcept: tool({
+      description:
+        "Delete ALL lists EXCEPT the ones specified. Use when user says 'delete all lists except Work', 'remove every list but Shopping'.",
+      inputSchema: z.object({
+        keepNames: z
+          .array(z.string())
+          .describe(
+            "Names of the lists to KEEP (everything else will be deleted)"
+          ),
+      }),
+      execute: dedupe("bulkDeleteListsExcept", async (params) => {
+        // Fetch all lists
+        const allLists = await listQueryService.getLists({ userId });
+
+        if (!allLists.lists || allLists.lists.length === 0) {
+          return {
+            success: true,
+            deletedCount: 0,
+            message: "No lists to delete.",
+          };
+        }
+
+        // Normalize keep names for comparison
+        const keepNamesLower = params.keepNames.map((n) =>
+          n.toLowerCase().trim()
+        );
+
+        // Find lists to delete (everything NOT in keepNames)
+        const listsToDelete = allLists.lists.filter((list: any) => {
+          const nameLower = (list.name || "").toLowerCase().trim();
+          return !keepNamesLower.some(
+            (keep) => nameLower.includes(keep) || keep.includes(nameLower)
+          );
+        });
+
+        if (listsToDelete.length === 0) {
+          return {
+            success: true,
+            deletedCount: 0,
+            keptCount: allLists.lists.length,
+            message: `No lists to delete. All ${allLists.lists.length} lists match your keep list.`,
+          };
+        }
+
+        // Delete each list
+        let deletedCount = 0;
+        const errors: string[] = [];
+        const deletedLists: string[] = [];
+
+        for (const list of listsToDelete) {
+          try {
+            await listService.deleteList({
+              userId,
+              listName: list.name,
+            });
+            deletedCount++;
+            deletedLists.push(list.name);
+          } catch (error: any) {
+            errors.push(`${list.name}: ${error.message}`);
+          }
+        }
+
+        const keptCount = allLists.lists.length - deletedCount;
+
+        return {
+          success: errors.length === 0,
+          deletedCount,
+          keptCount,
+          deletedLists,
+          keptNames: params.keepNames,
+          message:
+            errors.length > 0
+              ? `Deleted ${deletedCount} lists, kept ${keptCount}. Errors: ${errors.join(
+                  "; "
+                )}`
+              : `Successfully deleted ${deletedCount} lists. Kept ${keptCount} lists (${params.keepNames.join(
+                  ", "
+                )}).`,
+          errors: errors.length > 0 ? errors : undefined,
+        };
       }),
     }),
     updateListItem: tool({
@@ -313,11 +524,11 @@ export function createListAITools(
           includeCompleted: true,
         });
         const item = listItems.items.find((i) =>
-          i.content.toLowerCase().includes(params.itemText.toLowerCase()),
+          i.content.toLowerCase().includes(params.itemText.toLowerCase())
         );
         if (!item) {
           throw new Error(
-            `Could not find item "${params.itemText}" in list "${params.listName}"`,
+            `Could not find item "${params.itemText}" in list "${params.listName}"`
           );
         }
         return await listItemService.updateListItem({
@@ -495,7 +706,9 @@ export function createListAITools(
           batches: chunks.length,
           message:
             errors.length > 0
-              ? `Added ${totalAdded} of ${params.items.length} items. Errors: ${errors.join("; ")}`
+              ? `Added ${totalAdded} of ${
+                  params.items.length
+                } items. Errors: ${errors.join("; ")}`
               : `Successfully added all ${totalAdded} items in ${chunks.length} batches.`,
           errors: errors.length ? errors : undefined,
         };

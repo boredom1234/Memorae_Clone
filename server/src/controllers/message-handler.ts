@@ -24,6 +24,10 @@ export class MessageController {
   private messageBatchService: MessageBatchService;
   private userCache: Map<string, User> = new Map();
   private userNewCache: Map<string, boolean> = new Map();
+  private userCreationLocks: Map<
+    string,
+    Promise<{ user: User; isNew: boolean }>
+  > = new Map();
   private conversationContexts: Map<string, ConversationContext> = new Map();
   private cacheCleanupInterval: NodeJS.Timeout;
   private contextCleanupInterval: NodeJS.Timeout;
@@ -42,20 +46,14 @@ export class MessageController {
       this.ocrService,
       this.mediaService,
       this.aiService,
-      this.tools,
+      this.tools
     );
-    this.cacheCleanupInterval = setInterval(
-      () => {
-        this.cleanupUserCache();
-      },
-      30 * 60 * 1000,
-    );
-    this.contextCleanupInterval = setInterval(
-      () => {
-        this.cleanupConversationContexts();
-      },
-      15 * 60 * 1000,
-    );
+    this.cacheCleanupInterval = setInterval(() => {
+      this.cleanupUserCache();
+    }, 30 * 60 * 1000);
+    this.contextCleanupInterval = setInterval(() => {
+      this.cleanupConversationContexts();
+    }, 15 * 60 * 1000);
   }
   async handleMessage(context: MessageContext): Promise<any> {
     try {
@@ -89,31 +87,46 @@ export class MessageController {
       const cachedIsNew = this.userNewCache.get(context.from) || false;
       return { user: cachedUser, isNew: cachedIsNew };
     }
-    const userService = this.tools.getUserService();
-    let user: User;
-    let isNew: boolean;
-    if (context.from.includes("@")) {
-      const phoneNumber = "+" + context.from.split("@")[0];
-      const result = await userService.findOrCreateUser(
-        context.from,
-        phoneNumber,
-        context.fromName,
-      );
-      user = result.user;
-      isNew = result.isNew;
-    } else {
-      const result = await userService.findOrCreateTelegramUser(
-        context.from,
-        context.fromName,
-      );
-      user = result.user;
-      isNew = result.isNew;
+
+    // Check if creation is already in progress for this user
+    if (this.userCreationLocks.has(context.from)) {
+      return this.userCreationLocks.get(context.from)!;
     }
-    (user as any).lastAccessed = Date.now();
-    this.userCache.set(context.from, user);
-    this.userNewCache.set(context.from, isNew);
-    this.logger.info(`User ensured: ${user.name} (${user.id})`);
-    return { user, isNew };
+
+    const creationPromise = (async () => {
+      try {
+        const userService = this.tools.getUserService();
+        let user: User;
+        let isNew: boolean;
+        if (context.from.includes("@")) {
+          const phoneNumber = "+" + context.from.split("@")[0];
+          const result = await userService.findOrCreateUser(
+            context.from,
+            phoneNumber,
+            context.fromName
+          );
+          user = result.user;
+          isNew = result.isNew;
+        } else {
+          const result = await userService.findOrCreateTelegramUser(
+            context.from,
+            context.fromName
+          );
+          user = result.user;
+          isNew = result.isNew;
+        }
+        (user as any).lastAccessed = Date.now();
+        this.userCache.set(context.from, user);
+        this.userNewCache.set(context.from, isNew);
+        this.logger.info(`User ensured: ${user.name} (${user.id})`);
+        return { user, isNew };
+      } finally {
+        this.userCreationLocks.delete(context.from);
+      }
+    })();
+
+    this.userCreationLocks.set(context.from, creationPromise);
+    return creationPromise;
   }
   private cleanupUserCache(): void {
     const now = Date.now();
@@ -128,7 +141,7 @@ export class MessageController {
     }
     if (cleanedCount > 0) {
       this.logger.info(
-        `Cleaned ${cleanedCount} entries from user cache. Cache size: ${this.userCache.size}`,
+        `Cleaned ${cleanedCount} entries from user cache. Cache size: ${this.userCache.size}`
       );
     }
   }
@@ -144,7 +157,7 @@ export class MessageController {
     }
     if (cleanedCount > 0) {
       this.logger.info(
-        `Cleaned ${cleanedCount} conversation contexts. Active contexts: ${this.conversationContexts.size}`,
+        `Cleaned ${cleanedCount} conversation contexts. Active contexts: ${this.conversationContexts.size}`
       );
     }
   }
@@ -156,7 +169,7 @@ export class MessageController {
         process.env.MEMORAE_MAX_CONTEXT;
       const computedMax = Math.max(
         10,
-        Math.min(100, parseInt(maxMessagesEnv || "40", 10)),
+        Math.min(100, parseInt(maxMessagesEnv || "40", 10))
       );
       this.conversationContexts.set(userId, {
         userId,
@@ -171,7 +184,7 @@ export class MessageController {
   }
   private addToConversationContext(
     userId: string,
-    message: ConversationMessage,
+    message: ConversationMessage
   ): void {
     const context = this.getConversationContext(userId);
     context.messages.push(message);
@@ -185,7 +198,7 @@ export class MessageController {
   }
   private mergeSummary(
     existing: string | undefined,
-    dropped: ConversationMessage[],
+    dropped: ConversationMessage[]
   ): string {
     try {
       const lines = dropped.map((m) => {
@@ -219,7 +232,7 @@ export class MessageController {
   private async handleTextMessage(
     context: MessageContext,
     user: User,
-    isNew?: boolean,
+    isNew?: boolean
   ): Promise<any> {
     const { text } = context;
     if (!text) return null;
@@ -264,14 +277,14 @@ export class MessageController {
       const normalized = lower
         .replace(
           /^(the|option|number|choice|select|pick|choose|it's|its)\s+/gi,
-          "",
+          ""
         )
         .replace(/\s+(one|option|choice|please|pls)$/gi, "")
         .replace(/^(i want|i choose|i pick|i select)\s+/gi, "")
         .trim();
       if (ordinalMap[normalized]) return ordinalMap[normalized];
       const match = normalized.match(
-        /^(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|\d+)/i,
+        /^(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|\d+)/i
       );
       if (match) {
         const key = match[1].toLowerCase();
@@ -289,11 +302,11 @@ export class MessageController {
         const selected = conversationContext.candidateItems.find(
           (c) =>
             c.id === String(selection) ||
-            conversationContext.candidateItems!.indexOf(c) === selection - 1,
+            conversationContext.candidateItems!.indexOf(c) === selection - 1
         );
         if (selected) {
           this.logger.info(
-            `User selected item ${selection}: ${selected.title}`,
+            `User selected item ${selection}: ${selected.title}`
           );
           try {
             const pending = conversationContext.pendingAction;
@@ -314,7 +327,13 @@ export class MessageController {
                     });
                     const best = util.pickBestDate(parsed.extractedDates);
                     if (best) finalTime = best;
-                  } catch {}
+                    if (best) finalTime = best;
+                  } catch (err) {
+                    this.logger.warn(
+                      { err },
+                      "Failed to parse natural language date in updateReminder"
+                    );
+                  }
                 }
                 if (!finalTime && (toolArgs.title || toolArgs.priority)) {
                 }
@@ -341,7 +360,13 @@ export class MessageController {
                     });
                     const best = util.pickBestDate(parsed.extractedDates);
                     if (best) snoozeUntil = best;
-                  } catch {}
+                    if (best) snoozeUntil = best;
+                  } catch (err) {
+                    this.logger.warn(
+                      { err },
+                      "Failed to parse natural language date in snoozeReminder"
+                    );
+                  }
                 }
                 if (!snoozeUntil) {
                   return {
@@ -364,7 +389,7 @@ export class MessageController {
               conversationContext.pendingAction = undefined;
               const rendered = this.responseFormatter.getResponseMessage(
                 result,
-                user.timezone,
+                user.timezone
               );
               if (rendered) {
                 this.addToConversationContext(user.id, {
@@ -378,7 +403,7 @@ export class MessageController {
           } catch (e) {
             this.logger.error(
               { error: e },
-              "Failed to execute pending action after selection",
+              "Failed to execute pending action after selection"
             );
             return {
               text: "Sorry, I couldn't complete that action after your selection.",
@@ -389,7 +414,7 @@ export class MessageController {
     }
     if (
       /^(yes|y|yup|yeah|confirm|ok|correct|right|sure|exactly)$/i.test(
-        lowerText,
+        lowerText
       )
     ) {
       const recentMessages = conversationContext.messages.slice(-4);
@@ -399,22 +424,22 @@ export class MessageController {
       if (
         lastAssistantMessage &&
         /just to confirm|would you like me to update|correct\?/i.test(
-          lastAssistantMessage.content,
+          lastAssistantMessage.content
         )
       ) {
         const reminderUpdateContext = recentMessages.find((m) =>
-          /update.*reminder|change.*time|10\.?30.*pm/i.test(m.content),
+          /update.*reminder|change.*time|10\.?30.*pm/i.test(m.content)
         );
         if (reminderUpdateContext) {
           this.logger.info(
-            "Detected confirmation for reminder update from context",
+            "Detected confirmation for reminder update from context"
           );
           try {
             const takeMemsMatch = recentMessages.find((m) =>
-              /take meds/i.test(m.content),
+              /take meds/i.test(m.content)
             );
             const timeMatch = recentMessages.find((m) =>
-              /10\.?30.*pm/i.test(m.content),
+              /10\.?30.*pm/i.test(m.content)
             );
             if (takeMemsMatch && timeMatch) {
               const search = await this.tools.executeTool("searchReminders", {
@@ -447,7 +472,7 @@ export class MessageController {
               });
               const rendered = this.responseFormatter.getResponseMessage(
                 result,
-                user.timezone,
+                user.timezone
               );
               if (rendered) {
                 this.addToConversationContext(user.id, {
@@ -461,7 +486,7 @@ export class MessageController {
           } catch (e) {
             this.logger.error(
               { error: e },
-              "Failed to execute context-detected update",
+              "Failed to execute context-detected update"
             );
             return {
               text: "Sorry, I couldn't update that reminder. Could you try again?",
@@ -472,19 +497,19 @@ export class MessageController {
     }
     if (
       /^\d+[:.]\d+\s*(am|pm)(?:\s*(?:sorry|correction|actually|instead))?$/i.test(
-        validatedText.trim(),
+        validatedText.trim()
       )
     ) {
       const recentMessages = conversationContext.messages.slice(-6);
       const recentReminderCreation = recentMessages.find((m) =>
         /reminder.*created|created.*reminder|remind.*everyday|everyday.*remind/i.test(
-          m.content,
-        ),
+          m.content
+        )
       );
       if (recentReminderCreation) {
         this.logger.info("Detected time correction for recent reminder");
         const reminderNameMatch = recentMessages.find((m) =>
-          /take meds|meds/i.test(m.content),
+          /take meds|meds/i.test(m.content)
         );
         const timeMatch = validatedText.match(/(\d+[:.]\d+\s*(?:am|pm))/i);
         if (reminderNameMatch && timeMatch) {
@@ -509,11 +534,11 @@ export class MessageController {
     if (
       conversationContext.needsConfirmation &&
       /^(yes|y|yup|yeah|confirm|ok|correct|right|sure|exactly)$/i.test(
-        lowerText,
+        lowerText
       )
     ) {
       this.logger.info(
-        `User confirmed action: ${conversationContext.needsConfirmation.action}`,
+        `User confirmed action: ${conversationContext.needsConfirmation.action}`
       );
       try {
         const action = conversationContext.needsConfirmation.action;
@@ -539,7 +564,7 @@ export class MessageController {
         } else if (action === "updateReminder") {
           const summaryMatch =
             conversationContext.needsConfirmation.summary.match(
-              /(\d+[:.]\d+\s*(?:am|pm))/i,
+              /(\d+[:.]\d+\s*(?:am|pm))/i
             );
           const newTime = summaryMatch ? summaryMatch[1] : "10:30 PM";
           let reminderId = targetId;
@@ -572,7 +597,7 @@ export class MessageController {
           });
         } else if (action === "snoozeReminder") {
           const timeMatch = conversationContext.needsConfirmation.summary.match(
-            /(\d+[:.]\d+\s*(?:am|pm)|in\s+\d+\s+(?:minutes?|hours?|days?))/i,
+            /(\d+[:.]\d+\s*(?:am|pm)|in\s+\d+\s+(?:minutes?|hours?|days?))/i
           );
           let snoozeText = timeMatch ? timeMatch[1] : undefined;
           let reminderId = targetId;
@@ -614,7 +639,7 @@ export class MessageController {
         conversationContext.needsConfirmation = undefined;
         const rendered = this.responseFormatter.getResponseMessage(
           result,
-          user.timezone,
+          user.timezone
         );
         if (rendered) {
           this.addToConversationContext(user.id, {
@@ -634,7 +659,7 @@ export class MessageController {
       /^(no|n|cancel|nope)$/i.test(lowerText)
     ) {
       this.logger.info(
-        `User cancelled action: ${conversationContext.needsConfirmation.action}`,
+        `User cancelled action: ${conversationContext.needsConfirmation.action}`
       );
       conversationContext.needsConfirmation = undefined;
       return {
@@ -647,7 +672,7 @@ export class MessageController {
           context,
           user,
           validatedText,
-          conversationContext,
+          conversationContext
         );
       if (onboardingResult) {
         if (conversationContext.onboarding === undefined) {
@@ -663,7 +688,7 @@ export class MessageController {
       messageId: context.messageId,
     });
     this.logger.info(
-      `Conversation history: ${conversationContext.messages.length} messages`,
+      `Conversation history: ${conversationContext.messages.length} messages`
     );
     let effectiveMessages = conversationContext.messages;
     if (
@@ -673,11 +698,17 @@ export class MessageController {
       const seemsLikeSelection =
         validatedText.length < 50 &&
         (/^(the\s+)?(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|one|two|three|four|five|that|this|it)\b/i.test(
-          validatedText,
+          validatedText
         ) ||
           validatedText.split(/\s+/).length <= 5);
       if (seemsLikeSelection) {
-        const selectionContext = `[SYSTEM CONTEXT: The user is currently selecting from ${conversationContext.candidateItems.length} options: ${conversationContext.candidateItems.map((c, i) => `${i + 1}. ${c.title}`).join(", ")}. Their response "${validatedText}" should be interpreted as a selection. If you cannot determine which option, ask them to choose by number (1, 2, etc.).]`;
+        const selectionContext = `[SYSTEM CONTEXT: The user is currently selecting from ${
+          conversationContext.candidateItems.length
+        } options: ${conversationContext.candidateItems
+          .map((c, i) => `${i + 1}. ${c.title}`)
+          .join(
+            ", "
+          )}. Their response "${validatedText}" should be interpreted as a selection. If you cannot determine which option, ask them to choose by number (1, 2, etc.).]`;
         effectiveMessages = [
           ...conversationContext.messages,
           {
@@ -688,7 +719,7 @@ export class MessageController {
         ];
       } else {
         this.logger.info(
-          "User message does not seem like a selection while candidates are pending. Clearing candidates.",
+          "User message does not seem like a selection while candidates are pending. Clearing candidates."
         );
         conversationContext.candidateItems = undefined;
         conversationContext.pendingAction = undefined;
@@ -701,7 +732,7 @@ export class MessageController {
         user.timezone,
         this.tools,
         effectiveMessages,
-        conversationContext.summary,
+        conversationContext.summary
       );
       this.logger.info(`AI response: ${result.text}`);
       this.logger.info(`Tool calls: ${result.toolCalls.length}`);
@@ -713,7 +744,7 @@ export class MessageController {
               index: idx,
               toolName: r?.toolName,
               keys: r && typeof r === "object" ? Object.keys(r) : null,
-            }),
+            })
           );
           this.logger.info({ toolResultShapes }, "Tool result shapes");
         } catch {}
@@ -727,7 +758,9 @@ export class MessageController {
         typeof lastToolEnvelope === "object" &&
         "result" in lastToolEnvelope
           ? (lastToolEnvelope as any).result
-          : lastToolEnvelope;
+          : lastToolEnvelope
+          ? (lastToolEnvelope as any).output || lastToolEnvelope
+          : null;
       this.logger.info(
         {
           toolName: (lastToolEnvelope as any)?.toolName,
@@ -741,7 +774,7 @@ export class MessageController {
             (lastToolEnvelope as any).result
           ),
         },
-        "Tool result envelope summary",
+        "Tool result envelope summary"
       );
       if (lastToolResult?.needsSelection && lastToolResult.candidates) {
         conversationContext.candidateItems = lastToolResult.candidates.map(
@@ -750,7 +783,7 @@ export class MessageController {
             title: c.title,
             description: c.time,
             type: c.type || "reminder",
-          }),
+          })
         );
         try {
           const toolName = (lastToolEnvelope as any)?.toolName;
@@ -765,8 +798,15 @@ export class MessageController {
             params: { toolName, args },
             timestamp: new Date(),
           } as any;
-        } catch {}
-        const selectionMessage = `${lastToolResult.message}\n\n${lastToolResult.candidates
+        } catch (err) {
+          this.logger.warn(
+            { err },
+            "Error extracting pending action from tool result"
+          );
+        }
+        const selectionMessage = `${
+          lastToolResult.message
+        }\n\n${lastToolResult.candidates
           .map((c: any, idx: number) => {
             const ts = c.time
               ? formatInZone(c.time, user.timezone, "MMM d, yyyy 'at' h:mm a")
@@ -813,7 +853,7 @@ export class MessageController {
         (!result.text || result.text.trim().length === 0)
       ) {
         this.logger.warn(
-          `Action intent detected but no tool results. Asking for clarification.`,
+          `Action intent detected but no tool results. Asking for clarification.`
         );
         const clarificationMessage =
           "I'm not sure I understood that correctly. Could you please rephrase or provide more details?";
@@ -837,18 +877,18 @@ export class MessageController {
       const renderedText = hasMeaningfulText
         ? (result.text as string)
         : result.toolResults &&
-            Array.isArray(result.toolResults) &&
-            result.toolResults.length > 0
-          ? this.responseFormatter.getResponseMessage(
-              lastToolEnvelope,
-              user.timezone,
-            )
-          : this.responseFormatter.getResponseMessage(result, user.timezone);
+          Array.isArray(result.toolResults) &&
+          result.toolResults.length > 0
+        ? this.responseFormatter.getResponseMessage(
+            lastToolEnvelope,
+            user.timezone
+          )
+        : this.responseFormatter.getResponseMessage(result, user.timezone);
       this.logger.info(
         {
           renderedTextPreview: (renderedText || "").slice(0, 160),
         },
-        "Prepared rendered text",
+        "Prepared rendered text"
       );
       if (renderedText) {
         this.addToConversationContext(user.id, {
@@ -875,7 +915,7 @@ export class MessageController {
   }
   private async handleImageMessage(
     context: MessageContext,
-    user: User,
+    user: User
   ): Promise<any> {
     const conversationContext = this.getConversationContext(user.id);
     return await this.messageBatchService.addMessage(
@@ -884,10 +924,10 @@ export class MessageController {
       async (contexts: MessageContext[]) => {
         if (contexts.length > 1) {
           this.logger.info(
-            `Processing batch of ${contexts.length} images for user ${user.name}`,
+            `Processing batch of ${contexts.length} images for user ${user.name}`
           );
           const messageWithCaption = contexts.find(
-            (ctx) => ctx.text && ctx.text.trim().length > 0,
+            (ctx) => ctx.text && ctx.text.trim().length > 0
           );
           if (messageWithCaption) {
             return await this.mediaHandler.handleMultipleImageMessages(
@@ -902,7 +942,7 @@ export class MessageController {
                 });
               },
               (result, timezone) =>
-                this.responseFormatter.getResponseMessage(result, timezone),
+                this.responseFormatter.getResponseMessage(result, timezone)
             );
           } else {
             const results = [];
@@ -919,7 +959,7 @@ export class MessageController {
                   });
                 },
                 (result, timezone) =>
-                  this.responseFormatter.getResponseMessage(result, timezone),
+                  this.responseFormatter.getResponseMessage(result, timezone)
               );
               results.push(result);
             }
@@ -938,15 +978,15 @@ export class MessageController {
               });
             },
             (result, timezone) =>
-              this.responseFormatter.getResponseMessage(result, timezone),
+              this.responseFormatter.getResponseMessage(result, timezone)
           );
         }
-      },
+      }
     );
   }
   private async handleAudioMessage(
     context: MessageContext,
-    user: User,
+    user: User
   ): Promise<any> {
     const userId = user.id;
     const conversationContext = this.getConversationContext(userId);
@@ -962,7 +1002,7 @@ export class MessageController {
         });
       },
       (result, timezone) =>
-        this.responseFormatter.getResponseMessage(result, timezone),
+        this.responseFormatter.getResponseMessage(result, timezone)
     );
   }
   getResponseMessage(result: any, timezone?: string): string {
