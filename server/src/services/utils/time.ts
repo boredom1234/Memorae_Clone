@@ -503,7 +503,9 @@ export function parseNaturalLanguageDate(params: {
             const hour = (result.start as any).get?.("hour") ?? date.getHours();
             const minute =
               (result.start as any).get?.("minute") ?? date.getMinutes();
-            const today = DateTime.now().setZone(validatedParams.timezone);
+            const today = DateTime.fromJSDate(referenceDate, {
+              zone: validatedParams.timezone,
+            });
             finalDT = today.set({
               hour: Number.isFinite(hour) ? hour : 0,
               minute: Number.isFinite(minute) ? minute : 0,

@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { ValidationError } from "./errors";
+import { rrulestr } from "rrule";
+
 export const uuidSchema = z.string().uuid("Invalid UUID format");
 export const nonEmptyStringSchema = z
   .string()
@@ -65,6 +67,23 @@ export const createReminderSchema = z
       message: "Recurrence rule is required for recurring reminders",
       path: ["recurrenceRule"],
     },
+  )
+  .refine(
+    (data) => {
+      if (data.recurrenceRule) {
+        try {
+          rrulestr(data.recurrenceRule);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+      return true;
+    },
+    {
+      message: "Invalid recurrence rule format",
+      path: ["recurrenceRule"],
+    },
   );
 export const updateReminderSchema = z
   .object({
@@ -82,6 +101,23 @@ export const updateReminderSchema = z
     {
       message: "reminderTime must be a valid datetime",
       path: ["reminderTime"],
+    },
+  )
+  .refine(
+    (data) => {
+      if (data.recurrenceRule) {
+        try {
+          rrulestr(data.recurrenceRule);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+      return true;
+    },
+    {
+      message: "Invalid recurrence rule format",
+      path: ["recurrenceRule"],
     },
   );
 export const deleteReminderSchema = z

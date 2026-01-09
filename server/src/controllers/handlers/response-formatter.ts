@@ -25,7 +25,7 @@ export class ResponseFormatter {
       return obj;
     };
     const r = unwrap(result);
-    if (!r) return "I couldn't format that result.";
+    if (!r) return JSON.stringify(result, null, 2);
     const getDisplayTime = (item: any): string | undefined => {
       try {
         const formatted =

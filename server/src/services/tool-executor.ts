@@ -21,13 +21,19 @@ export async function executeTool(
       params,
     });
     if (error instanceof AppError) {
-      throw error;
+      // Don't throw, return the error as a result so the LLM can see it
+      return {
+        success: false,
+        error: error.message,
+        code: error.statusCode,
+        details: error.details,
+      };
     }
-    throw new AppError(
-      `Tool execution failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-      500,
-      "TOOL_EXECUTION_ERROR",
-      { toolName, originalError: error },
-    );
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+      code: 500,
+      details: { toolName, originalError: error },
+    };
   }
 }

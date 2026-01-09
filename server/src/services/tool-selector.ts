@@ -183,6 +183,11 @@ export function getRelevantToolGroup(
     if (allTools.removeItemFromList) selectedTools.removeItemFromList = allTools.removeItemFromList;
     if (allTools.updateListItem) selectedTools.updateListItem = allTools.updateListItem;
     if (allTools.deleteList) selectedTools.deleteList = allTools.deleteList;
+
+    // Cross-domain: Allow creating reminders from list context (e.g. "Add to list and remind me")
+    if (allTools.createReminder) selectedTools.createReminder = allTools.createReminder;
+    if (allTools.parseNaturalLanguageDate) selectedTools.parseNaturalLanguageDate = allTools.parseNaturalLanguageDate;
+    if (allTools.getCurrentTime) selectedTools.getCurrentTime = allTools.getCurrentTime;
   }
 
   if (noteTools.includes(primaryToolName)) {
@@ -191,47 +196,51 @@ export function getRelevantToolGroup(
     if (allTools.createNote) selectedTools.createNote = allTools.createNote;
     if (allTools.updateNote) selectedTools.updateNote = allTools.updateNote;
     if (allTools.deleteNote) selectedTools.deleteNote = allTools.deleteNote;
+
+    // Explicitly include missing note mutation tools
+    if (allTools.pinNote) selectedTools.pinNote = allTools.pinNote;
+    if (allTools.archiveNote) selectedTools.archiveNote = allTools.archiveNote;
+    if (allTools.duplicateNote) selectedTools.duplicateNote = allTools.duplicateNote;
+
+    // Cross-domain: Allow creating reminders from note context (e.g. "Create note and remind me")
+    if (allTools.createReminder) selectedTools.createReminder = allTools.createReminder;
+    if (allTools.parseNaturalLanguageDate) selectedTools.parseNaturalLanguageDate = allTools.parseNaturalLanguageDate;
+    if (allTools.getCurrentTime) selectedTools.getCurrentTime = allTools.getCurrentTime;
   }
   if (mediaTools.includes(primaryToolName)) {
-    if (allTools.getMediaHistory)
-      selectedTools.getMediaHistory = allTools.getMediaHistory;
-    if (allTools.getMediaStats)
-      selectedTools.getMediaStats = allTools.getMediaStats;
-    if (
-      (primaryToolName === "ocrMediaAttachment" ||
-        primaryToolName === "transcribeMediaAttachment") &&
-      allTools.extractMediaEntities
-    ) {
-      selectedTools.extractMediaEntities = allTools.extractMediaEntities;
-    }
+    // Always include history and stats
+    if (allTools.getMediaHistory) selectedTools.getMediaHistory = allTools.getMediaHistory;
+    if (allTools.getMediaStats) selectedTools.getMediaStats = allTools.getMediaStats;
+
+    // Include all processing tools to allow "find then transcribe" flows
+    if (allTools.ocrMediaAttachment) selectedTools.ocrMediaAttachment = allTools.ocrMediaAttachment;
+    if (allTools.transcribeMediaAttachment) selectedTools.transcribeMediaAttachment = allTools.transcribeMediaAttachment;
+    if (allTools.extractMediaEntities) selectedTools.extractMediaEntities = allTools.extractMediaEntities;
+    if (allTools.linkMediaAttachment) selectedTools.linkMediaAttachment = allTools.linkMediaAttachment;
+    if (allTools.unlinkMediaAttachment) selectedTools.unlinkMediaAttachment = allTools.unlinkMediaAttachment;
+    if (allTools.searchMediaByText) selectedTools.searchMediaByText = allTools.searchMediaByText;
+
     if (allTools.createRemindersFromImage)
-      selectedTools.createRemindersFromImage =
-        allTools.createRemindersFromImage;
+      selectedTools.createRemindersFromImage = allTools.createRemindersFromImage;
     if (allTools.extractListFromImage)
       selectedTools.extractListFromImage = allTools.extractListFromImage;
   }
   if (notificationTools.includes(primaryToolName)) {
-    if (
-      primaryToolName === "sendReminderToContact" &&
-      allTools.getCurrentTime
-    ) {
-      selectedTools.getCurrentTime = allTools.getCurrentTime;
-    }
-    if (
-      (primaryToolName === "retryNotification" ||
-        primaryToolName === "bulkRetryFailedNotifications") &&
-      allTools.getFailedNotifications
-    ) {
-      selectedTools.getFailedNotifications = allTools.getFailedNotifications;
-    }
+    if (allTools.getCurrentTime) selectedTools.getCurrentTime = allTools.getCurrentTime;
+
+    // Allow retrying when looking at history/failed
+    if (allTools.getNotificationHistory) selectedTools.getNotificationHistory = allTools.getNotificationHistory;
+    if (allTools.getFailedNotifications) selectedTools.getFailedNotifications = allTools.getFailedNotifications;
+    if (allTools.retryNotification) selectedTools.retryNotification = allTools.retryNotification;
+    if (allTools.bulkRetryFailedNotifications) selectedTools.bulkRetryFailedNotifications = allTools.bulkRetryFailedNotifications;
+    if (allTools.sendReminderToContact) selectedTools.sendReminderToContact = allTools.sendReminderToContact;
+    if (allTools.sendCustomMessage) selectedTools.sendCustomMessage = allTools.sendCustomMessage;
   }
   if (userTools.includes(primaryToolName)) {
-    if (primaryToolName === "updateUserSettings" && allTools.getUserSettings) {
-      selectedTools.getUserSettings = allTools.getUserSettings;
-    }
-    if (primaryToolName === "setQuietHours" && allTools.getUserSettings) {
-      selectedTools.getUserSettings = allTools.getUserSettings;
-    }
+    // Allow updating when viewing settings
+    if (allTools.getUserSettings) selectedTools.getUserSettings = allTools.getUserSettings;
+    if (allTools.updateUserSettings) selectedTools.updateUserSettings = allTools.updateUserSettings;
+    if (allTools.setQuietHours) selectedTools.setQuietHours = allTools.setQuietHours;
   }
   if (
     context?.originalMessage &&
